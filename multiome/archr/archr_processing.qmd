@@ -24,7 +24,7 @@ library(scCustomize)
 library(circlize)
 library(ggrepel)
 
-source("~/nest/rstudio/utils/common_aesthetics.R")
+source("../../scripts/common_aesthetics.R")
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -37,7 +37,7 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 ```
 
 ```{r}
-set.seed = 10
+set.seed(10)
 ```
 
 ```{r}

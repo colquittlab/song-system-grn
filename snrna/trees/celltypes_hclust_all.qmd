@@ -10,8 +10,8 @@ library(ComplexHeatmap)
 library(circlize)
 library(scCustomize)
 plan(sequential)
-source("~/nest/rstudio/utils/scRNA.R")
-source("~/nest/rstudio/utils/stats.R")
+source("../../scripts/scRNA.R")
+source("../../scripts/stats.R")
 ```
 
 # Parameters 
@@ -43,7 +43,7 @@ obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs")
 data_out_avg_fname = file.path(out_dir, "data_avg.qs")
 data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs")
 
-tfs = read_delim("~/nest/gene_lists/lambert_tfs/tfs.csv") %>%
+tfs = read_delim("../../data/lambert_tfs/tfs.csv") %>%
   filter(DBD!="Unknown")
 ```
 # Load data 

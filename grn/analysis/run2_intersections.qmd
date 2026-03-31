@@ -19,7 +19,7 @@ library(hdf5r)
 library(anndata)
 select = dplyr::select
 
-source("/home/brad/nest/rstudio/utils/stats.R")
+source("../../scripts/stats.R")
 ```
 
 ```{r}
@@ -183,7 +183,7 @@ region_aucs = imap(region_aucs, function(region_auc, i) imap(region_auc, functio
 
 ## Load TFs
 ```{r}
-tfs = readr::read_csv("/home/brad/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs = readr::read_csv("../../data/lambert_tfs/tfs.csv")
 tfs_dbd = tfs %>% filter(DBD!="Unknown")
 ```
 

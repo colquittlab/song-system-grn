@@ -21,7 +21,7 @@ library(clustree)
 library(scCustomize)
 library(ComplexHeatmap)
 
-source("~/nest/rstudio/utils/scRNA.R")
+source("../../scripts/scRNA.R")
 reticulate::use_condaenv("/home/brad/micromamba/envs/scanorama")
 rename = dplyr::rename
 select = dplyr::select

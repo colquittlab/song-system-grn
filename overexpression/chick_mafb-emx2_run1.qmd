@@ -22,9 +22,9 @@ library(extrafont)
 # loadfonts()
 # loadfonts(device = "postscript")
 
-source("/mnt/nest_bcolquit/rstudio/utils/scRNA.R")
-source("/mnt/nest_bcolquit/rstudio/utils/gene_lists.R")
-source("/mnt/nest_bcolquit/rstudio/utils/scenicplus.R")
+source("../scripts/scRNA.R")
+source("../scripts/gene_lists.R")
+source("../scripts/scenicplus.R")
 
 plot_theme <- function() {
   theme(

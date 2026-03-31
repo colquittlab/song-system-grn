@@ -18,7 +18,7 @@ library(hdf5r)
 library(anndata)
 select = dplyr::select
 
-source("/home/brad/nest/rstudio/utils/stats.R")
+source("../../scripts/stats.R")
 ```
 
 ```{r}
@@ -81,7 +81,7 @@ extract_matrix = function(obs_name, ereg_file) {
 
 ## Load TFs
 ```{r}
-tfs_db = readr::read_csv("/home/brad/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs_db = readr::read_csv("../../data/lambert_tfs/tfs.csv")
 tfs_dbd = tfs_db %>% filter(DBD!="Unknown")
 ```
 

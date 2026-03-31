@@ -19,7 +19,7 @@ library(ComplexUpset)
 library(patchwork)
 library(ggdensity)
 library(ggrastr)
-source("~/nest/rstudio/utils/common_aesthetics.R")
+source("../../scripts/common_aesthetics.R")
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -43,7 +43,7 @@ dir.create(out_dir, recursive = T)
 ```
 
 ```{r}
-tfs = read_delim("/mnt/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs = read_delim("../../data/lambert_tfs/tfs.csv")
 ```
 
 ```{r}

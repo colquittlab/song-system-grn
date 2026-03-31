@@ -19,7 +19,7 @@ library(cowplot)
 library(clustree)
 library(scCustomize)
 
-source("/ssd/brad/rstudio/utils/scRNA.R")
+source("../../scripts/scRNA.R")
 reticulate::use_condaenv("/home/brad/micromamba/envs/scanorama")
 rename = dplyr::rename
 select = dplyr::select

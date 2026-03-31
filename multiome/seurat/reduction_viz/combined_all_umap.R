@@ -8,8 +8,8 @@ library(scCustomize)
 library(scales)
 theme_set(theme_cowplot())
 
-source("~/nest/rstudio/utils/scRNA.R")
-source("~/nest/rstudio/utils/common_aesthetics.R")
+source("../../../scripts/scRNA.R")
+source("../../../scripts/common_aesthetics.R")
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",

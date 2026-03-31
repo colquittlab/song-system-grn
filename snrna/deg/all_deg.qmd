@@ -18,7 +18,7 @@ library(cowplot)
 library(proxy)
 select = dplyr::select
 
-source("~/nest/rstudio/utils/gene_lists.R")
+source("../../scripts/gene_lists.R")
 ```
 
 ```{r}

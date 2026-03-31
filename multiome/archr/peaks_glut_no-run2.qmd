@@ -18,8 +18,8 @@ library(scales)
 library(ggrepel)
 library(scCustomize)
 
-source("~/nest/rstudio/utils/common_aesthetics.R")
-source("~/nest/rstudio/utils/stats.R")
+source("../../scripts/common_aesthetics.R")
+source("../../scripts/stats.R")
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -52,7 +52,7 @@ proj = loadArchRProject(proj_dir)
 ```
 
 ```{r}
-tfs = read_delim("/mnt/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs = read_delim("../../data/lambert_tfs/tfs.csv")
 ```
 
 ## Add peaks

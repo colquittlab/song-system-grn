@@ -26,9 +26,9 @@ library(foreach)
 
 
 
-source("~/nest/rstudio/utils/stats.R")
-source("~/nest/rstudio/utils/gene_lists.R")
-source("~/nest/rstudio/utils/common_aesthetics.R")
+source("../../scripts/stats.R")
+source("../../scripts/gene_lists.R")
+source("../../scripts/common_aesthetics.R")
 ```
 
 ```{r}
