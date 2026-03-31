@@ -1,0 +1,637 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+library(plyranges)
+source("~/nest/rstudio/utils/common_aesthetics.R")
+source("~/nest/rstudio/utils/stats.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+out_name = "peaks_gaba"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+addArchRThreads(threads = 36) 
+```
+
+## Common functions
+```{r}
+cor_dist = function(x) proxy::dist(x, method="correlation")
+```
+
+## Load data
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+
+```{r}
+tfs = read_delim("/mnt/nest/gene_lists/lambert_tfs/tfs.csv")
+```
+
+## Add peaks
+```{r}
+#pathToMacs2 <- findMacs2()
+
+if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
+  proj <- addReproduciblePeakSet(
+    ArchRProj = proj, 
+    threads = 1, 
+    groupBy = "cluster",
+    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
+    excludeChr = chrM,
+    genomeSize = 1E9,
+    plot=F,
+    genomeAnnotation = genomeAnnotation,
+    geneAnnotation = geneAnnotation
+  )
+  proj <- addPeakMatrix(proj)
+  saveArchRProject(proj, load=F)
+} 
+
+```
+
+## Find DARs
+```{r}
+pair_list = list(gaba4_gaba1= list("GABA-4-1", "GABA-1-1"),
+                 gaba2_gaba1= list("GABA-2-1", "GABA-1-1")
+                 )
+```
+
+```{r}
+markers_peaks_sns_se_fname = file.path(out_dir, "peaks_nonsong_se.rds")
+markers_peaks_sns_fname = file.path(out_dir, "peaks_nonsong.rds")
+
+redo = F
+if (redo) {
+  
+  marker_peaks_sns = map(pair_list, \(pair_cur) {
+      print(pair_cur)
+      getMarkerFeatures(
+        ArchRProj = proj, 
+        useMatrix = "PeakMatrix", 
+        groupBy = "cluster",
+        useGroups = pair_cur[[1]],
+        bgdGroups = pair_cur[[2]],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        testMethod = "wilcoxon"
+      )
+  }) %>% set_names(names(pair_list))
+  
+  saveRDS(marker_peaks_sns, markers_peaks_sns_se_fname)
+} else {
+  marker_peaks_sns = readRDS(markers_peaks_sns_se_fname)
+}
+
+marker_peaks_sns_gr = map(marker_peaks_sns, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.1", returnGR=T)
+  gr
+})
+
+marker_peaks_sns_df = map(marker_peaks_sns_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+
+
+```
+
+### Export beds
+```{r}
+bed_dir = file.path(out_dir, "beds")
+dir.create(bed_dir)
+
+marker_peaks_sns_df_split = split(marker_peaks_sns_df, marker_peaks_sns_df$comparison)
+iwalk(marker_peaks_sns_df_split, function(d, i) {
+
+  pair_cur = pair_list[[i]]
+  pair_cur_name = sprintf("%s_vs_%s", pair_cur[[1]], paste(pair_cur[[2]], collapse="_"))
+  d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(sign = sign(Log2FC)) %>%
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end))
+  
+  signs = unique(d_out$sign)
+  walk(unique(signs), function(sign_cur) {
+    d_out_cur = d_out %>%
+      filter(sign == sign_cur) %>% 
+      select(seqnames, start, end, name, Log2FC, strand)
+    fname = file.path(bed_dir, sprintf("%s_%s.bed", pair_cur_name, sign_cur))
+    write_delim(d_out_cur, fname, delim="\t", col_names = F )
+  })
+})
+
+marker_peaks_sns_gr1 = map( marker_peaks_sns_gr, ~ .x[[1]])
+d = Reduce(join_overlap_intersect, marker_peaks_sns_gr1) %>%
+  as.data.frame()
+
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "intersect"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+
+d = bind_ranges(marker_peaks_sns_gr1) %>%
+  as.data.frame()
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "union"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+```
+
+
+
+```{r}
+ct_order = c("GABA-1-1", "GABA-2-1", "GABA-4-1")
+mat_avg = mat_avg[,ct_order]
+
+mat_filter = mat_avg[rownames(mat_avg) %in% marker_peaks_sns_df$region,]
+
+set.seed(42)
+idx = sample(nrow(mat_filter), min(nrow(mat_filter), 1000))
+mat_sample = mat_filter[idx,]
+
+mat_sample_scale = t(apply(mat_sample, 1, scale))
+colnames(mat_sample_scale) = ct_order
+
+```
+
+```{r}
+pal = brewer_pal(type="div", palette = 3 )(9)
+
+min_val = min(mat_sample_scale)
+max_val = max(mat_sample_scale)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+width = 1
+#height = width * nrow(mat) / ncol(mat)
+height = 4
+
+nk = 5
+
+hm = Heatmap(mat_sample_scale,
+             col = cols,
+             row_km = nk, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             column_names_gp = gpar(fontsize=6),
+             show_row_names = F,
+             width = unit(width, "in"),
+             height = unit(height, "in"),
+             use_raster = TRUE, raster_quality = 5,
+             #raster_by_magick = TRUE, raster_magick_filter = "Bartlett"
+             )
+hm
+
+pdf(file.path(out_dir, sprintf("DAR_fdr%s_nk%s.pdf", fdr_thresh, nk)), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+```
+
+```{r}
+mat_sample_scale = t(apply(mat_sample, 1, scale_01))
+colnames(mat_sample_scale) = ct_order
+
+
+pal = brewer_pal(palette = "Greys")(9)
+
+min_val = min(mat_sample_scale)
+max_val = max(mat_sample_scale)
+cols = colorRamp2(c(0, max_val), colors = c(pal[c(1,9)]))
+width = .7
+#height = width * nrow(mat) / ncol(mat)
+height = 3
+
+nk = 8
+set.seed(42)
+hm = Heatmap(mat_sample_scale,
+             col = cols,
+             row_km = nk, row_km_repeats = 25,
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             column_names_gp = gpar(fontsize=6),
+             column_names_side = "top",
+             show_row_names = F,
+             width = unit(width, "in"),
+             height = unit(height, "in"),
+             use_raster = TRUE, raster_quality = 5, border = T
+             )
+
+hm= draw(hm)
+hm
+
+pdf(file.path(out_dir, sprintf("DAR_fdr%s_nk%s_scale01.pdf", fdr_thresh, nk)), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+```
+
+
+```{r}
+
+mat_filter_scale = t(apply(mat_filter, 1, scale))
+km = kmeans(mat_filter_scale, centers = nk)
+
+hm_row_order = row_order(hm)
+km_tab = map_int(hm_row_order, length)
+km_tab_full = round(nrow(mat_filter) / length(unlist(hm_row_order)) * km_tab)
+km_fname = file.path(out_dir, str_interp("kmeans_${nk}.rds"))
+
+saveRDS(km, km_fname)
+```
+
+
+```{r}
+marker_peaks_sns_gr_all = map(marker_peaks_sns, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR <= 1", returnGR=T)
+  gr
+})
+marker_peaks_sns_df_all = map(marker_peaks_sns_gr_all, as.data.frame) %>%
+  bind_rows( .id="comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+```
+
+### Compute average accessibility
+```{r}
+# Get summarized experiment of peak matrix aggregated by cluster
+sePeak <- getGroupSE(
+    ArchRProj = proj,
+    useMatrix = "PeakMatrix",
+    groupBy = "cluster"
+)
+
+rdata = rowData(sePeak) %>%
+  as.data.frame() %>% 
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+# Extract the average accessibility matrix (assays)
+# This results in a matrix: Rows=Peaks, Columns=Clusters
+averageAccessibility <- assay(sePeak)
+rownames(averageAccessibility) = rdata$region
+mat_avg = averageAccessibility
+```
+
+### Log2FC threshold
+```{r}
+mat_dar = marker_peaks_sns_df_all %>%
+  dplyr::select(comparison, Log2FC, region) %>%
+  pivot_wider(names_from = "comparison", values_from = "Log2FC", values_fill = 0) %>%
+  column_to_rownames("region") %>% as.matrix()
+mat_dar = mat_dar[,names(pair_list)]
+
+thresh = 2
+mat_dar_keep = apply(mat_dar, 1, function(x) any(abs(x) >= thresh))
+mat_dar_filter = mat_dar[mat_dar_keep,]
+
+set.seed(42)
+idx = sample(nrow(mat_dar_filter), min(nrow(mat_dar_filter), 1000))
+mat_dar_sample = mat_dar_filter[idx,]
+
+hm = Heatmap(mat_dar_sample,
+             row_km = 6, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             use_raster = TRUE)
+hm
+```
+
+```{r}
+
+mat_avg = mat_avg[,ct_order]
+
+mat_avg_filter = mat_avg[names(mat_dar_keep)[mat_dar_keep],]
+
+set.seed(42)
+idx = sample(nrow(mat_avg_filter), min(nrow(mat_avg_filter), 1000))
+mat_avg_sample = mat_avg_filter[idx,]
+
+mat_avg_sample_scale = t(apply(mat_avg_sample, 1, scale))
+colnames(mat_avg_sample_scale) = ct_order
+
+nk = 5
+km = kmeans(mat_avg_sample_scale, centers = nk)
+
+hm = Heatmap(mat_avg_sample_scale,
+             row_km = nk, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             use_raster = TRUE)
+hm
+```
+
+
+### DAR
+```{r fig.height = 10}
+fdr_thresh = 0.1
+marker_peaks_sns_gr = map(marker_peaks_sns, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = sprintf("FDR <= %s", fdr_thresh), returnGR=T)
+  gr
+})
+
+marker_peaks_sns_df = map(marker_peaks_sns_gr, as.data.frame) %>%
+  bind_rows( .id="comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+```
+
+
+
+### Calculate motif enrichment
+```{r}
+
+motifs_up_list = map(marker_peaks_sns, function(peaks) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC >= .6"
+    )
+}) %>% set_names(names(marker_peaks_sns))
+
+motifs_up_df = map(motifs_up_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+
+```
+
+```{r}
+#plan(multisession(workers=length(markers_peaks)))
+motifs_down_list = map(marker_peaks_sns, function(peaks) {
+  #future_map(peaks, function(x) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC <= -0.6"
+    )
+  #}) 
+}) %>% set_names(names(marker_peaks_sns))
+
+motifs_down_df = map(motifs_down_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+motifs_down_df = motifs_down_df %>%
+  mutate(enrichment = -1 * enrichment)
+```
+
+```{r}
+motifs_df = bind_rows(list(up = motifs_up_df, down = motifs_down_df), .id="direction")
+motifs_df = motifs_df %>%
+  mutate(Name = str_extract(TF, "[A-Z0-9]+")) %>%
+  left_join(tfs)
+```
+
+### Plot motif enrichment
+
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+
+motifs_df_m = map(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(20, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  #motifs_df_m = log2(motifs_df_m + 1)
+  
+  return(motifs_df_m)
+}) %>% do.call(rbind, .)
+
+pal = brewer_pal(type="div", palette = 3 )(9)
+min_val = min(motifs_df_m)
+max_val = max(motifs_df_m)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+height = 3
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+##### Plot up and down separately
+```{r}
+
+top_motifs_n = 25
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .5
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("motifs_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+#### Group by DBD
+```{r}
+
+top_motifs_n = 50
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur) 
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    filter(!is.na(DBD)) %>% 
+    group_by(DBD, pair) %>% 
+    summarize(enrichment = median(enrichment)) %>% 
+    select(pair, DBD, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("DBD") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .6
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("motifs_dbd_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+motifs_up_df_f = motifs_up_df %>%
+  group_by(pair) %>%
+  top_n(20, mlog10Padj)
+
+motifs_up_df_m = motifs_up_df %>% filter(TF %in% motifs_up_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+  pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+  # select(pair, TF, mlog10Padj) %>%
+  # pivot_wider(names_from = "pair", values_from = "mlog10Padj", values_fill = 0) %>%
+  column_to_rownames("TF") %>% as.matrix()
+motifs_up_df_m = log2(motifs_up_df_m + 1)
+#motifs_df_m[motifs_df_m==0] = NA
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_up_df_m) / ncol(motifs_up_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_up_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "enriched_motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+
+# Upset
+
+```{r}
+library(ComplexUpset)
+```
+
+```{r}
+marker_peaks_sns_df = marker_peaks_sns_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+marker_peaks_sns_w = marker_peaks_sns_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+comparisons = unique(marker_peaks_sns_df$comparison)
+upset(marker_peaks_sns_w, comparisons , name='', width_ratio=0.1)
+```
+```{r}
+marker_peaks_sns2_gr = map(marker_peaks_sns, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.01 & Log2FC >= 0.6", returnGR=T)
+  gr
+})
+
+marker_peaks_sns2_df = map(marker_peaks_sns2_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+```
+
+```{r}
+marker_peaks_sns2_df = marker_peaks_sns2_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+marker_peaks_sns2_w = marker_peaks_sns2_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+comparisons = unique(marker_peaks_sns2_df$comparison)
+upset(marker_peaks_sns2_w, comparisons , name='', width_ratio=0.1, base_annotations=list(
+  'Intersection size'=intersection_size(text_mapping=aes(label=!!upset_text_percentage()))
+))
+```
+
+
+

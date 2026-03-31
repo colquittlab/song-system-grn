@@ -1,0 +1,1381 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+out_name = "peaks"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+addArchRThreads(threads = 36) 
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+
+```
+
+## Add peaks
+```{r}
+#pathToMacs2 <- findMacs2()
+
+if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
+  proj <- addReproduciblePeakSet(
+    ArchRProj = proj, 
+    threads = 1, 
+    groupBy = "cluster",
+    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
+    excludeChr = chrM,
+    genomeSize = 1E9,
+    plot=F,
+    genomeAnnotation = genomeAnnotation,
+    geneAnnotation = geneAnnotation
+  )
+  proj <- addPeakMatrix(proj)
+  saveArchRProject(proj, load=F)
+} 
+
+```
+
+
+### Export beds
+```{r}
+bed_dir = file.path(proj_dir, "beds")
+dir.create(bed_dir)
+
+bed_fname = file.path(bed_dir, "peak_set.bed")
+gr = getPeakSet(proj)
+rtracklayer::export(gr, bed_fname)
+  
+```
+
+## Base composition of peaks
+```{r}
+library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
+
+gr_extend = trim(resize(gr, 2114, fix="center" ))
+seqinfo_lsd = SeqinfoForBSGenome(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
+gr_lsd = GRanges(seqnames = seqnames(seqinfo_lsd), ranges = IRanges(start=1, end=seqlengths(seqinfo_lsd)))
+gr_extend = subsetByOverlaps(gr_extend, gr_lsd, type="within")
+gr_seq = getSeq(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc, gr_extend)
+
+gr_seq_alpha = alphabetFrequency(gr_seq)
+sum(gr_seq_alpha[,"N"])
+
+gr_seq_alpha_nind = gr_seq_alpha[,"N"]>0
+
+sum(gr_seq_alpha_nind) / length(gr_seq_alpha_nind)
+
+gr_filt = gr[!gr_seq_alpha_nind]
+
+bed_fname = file.path(bed_dir, "peak_set_noN.bed")
+rtracklayer::export(gr_filt, bed_fname)
+```
+
+## Differential peaks
+```{r}
+plan(multisession(workers = 4))
+```
+
+
+### Song-nonsong, Glut
+```{r}
+pair_list = list(ra= list("Glut-RA", "Glut-Arco-1"),
+                 hvc_1 = list("Glut-HVC-1", "Glut-NC-1"),
+                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4")
+                 )
+```
+
+```{r}
+markers_peaks_sns_glut_se_fname = file.path(out_dir, "peaks_nonsong_glut_se.rds")
+markers_peaks_sns_glut_fname = file.path(out_dir, "peaks_nonsong_glut.rds")
+
+redo = F
+if (redo) {
+  
+  marker_peaks_sns_glut = map(pair_list, \(pair_cur) {
+      print(pair_cur)
+      getMarkerFeatures(
+        ArchRProj = proj, 
+        useMatrix = "PeakMatrix", 
+        groupBy = "cluster",
+        useGroups = pair_cur[[1]],
+        bgdGroups = pair_cur[[2]],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        testMethod = "wilcoxon"
+      )
+  }) %>% set_names(names(pair_list))
+  
+  saveRDS(marker_peaks_sns_glut, markers_peaks_sns_glut_se_fname)
+  
+  marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+  
+  marker_peaks_sns_glut_df = map(marker_peaks_sns_glut_gr, as.data.frame) %>%
+    bind_rows( .id="comparison")
+  saveRDS(marker_peaks_sns_glut_df, markers_peaks_sns_glut_fname)
+} else {
+  marker_peaks_sns_glut = readRDS(markers_peaks_sns_glut_se_fname)
+  marker_peaks_sns_glut_df = readRDS(markers_peaks_sns_glut_fname)
+}
+
+ marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+
+
+```
+
+```{r}
+marker_peaks_sns_glut_gr_all = map(marker_peaks_sns_glut, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR <= 1", returnGR=T)
+  gr
+})
+marker_peaks_sns_glut_df_all = map(marker_peaks_sns_glut_gr_all, as.data.frame) %>%
+  bind_rows( .id="comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+```
+
+#### Compute average accessibility
+```{r}
+# Get summarized experiment of peak matrix aggregated by cluster
+sePeak <- getGroupSE(
+    ArchRProj = proj,
+    useMatrix = "PeakMatrix",
+    groupBy = "cluster"
+)
+
+rdata = rowData(sePeak) %>%
+  as.data.frame() %>% 
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+# Extract the average accessibility matrix (assays)
+# This results in a matrix: Rows=Peaks, Columns=Clusters
+averageAccessibility <- assay(sePeak)
+rownames(averageAccessibility) = rdata$region
+mat_avg = averageAccessibility
+```
+
+```{r}
+# Estimate optimal k for k-means clustering of mat_sample_scale
+# Using the same correlation distance as the heatmap
+library(cluster)
+
+set.seed(42)
+idx = sample(nrow(mat_filter), min(nrow(mat_filter), 10000))
+mat_sample = mat_filter[idx,]
+mat_sample_scale = t(apply(mat_sample, 1, scale))
+mat_test = mat_sample_scale
+cor_dist_mat = as.dist(1 - cor(t(mat_test)))
+
+k_range = 2:15
+wss = numeric(length(k_range))
+sil_avg = numeric(length(k_range))
+
+set.seed(42)
+for (i in seq_along(k_range)) {
+  k = k_range[i]
+  km = kmeans(mat_test, centers = k, nstart = 25, iter.max = 100)
+  wss[i] = km$tot.withinss
+  sil = silhouette(km$cluster, cor_dist_mat)
+  sil_avg[i] = mean(sil[, "sil_width"])
+}
+
+par(mfrow = c(1, 2))
+plot(k_range, wss, type = "b", pch = 19,
+     xlab = "Number of clusters (k)", ylab = "Total within-cluster SS",
+     main = "Elbow method")
+plot(k_range, sil_avg, type = "b", pch = 19,
+     xlab = "Number of clusters (k)", ylab = "Average silhouette width",
+     main = "Silhouette method")
+abline(v = k_range[which.max(sil_avg)], col = "red", lty = 2)
+
+cat("Optimal k by silhouette:", k_range[which.max(sil_avg)], "\n")
+```
+
+
+#### Log2FC threshold
+```{r}
+mat_dar = marker_peaks_sns_glut_df_all %>%
+  dplyr::select(comparison, Log2FC, region) %>%
+  pivot_wider(names_from = "comparison", values_from = "Log2FC", values_fill = 0) %>%
+  column_to_rownames("region") %>% as.matrix()
+mat_dar = mat_dar[,c("hvc_1", "hvc_2", "ra")]
+
+thresh = 2
+mat_dar_keep = apply(mat_dar, 1, function(x) any(abs(x) >= thresh))
+mat_dar_filter = mat_dar[mat_dar_keep,]
+
+set.seed(42)
+idx = sample(nrow(mat_dar_filter), min(nrow(mat_dar_filter), 1000))
+mat_dar_sample = mat_dar_filter[idx,]
+
+function(x) proxy::dist(x, method="correlation")
+hm = Heatmap(mat_dar_sample,
+             row_km = 6, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             use_raster = TRUE)
+hm
+```
+
+```{r}
+ct_order = c("Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-RA", "Glut-Arco-1")
+mat_avg = mat_avg[,ct_order]
+
+mat_avg_filter = mat_avg[names(mat_dar_keep)[mat_dar_keep],]
+
+set.seed(42)
+idx = sample(nrow(mat_avg_filter), min(nrow(mat_avg_filter), 1000))
+mat_avg_sample = mat_avg_filter[idx,]
+
+mat_avg_sample_scale = t(apply(mat_avg_sample, 1, scale))
+colnames(mat_avg_sample_scale) = ct_order
+
+nk = 5
+km = kmeans(mat_avg_sample_scale, centers = nk)
+
+function(x) proxy::dist(x, method="correlation")
+hm = Heatmap(mat_avg_sample_scale,
+             row_km = nk, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             use_raster = TRUE)
+hm
+```
+
+
+#### DAR
+```{r fig.height = 10}
+ct_order = c("Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-RA", "Glut-Arco-1")
+mat_avg = mat_avg[,ct_order]
+#thresh = 1
+
+fdr_thresh = 0.01
+ marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = sprintf("FDR <= %s", fdr_thresh), returnGR=T)
+    gr
+  })
+  
+marker_peaks_sns_glut_df = map(marker_peaks_sns_glut_gr, as.data.frame) %>%
+  bind_rows( .id="comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+
+mat_filter = mat_avg[rownames(mat_avg) %in% marker_peaks_sns_glut_df$region,]
+
+set.seed(42)
+idx = sample(nrow(mat_filter), min(nrow(mat_filter), 1000))
+mat_sample = mat_filter[idx,]
+
+mat_sample_scale = t(apply(mat_sample, 1, scale))
+colnames(mat_sample_scale) = ct_order
+cor_dist = function(x) proxy::dist(x, method="correlation")
+
+
+pal = brewer_pal(type="div", palette = 3 )(9)
+
+min_val = min(mat_sample_scale)
+max_val = max(mat_sample_scale)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+width = 1
+#height = width * nrow(mat) / ncol(mat)
+height = 4
+
+nk = 5
+
+hm = Heatmap(mat_sample_scale,
+             col = cols,
+             row_km = nk, 
+             clustering_method_rows = "ward.D", 
+             clustering_distance_rows = cor_dist, 
+             cluster_columns = F,
+             column_names_gp = gpar(fontsize=6),
+             show_row_names = F,
+             width = unit(width, "in"),
+             height = unit(height, "in"),
+             use_raster = TRUE, raster_device_param = list(dpi=300))
+hm
+
+pdf(file.path(out_dir, sprintf("DAR_fdr%s_nk%s.pdf", fdr_thresh, nk)), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+```
+
+```{r}
+mat_filter_scale = t(apply(mat_filter, 1, scale))
+km = kmeans(mat_filter_scale, centers = nk)
+```
+
+
+### Calculate motif enrichment
+```{r}
+
+motifs_up_list = map(marker_peaks_sns_glut, function(peaks) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC >= .6"
+    )
+}) %>% set_names(names(marker_peaks_sns_glut))
+
+motifs_up_df = map(motifs_up_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+
+```
+
+```{r}
+#plan(multisession(workers=length(markers_peaks_glut)))
+motifs_down_list = map(marker_peaks_sns_glut, function(peaks) {
+  #future_map(peaks, function(x) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC <= -0.6"
+    )
+  #}) 
+}) %>% set_names(names(marker_peaks_sns_glut))
+
+motifs_down_df = map(motifs_down_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+motifs_down_df = motifs_down_df %>%
+  mutate(enrichment = -1 * enrichment)
+```
+
+```{r}
+motifs_df = bind_rows(list(up = motifs_up_df, down = motifs_down_df), .id="direction")
+motifs_df = motifs_df %>%
+  mutate(Name = str_extract(TF, "[A-Z0-9]+")) %>%
+  left_join(tfs)
+```
+
+### Plot motif enrichment
+
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+
+motifs_df_m = map(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(20, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  #motifs_df_m = log2(motifs_df_m + 1)
+  
+  return(motifs_df_m)
+}) %>% do.call(rbind, .)
+
+pal = brewer_pal(type="div", palette = 3 )(9)
+min_val = min(motifs_df_m)
+max_val = max(motifs_df_m)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+height = 3
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut_motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+##### Plot up and down separately
+```{r}
+
+top_motifs_n = 25
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .6
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("song-glut_motifs_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+#### Group by DBD
+```{r}
+
+top_motifs_n = 50
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur) 
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    filter(!is.na(DBD)) %>% 
+    group_by(DBD, pair) %>% 
+    summarize(enrichment = median(enrichment)) %>% 
+    select(pair, DBD, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("DBD") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .6
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("song-glut_motifs_dbd_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+motifs_up_df_f = motifs_up_df %>%
+  group_by(pair) %>%
+  top_n(20, mlog10Padj)
+
+motifs_up_df_m = motifs_up_df %>% filter(TF %in% motifs_up_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+  pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+  # select(pair, TF, mlog10Padj) %>%
+  # pivot_wider(names_from = "pair", values_from = "mlog10Padj", values_fill = 0) %>%
+  column_to_rownames("TF") %>% as.matrix()
+motifs_up_df_m = log2(motifs_up_df_m + 1)
+#motifs_df_m[motifs_df_m==0] = NA
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_up_df_m) / ncol(motifs_up_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_up_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+
+```{r fig.height=10, fig.width = 4}
+motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
+  group_by(pair) %>%
+  top_n(20, mlog10Padj)
+motifs_df_m = motifs_df %>% 
+  filter(TF %in% motifs_df_f$TF) %>% 
+  select(pair, TF, enrichment) %>%
+  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_no-fos-jun-smarcc_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+```{r}
+motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
+  group_by(pair) %>%
+  filter(mlog10Padj>6) 
+
+motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% select(pair, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+motifs_df_m = log2(motifs_df_m + 1)
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_sig_heatmap.pdf"), height = height + 5, width = width + 5)
+print(hm)
+dev.off()
+```
+
+```{r}
+proj_se_ge = getGroupSE(
+  ArchRProj = proj,
+  useMatrix = "GeneExpressionMatrix",
+  groupBy = "cluster"
+)
+proj_df_ge = assay(proj_se_ge)
+rownames(proj_df_ge) = getFeatures(proj, "GeneExpressionMatrix")
+```
+
+
+
+
+### HOMER motif enrichment (k-means clusters)
+```{r}
+# Build GRanges from km cluster assignments and export BED per cluster
+km_df = data.frame(region = names(km$cluster), cluster = km$cluster)
+km_gr = GRanges(km_df$region)
+km_gr$cluster = km_df$cluster
+
+homer_dir = file.path(out_dir, "homer_kmeans")
+dir.create(homer_dir, recursive = TRUE)
+genome_fa = "/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
+
+walk(seq_len(nk), function(k) {
+  gr_k = km_gr[km_gr$cluster == k]
+  bed_k = data.frame(seqnames(gr_k), start(gr_k), end(gr_k),
+                     paste0(seqnames(gr_k), ":", start(gr_k), "-", end(gr_k)),
+                     0, strand(gr_k))
+  write_tsv(bed_k, file.path(homer_dir, sprintf("cluster_%d.bed", k)), col_names = FALSE)
+})
+```
+
+```{r}
+# Add HOMER to PATH
+Sys.setenv(PATH = paste("/opt/homer/bin", Sys.getenv("PATH"), sep = ":"))
+
+# Run HOMER findMotifsGenome.pl for each cluster
+walk(seq_len(nk), function(k) {
+  bed_k = file.path(homer_dir, sprintf("cluster_%d.bed", k))
+  out_k = file.path(homer_dir, sprintf("cluster_%d", k))
+  cmd = sprintf("findMotifsGenome.pl %s %s %s -size given -len 8,10,12 -p 24",
+                bed_k, genome_fa, out_k)
+  message(cmd)
+  system(cmd)
+})
+```
+
+```{r}
+# Import HOMER knownResults.txt for each cluster
+homer_motifs = map_dfr(seq_len(nk), function(k) {
+  results_file = file.path(homer_dir, sprintf("cluster_%d", k), "knownResults.txt")
+  if (file.exists(results_file)) {
+    df = read_tsv(results_file, col_names = c("motif_name", "consensus", "pvalue",
+                                               "log_pvalue", "qvalue",
+                                               "n_target", "pct_target",
+                                               "n_bg", "pct_bg"),
+                  skip = 1, show_col_types = FALSE)
+    df$cluster = k
+    df
+  }
+})
+
+homer_motifs = homer_motifs %>%
+  mutate(pct_target = as.numeric(gsub("%", "", pct_target)),
+         pct_bg = as.numeric(gsub("%", "", pct_bg)),
+         tf = gsub("\\(.*", "", motif_name),
+         enrichment = pct_target / pct_bg)
+```
+
+```{r}
+# Top motifs per cluster
+homer_top = homer_motifs %>%
+  group_by(cluster) %>%
+  top_n(10, -log_pvalue) %>%
+  ungroup()
+
+homer_top_mat = homer_motifs %>%
+  filter(tf %in% homer_top$tf) %>%
+  select(cluster, tf, enrichment) %>%
+  pivot_wider(names_from = "cluster", values_from = "enrichment", values_fill = 0) %>%
+  column_to_rownames("tf") %>% as.matrix()
+
+hm_motifs = Heatmap(log2(homer_top_mat + 1),
+                    name = "log2(enrichment+1)",
+                    cluster_columns = FALSE,
+                    column_labels = paste0("k", seq_len(ncol(homer_top_mat))))
+hm_motifs
+```
+
+```{r}
+# Import known motif matrices from knownResults/ directories
+library(universalmotif)
+
+homer_known_motifs = map_dfr(seq_len(nk), function(k) {
+  motif_dir = file.path(homer_dir, sprintf("cluster_%d", k), "knownResults")
+  motif_files = list.files(motif_dir, pattern = "^known\\d+\\.motif$", full.names = TRUE)
+  map_dfr(motif_files, function(f) {
+    lines = readLines(f)
+    header = lines[1]
+    mat_lines = lines[-1]
+    mat = do.call(rbind, lapply(mat_lines, function(l) as.numeric(strsplit(trimws(l), "\\s+")[[1]])))
+    colnames(mat) = c("A", "C", "G", "T")
+    motif_rank = as.integer(gsub(".*known(\\d+)\\.motif", "\\1", f))
+    motif_name_parsed = gsub("^>(\\S+).*", "\\1", header)
+    tibble(cluster = k, rank = motif_rank, consensus = motif_name_parsed,
+           motif_file = f, mat = list(mat))
+  })
+})
+
+# Add rank to homer_motifs for joining
+homer_motifs = homer_motifs %>%
+  group_by(cluster) %>%
+  mutate(rank = row_number()) %>%
+  ungroup()
+```
+
+```{r}
+# Filter known motifs by q-value threshold
+known_qval_thresh = 1E-4
+
+homer_known_motifs_filt = homer_known_motifs %>%
+  inner_join(homer_motifs %>% select(cluster, rank, qvalue), by = c("cluster", "rank")) %>%
+  filter(qvalue <= known_qval_thresh) %>%
+  select(-qvalue)
+
+# Convert filtered known motifs to universalmotif objects
+umotifs_known = map(seq_len(nrow(homer_known_motifs_filt)), function(i) {
+  row = homer_known_motifs_filt[i,]
+  create_motif(t(row$mat[[1]]), type = "PPM",
+               name = sprintf("k%d #%d: %s", row$cluster, row$rank, row$consensus))
+})
+```
+
+```{r}
+# Cluster known motifs by sequence similarity
+sim_mat_known = compare_motifs(umotifs_known, method = "PCC")
+sim_mat_known[!is.finite(sim_mat_known)] = 0  # treat non-comparable motifs as uncorrelated
+motif_dist_known = as.dist(1 - sim_mat_known)
+motif_hc_known = hclust(motif_dist_known, method = "average")
+```
+
+```{r}
+plot(motif_hc_known, labels = FALSE)
+```
+
+```{r}
+# Cut dendrogram to group similar known motifs
+motif_group_known_h = 0.4  # PCC distance threshold; adjust as needed
+motif_groups_known = cutree(motif_hc_known, h = motif_group_known_h)
+
+motif_group_known_df = tibble(
+  cluster = homer_known_motifs_filt$cluster,
+  rank = homer_known_motifs_filt$rank,
+  motif_group = motif_groups_known
+)
+
+# Remove old columns if re-running, then join
+homer_motifs = homer_motifs %>%
+  select(-any_of(c("motif_group", "motif_group_label"))) %>%
+  left_join(motif_group_known_df, by = c("cluster", "rank"))
+
+# Label each motif_group by the TF name of its most significant member
+motif_group_known_labels = homer_motifs %>%
+  filter(!is.na(motif_group)) %>%
+  group_by(motif_group) %>%
+  slice_min(log_pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(motif_group, motif_group_label = tf)
+
+homer_motifs = homer_motifs %>%
+  select(-any_of("motif_group_label")) %>%
+  left_join(motif_group_known_labels, by = "motif_group")
+```
+
+```{r fig.height=8, fig.width=6}
+# Heatmap of known motif_group enrichment across clusters
+motif_group_known_enrich = homer_motifs %>%
+  filter(!is.na(motif_group), is.finite(enrichment)) %>%
+  group_by(cluster, motif_group, motif_group_label) %>%
+  summarize(enrichment = max(enrichment, na.rm = TRUE),
+            log_pvalue = min(log_pvalue, na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(is.finite(enrichment))
+
+motif_group_known_enrich_mat = motif_group_known_enrich %>%
+  mutate(label = sprintf("%d: %s", motif_group, motif_group_label)) %>%
+  select(cluster, label, enrichment) %>%
+  pivot_wider(names_from = "cluster", values_from = "enrichment", values_fill = 1) %>%
+  column_to_rownames("label") %>% as.matrix()
+
+Heatmap(log2(motif_group_known_enrich_mat),
+        name = "log2(enrichment)",
+        cluster_columns = TRUE,
+        column_labels = paste0("k", seq_len(ncol(motif_group_known_enrich_mat))),
+        row_names_gp = gpar(fontsize = 7))
+```
+
+```{r fig.height=8, fig.width=10}
+# Similarity heatmap for known motifs
+motif_names_known = map_chr(umotifs_known, function(m) m@name)
+rownames(sim_mat_known) = motif_names_known
+colnames(sim_mat_known) = motif_names_known
+
+cluster_ids_known = homer_known_motifs_filt$cluster
+names(cluster_ids_known) = motif_names_known
+ha_known = HeatmapAnnotation(cluster = factor(cluster_ids_known),
+                              col = list(cluster = setNames(
+                                RColorBrewer::brewer.pal(nk, "Set1")[seq_len(nk)],
+                                seq_len(nk))))
+
+hm_known_sim = Heatmap(sim_mat_known,
+        name = "PCC",
+        cluster_rows = motif_hc_known,
+        cluster_columns = motif_hc_known,
+        top_annotation = ha_known,
+        show_row_names = FALSE,
+        show_column_names = FALSE)
+hm_known_sim
+
+pdf(file.path(out_dir, "known_motif_similarity_heatmap.pdf"), height = 10, width = 10)
+draw(hm_known_sim)
+dev.off()
+```
+
+```{r}
+# Import HOMER homerResults.html (de novo) for each cluster
+library(rvest)
+
+homer_denovo = map_dfr(seq_len(nk), function(k) {
+  html_file = file.path(homer_dir, sprintf("cluster_%d", k), "homerResults.html")
+  if (file.exists(html_file)) {
+    page = read_html(html_file)
+    rows = page %>% html_nodes("tr") %>% tail(-1)  # skip header row
+    map_dfr(seq_along(rows), function(i) {
+      tds = rows[[i]] %>% html_nodes("td") %>% html_text(trim = TRUE)
+      # Columns: Rank, Motif(SVG text), P-value, log P-value, % Targets, % Background, STD, Best Match, Motif File
+      tibble(
+        rank = as.integer(tds[1]),
+        pvalue = tds[3],
+        log_pvalue = as.numeric(tds[4]),
+        pct_target = as.numeric(gsub("%", "", tds[5])),
+        pct_bg = as.numeric(gsub("%", "", tds[6])),
+        best_match = gsub("\\(.*", "", gsub("More Information.*", "", tds[8]))
+      )
+    }) %>% mutate(cluster = k)
+  }
+})
+
+homer_denovo = homer_denovo %>%
+  mutate(tf = trimws(best_match),
+         enrichment = pct_target / pct_bg,
+         motif_num = rank)
+```
+
+```{r}
+# Top de novo motifs per cluster
+homer_denovo_top = homer_denovo %>%
+  group_by(cluster) %>%
+  top_n(10, -log_pvalue) %>%
+  ungroup()
+
+homer_denovo_mat = homer_denovo %>%
+  filter(tf %in% homer_denovo_top$tf) %>%
+  group_by(cluster, tf) %>%
+  slice_max(enrichment, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(cluster, tf, enrichment) %>%
+  pivot_wider(names_from = "cluster", values_from = "enrichment", values_fill = 0) %>%
+  column_to_rownames("tf") %>% as.matrix()
+
+hm_denovo = Heatmap(log2(homer_denovo_mat + 1),
+                    name = "log2(enrichment+1)",
+                    cluster_columns = FALSE,
+                    column_labels = paste0("k", seq_len(ncol(homer_denovo_mat))))
+hm_denovo
+```
+
+```{r fig.height=3, fig.width=8}
+# Import de novo motif matrices and display as sequence logos
+library(universalmotif)
+
+homer_denovo_motifs = map_dfr(seq_len(nk), function(k) {
+  motif_dir = file.path(homer_dir, sprintf("cluster_%d", k), "homerResults")
+  motif_files = list.files(motif_dir, pattern = "^motif\\d+\\.motif$", full.names = TRUE)
+  map_dfr(motif_files, function(f) {
+    lines = readLines(f)
+    header = lines[1]
+    mat_lines = lines[-1]
+    mat = do.call(rbind, lapply(mat_lines, function(l) as.numeric(strsplit(trimws(l), "\\s+")[[1]])))
+    colnames(mat) = c("A", "C", "G", "T")
+    motif_num = as.integer(gsub(".*motif(\\d+)\\.motif", "\\1", f))
+    consensus = gsub("^>(\\S+).*", "\\1", header)
+    best_guess = gsub(".*BestGuess:", "", header)
+    best_guess = gsub("\\s.*", "", best_guess)
+    tibble(cluster = k, motif_num = motif_num, consensus = consensus,
+           best_guess = best_guess, motif_file = f,
+           mat = list(mat))
+  })
+})
+
+# Add consensus and best_guess labels to homer_denovo
+# homer_denovo = homer_denovo %>%
+#   left_join(homer_denovo_motifs %>% select(cluster, motif_num, consensus, best_guess),
+#             by = c("cluster", "motif_num"))
+
+# Filter de novo motifs by p-value threshold
+denovo_pval_thresh = 0.01
+
+homer_denovo_motifs_filt = homer_denovo_motifs %>%
+  inner_join(homer_denovo %>% select(cluster, motif_num, pvalue, log_pvalue),
+             by = c("cluster", "motif_num")) %>%
+  filter(as.numeric(pvalue) <= denovo_pval_thresh) %>%
+  select(-pvalue, -log_pvalue)
+
+# Display top motifs per cluster
+homer_denovo_top_motifs = homer_denovo_motifs_filt %>%
+  group_by(cluster) %>%
+  filter(motif_num <= 10) %>%
+  ungroup()
+
+# Convert filtered motifs to universalmotif objects
+umotifs_all = map(seq_len(nrow(homer_denovo_motifs_filt)), function(i) {
+  row = homer_denovo_motifs_filt[i,]
+  create_motif(t(row$mat[[1]]), type = "PPM",
+               name = sprintf("k%d #%d: %s", row$cluster, row$motif_num, row$best_guess))
+})
+```
+
+```{r fig.height=10, fig.width=12}
+# Cluster all motifs by sequence similarity
+sim_mat = compare_motifs(umotifs_all, method = "PCC")
+sim_mat[!is.finite(sim_mat)] = 0
+motif_dist = as.dist(1 - sim_mat)
+motif_hc = hclust(motif_dist, method = "average")
+
+# Plot motifs ordered by clustering
+view_motifs(umotifs_all[motif_hc$order], dedup.names = TRUE)
+```
+
+```{r fig.height=8, fig.width=10}
+# Similarity heatmap with dendrogram
+motif_names = map_chr(umotifs_all, function(m) m@name)
+rownames(sim_mat) = motif_names
+colnames(sim_mat) = motif_names
+
+# Color by cluster for annotation
+cluster_ids = homer_denovo_motifs_filt$cluster
+names(cluster_ids) = motif_names
+ha = HeatmapAnnotation(cluster = factor(cluster_ids),
+                        col = list(cluster = setNames(
+                          RColorBrewer::brewer.pal(nk, "Set1")[seq_len(nk)],
+                          seq_len(nk))))
+
+Heatmap(sim_mat,
+        name = "PCC",
+        cluster_rows = motif_hc,
+        cluster_columns = motif_hc,
+        top_annotation = ha,
+        column_names_gp = gpar(fontsize = 6),
+        row_names_gp = gpar(fontsize = 6))
+```
+
+```{r}
+plot(motif_hc, labels=F )
+```
+
+```{r}
+# Cut dendrogram to group similar motifs
+motif_group_h = 0.3  # PCC distance threshold; adjust as needed
+motif_groups = cutree(motif_hc, h = motif_group_h)
+
+# Build lookup from all motifs to their motif group
+motif_group_df = tibble(
+  cluster = homer_denovo_motifs_filt$cluster,
+  motif_num = homer_denovo_motifs_filt$motif_num,
+  motif_group = motif_groups
+)
+
+# Remove old motif_group columns if re-running
+homer_denovo = homer_denovo %>%
+  select(-any_of(c("motif_group", "motif_group_label")))
+
+# Join motif_group into homer_denovo
+homer_denovo = homer_denovo %>%
+  left_join(motif_group_df, by = c("cluster", "motif_num"))
+```
+
+```{r}
+# Label each motif_group by the best_guess of its most significant member
+motif_group_labels = homer_denovo %>%
+  filter(!is.na(motif_group)) %>%
+  group_by(motif_group) %>%
+  slice_min(log_pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(motif_group, motif_group_label = best_match)
+
+homer_denovo = homer_denovo %>%
+  select(-any_of("motif_group_label")) %>%
+  left_join(motif_group_labels, by = "motif_group")
+```
+
+```{r fig.height=8, fig.width=6}
+# Heatmap of motif_group enrichment across clusters
+# For each cluster x motif_group, take the max enrichment
+motif_group_enrich = homer_denovo %>%
+  filter(!is.na(motif_group), is.finite(enrichment)) %>%
+  group_by(cluster, motif_group, motif_group_label) %>%
+  summarize(enrichment = max(enrichment, na.rm = TRUE),
+            log_pvalue = min(log_pvalue, na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(is.finite(enrichment))
+
+motif_group_enrich_mat = motif_group_enrich %>%
+  mutate(label = sprintf("%d: %s", motif_group, motif_group_label)) %>%
+  select(cluster, label, enrichment) %>%
+  pivot_wider(names_from = "cluster", values_from = "enrichment", values_fill = 1) %>%
+  column_to_rownames("label") %>% as.matrix()
+
+Heatmap(log2(motif_group_enrich_mat),
+        name = "log2(enrichment)",
+        cluster_columns = TRUE,
+        column_labels = paste0("k", seq_len(ncol(motif_group_enrich_mat))),
+        row_names_gp = gpar(fontsize = 7))
+```
+
+#### Upset
+
+```{r}
+library(ComplexUpset)
+```
+
+```{r}
+marker_peaks_sns_glut_df = marker_peaks_sns_glut_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+marker_peaks_sns_glut_w = marker_peaks_sns_glut_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+comparisons = unique(marker_peaks_sns_glut_df$comparison)
+upset(marker_peaks_sns_glut_w, comparisons , name='', width_ratio=0.1)
+```
+```{r}
+marker_peaks_sns_glut2_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.01 & Log2FC >= 0.6", returnGR=T)
+  gr
+})
+
+marker_peaks_sns_glut2_df = map(marker_peaks_sns_glut2_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+```
+
+```{r}
+marker_peaks_sns_glut2_df = marker_peaks_sns_glut2_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+marker_peaks_sns_glut2_w = marker_peaks_sns_glut2_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+comparisons = unique(marker_peaks_sns_glut2_df$comparison)
+upset(marker_peaks_sns_glut2_w, comparisons , name='', width_ratio=0.1, base_annotations=list(
+  'Intersection size'=intersection_size(text_mapping=aes(label=!!upset_text_percentage()))
+))
+```
+
+
+#### Union song enriched
+```{r}
+marker_peaks_glut_union = Reduce(GenomicRanges::union, marker_peaks_glut_gr)
+```
+
+
+#### Export beds
+```{r}
+bed_dir = file.path(out_dir, "beds")
+dir.create(bed_dir)
+
+walk(seq_along(marker_peaks_glut_df), function(i) {
+  d = marker_peaks_glut_df[[i]]
+  pair_cur = pairs_full[[i]]
+  pair_cur_name = sprintf("%s_vs_%s", pair_cur[[1]], paste(pair_cur[[2]], collapse="_"))
+  d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(sign = sign(Log2FC)) %>%
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end))
+  
+  signs = unique(d_out$sign)
+  walk(unique(signs), function(sign_cur) {
+    d_out_cur = d_out %>%
+      filter(sign == sign_cur) %>% 
+      select(seqnames, start, end, name, Log2FC, strand)
+    fname = file.path(bed_dir, sprintf("%s_%s.bed", pair_cur_name, sign_cur))
+    write_delim(d_out_cur, fname, delim="\t", col_names = F )
+  })
+  
+  #cluster_cur = unique(d$cluster)
+  
+
+})
+
+d = as.data.frame(marker_peaks_glut_inter)
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_intersect"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+  
+d = as.data.frame(marker_peaks_glut_union)
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_union"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+```
+
+### GABA
+```{r}
+proj$cluster = as.character(proj$cluster) ## Required for getMarkerFeatures or will error
+  
+```
+
+```{r}
+pair_list = list(gaba21_gaba11= list("GABA-2-1", "GABA-1-1"),
+                 gaba41_gaba11 = list("GABA-4-1", "GABA-1-1")
+                 )
+
+#names(pair_list) = map_chr(pair_list, function(x) paste(x, collapse="_"))
+```
+
+```{r}
+markers_peaks_gaba_se_fname = file.path(out_dir, "peaks_gaba_se.rds")
+markers_peaks_gaba_fname = file.path(out_dir, "peaks_gaba.rds")
+
+redo = F
+if (redo) {
+  
+  marker_peaks_gaba = map(pair_list, \(pair_cur) {
+      print(pair_cur)
+      getMarkerFeatures(
+        ArchRProj = proj, 
+        useMatrix = "PeakMatrix", 
+        groupBy = "cluster",
+        useGroups = pair_cur[[1]],
+        bgdGroups = pair_cur[[2]],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        testMethod = "wilcoxon"
+      )
+  }) %>% set_names(names(pair_list))
+  
+  saveRDS(marker_peaks_gaba, markers_peaks_gaba_se_fname)
+  
+  marker_peaks_gaba_gr = map(marker_peaks_gaba, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+  
+  marker_peaks_gaba_df = map(marker_peaks_gaba_gr, as.data.frame) %>%
+    bind_rows( .id="comparison")
+  saveRDS(marker_peaks_gaba_df, markers_peaks_gaba_fname)
+} else {
+  marker_peaks_gaba = readRDS(markers_peaks_gaba_se_fname)
+  marker_peaks_gaba_df = readRDS(markers_peaks_gaba_fname)
+}
+
+ marker_peaks_gaba_gr = map(marker_peaks_gaba, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+
+
+```
+
+
+### Astro
+```{r}
+pair_list = list(astro1_oligo = list("Astro-1", "Oligo"),
+                 astro2_oligo = list("Astro-2", "Oligo")
+                 )
+
+#names(pair_list) = map_chr(pair_list, function(x) paste(x, collapse="_"))
+```
+
+```{r}
+markers_peaks_astro_se_fname = file.path(out_dir, "peaks_astro_se.rds")
+markers_peaks_astro_fname = file.path(out_dir, "peaks_astro.rds")
+
+redo = F
+if (redo) {
+  
+  marker_peaks_astro = map(pair_list, \(pair_cur) {
+      print(pair_cur)
+      getMarkerFeatures(
+        ArchRProj = proj, 
+        useMatrix = "PeakMatrix", 
+        groupBy = "cluster",
+        useGroups = pair_cur[[1]],
+        bgdGroups = pair_cur[[2]],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        testMethod = "wilcoxon"
+      )
+  }) %>% set_names(names(pair_list))
+  
+  saveRDS(marker_peaks_astro, markers_peaks_astro_se_fname)
+  
+  marker_peaks_astro_gr = map(marker_peaks_astro, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+  
+  marker_peaks_astro_df = map(marker_peaks_astro_gr, as.data.frame) %>%
+    bind_rows( .id="comparison")
+  saveRDS(marker_peaks_astro_df, markers_peaks_astro_fname)
+} else {
+  marker_peaks_astro = readRDS(markers_peaks_astro_se_fname)
+  marker_peaks_astro_df = readRDS(markers_peaks_astro_fname)
+}
+
+ marker_peaks_astro_gr = map(marker_peaks_astro, function(peaks_cur) {
+    gr = getMarkers(peaks_cur, cutOff = "FDR <= 0.1", returnGR=T)
+    gr
+  })
+
+
+```
+
+### Song-nonsong differences, same cluster
+```{r}
+
+
+proj$position_cluster = paste(proj$position, proj$cluster, sep="_")
+proj$region_cluster = paste(proj$region, proj$cluster, sep="_")
+proj$class = case_when(grepl("Glut", proj$cluster) ~ "Glut",
+                       grepl("GABA", proj$cluster) ~ "GABA",
+                       grepl("Pre", proj$cluster) ~ "Neurog",
+                       TRUE ~ "Nonneural")
+proj$position_class = paste(proj$position, proj$class, sep="_")
+proj$region_class = paste(proj$region, proj$class, sep="_")
+
+proj_md = proj@cellColData %>% as.data.frame() %>% distinct(position_cluster, cluster, position, region, region_cluster)
+proj_md = proj_md %>%
+  filter(!(region=="ARCO" & position=="nc"))  %>%
+  filter(!(region=="ARCO" & position=="hvc"))
+
+position_cluster_table = table(proj$position_cluster)
+position_cluster_keep = names(position_cluster_table)[position_cluster_table>=20]
+proj_md = proj_md %>% filter(position_cluster %in% position_cluster_keep)
+position_clusters = split(proj_md$position_cluster, proj_md$region_cluster)
+position_clusters = position_clusters[!grepl("Glut", names(position_clusters))]
+position_clusters_lens = map_int(position_clusters, length)
+position_clusters = position_clusters[position_clusters_lens==2]
+
+position_clusters_unlist = unlist(position_clusters)
+position_clusters_table = table(proj$position_cluster)
+position_clusters_table = position_clusters_table[position_clusters_unlist]
+position_clusters_ncells = min(position_clusters_table)
+
+proj_md = proj@cellColData %>% as.data.frame() %>% distinct(position_class, region_class, region, position)
+proj_md = proj_md %>%
+  filter(!(region=="ARCO" & position=="nc")) %>%
+  filter(!(region=="ARCO" & position=="hvc"))
+position_class_table = table(proj$position_class)
+position_class_keep = names(position_class_table)[position_class_table>20]
+proj_md = proj_md %>% filter(position_class %in% position_class_keep)
+position_class = split(proj_md$position_class, proj_md$region_class)
+position_class_lens = map_int(position_class, length)
+position_class = position_class[position_class_lens==2]
+
+position_class_unlist = unlist(position_class)
+position_class_table = table(proj$position_class)
+position_class_table = position_class_table[position_class_unlist]
+position_class_ncells = min(position_class_table)
+to_compare = list(position_cluster=position_clusters, position_class=position_class)
+
+```
+
+```{r}
+markers_peaks_sns_se_fname = file.path(out_dir, "peaks_nonsong_se.rds")
+markers_peaks_sns_fname = file.path(out_dir, "peaks_nonsong.rds")
+
+redo = F
+if (redo) {
+  
+  marker_peaks_sns = imap(to_compare, \(list_cur, groupBy_cur) {
+    future_map(list_cur, function(pair_cur) {
+      print(pair_cur)
+      getMarkerFeatures(
+        ArchRProj = proj, 
+        useMatrix = "PeakMatrix", 
+        groupBy = groupBy_cur,
+        useGroups = pair_cur[[1]],
+        bgdGroups = pair_cur[[2]],
+        bias = c("TSSEnrichment", "log10(nFrags)"),
+        testMethod = "wilcoxon"
+      )
+    })
+  })
+  saveRDS(marker_peaks_sns, markers_peaks_sns_se_fname)
+  
+  marker_peaks_sns_gr = map(marker_peaks_sns, function(peaks_cur) {
+    map(peaks_cur, function(x) {
+      gr = getMarkers(x, cutOff = "FDR <= 0.1", returnGR=T)
+      as.data.frame(gr)
+    })
+  })
+  marker_peaks_sns_df = bind_rows(map(marker_peaks_sns_gr, function(x) bind_rows(x, .id="comparison")), .id="set")
+  saveRDS(marker_peaks_sns_df, markers_peaks_sns_fname)
+} else {
+  marker_peaks_sns_df = readRDS(markers_peaks_sns_fname)
+}
+
+
+
+
+```
+
+```{r}
+marker_peaks_sns_n = marker_peaks_sns_df %>% group_by(comparison, set) %>%
+  summarize(n=n())
+```
+
+```{r}
+sets = unique(marker_peaks_sns_n$set)
+marker_peaks_sns_split = split(marker_peaks_sns_n, marker_peaks_sns_n$set)
+marker_peaks_sns_split[["position_class"]] = marker_peaks_sns_split[["position_class"]] %>%
+  mutate(comparison = factor(comparison, levels=paste(c("ARCO", "NIDO"), rep(rev(c("Glut", "GABA", "Neurog", "Nonneural")), each=2), sep="_")))
+```
+
+```{r}
+
+theme_common = theme(axis.text.y = element_text(size=6), axis.title = element_text(size=7))
+iwalk(marker_peaks_sns_split, function(df_cur, set_cur) {
+  gg = ggplot(df_cur, aes(comparison, n)) + 
+    geom_bar(stat="identity") + 
+    coord_flip() + 
+    scale_y_continuous(labels=scales::scientific)
+    theme_bw() + 
+      theme(axis.text.x = element_text(size=6)) + 
+    theme_common + 
+    labs(y = "# of DARs", x="")
+  print(gg)
+  save_plot(file.path(out_dir, str_interp("DARs_song-vs-nonsong_${set_cur}_horiz.pdf")), gg, base_width=2, base_height=1)
+  
+  gg = ggplot(df_cur, aes(comparison, n)) + 
+    geom_bar(stat="identity") + 
+    scale_y_continuous(labels=scales::scientific) + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5, size=6)) + 
+    theme_common +
+    labs(y = "# of DARs", x="")
+  print(gg)
+  save_plot(file.path(out_dir, str_interp("DARs_song-vs-nonsong_${set_cur}_vert.pdf")), gg, base_width=1.5, base_height=2)
+})
+```
+
+
+
+### FSIs
+```{r}
+to_select = c("GABA-4-1_GABA-1-1", "GABA-2-1_GABA-1-1")
+marker_peaks_gaba = marker_peaks_glut_df[to_select]
+
+```
+

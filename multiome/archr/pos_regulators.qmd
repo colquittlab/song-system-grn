@@ -1,0 +1,510 @@
+---
+title: "Untitled"
+format: html
+---
+
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr"
+out_name = "pos_regulators"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+```
+
+```{r}
+addArchRThreads(threads = 1) ## Ortherwise functions hang
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+```{r}
+pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
+                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
+                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4")
+                 )
+```
+
+
+```{r}
+subset_dir = file.path(out_dir, "subsets")
+dir.create(subset_dir)
+```
+
+```{r}
+
+proj_split = map(seq_along(pair_list), function(i) {
+  to_include = unlist(pair_list[[i]])
+  cells = getCellNames(proj)[proj$cluster %in% to_include]
+  #subsetArchRProject(proj, cells=cells, outputDirectory = file.path(subset_dir, names(pair_list)[i]),)
+  subsetCells(proj, cells)
+}) %>% set_names(names(pair_list))
+```
+```{r}
+# proj_split = map(proj_split, function(proj_sub) {
+#   proj_sub <- addBgdPeaks(proj_sub, force=T)
+#   
+#   proj_sub <- addDeviationsMatrix(
+#     ArchRProj = proj_sub,
+#     peakAnnotation = "MotifHS",
+#     force = TRUE
+#   )
+#   proj_sub  
+# })
+```
+
+```{r}
+seZ_list = map(seq_along(proj_split), function(i) {
+  
+  proj_cur = proj_split[[i]]
+  
+  seGroupMotif <- getGroupSE(ArchRProj = proj_cur, 
+                             useMatrix = "MotifHSMatrix", groupBy = "cluster")
+  
+  rownames(seGroupMotif) = getFeatures(proj_cur, "MotifHSMatrix")
+  
+  seZ <- seGroupMotif[rowData(seGroupMotif)$seqnames=="z",]
+  
+  rowData(seZ)$maxDelta <- lapply(seq_len(ncol(seZ)), function(x){
+    rowMaxs(assay(seZ) - assay(seZ)[,x])
+  }) %>% Reduce("cbind", .) %>% rowMaxs
+  
+  seZ
+})
+```
+
+## Compute Expression versus Accessibility correlations
+
+```{r fig.height = 10, fig.width = 10}
+plotEmbedding(proj, embedding = "UMAP_Harmony_RNA_30_0.5", colorBy = "GeneExpressionMatrix", name = c("MAFB", "NDNF", "PVALB", "SIX2"))
+```
+
+```{r}
+# compute_corGEM_MM = function(proj, seZ) {
+#   corGEM_MM <- correlateMatrices(
+#     ArchRProj = proj,
+#     useMatrix1 = "GeneExpressionMatrix",
+#     useMatrix2 = "MotifHSMatrix",
+#     reducedDims = "Harmony_RNA"
+#   )
+#   corGEM_MM$maxDelta <- rowData(seZ)[match(corGEM_MM$MotifHSMatrix_name, rowData(seZ)$name), "maxDelta"]
+#   return(corGEM_MM)
+# }
+```
+
+
+```{r}
+
+corGEM_MM_list = list()
+
+#corGEM_MM_list["ra"] = compute_corGEM_MM(proj_split[[1]], seZ_list[[1]])
+# for (i in seq_along(proj_split)) {
+#   seZ = seZ_list[[i]]
+#   corGEM_MM <- correlateMatrices(
+#     ArchRProj = proj_split[[i]],
+#     useMatrix1 = "GeneExpressionMatrix",
+#     useMatrix2 = "MotifHSMatrix",
+#     reducedDims = "Harmony_RNA"
+#   )
+#   corGEM_MM$maxDelta <- rowData(seZ)[match(corGEM_MM$MotifHSMatrix_name, rowData(seZ)$name), "maxDelta"]
+#   corGEM_MM_list[names(proj_split)[i]] = corGEM_MM
+# }
+
+corGEM_fname = file.path(out_dir, "corEM_MM_list.rds")
+
+if (redo) {
+  corGEM_MM_list = map(seq_along(proj_split), function(i) {
+    proj_cur = proj_split[[i]]
+    seZ = seZ_list[[i]]
+    corGEM_MM <- correlateMatrices(
+      ArchRProj = proj_cur,
+      useMatrix1 = "GeneExpressionMatrix",
+      useMatrix2 = "MotifHSMatrix",
+      reducedDims = "Harmony_RNA"
+    )
+    corGEM_MM$maxDelta <- rowData(seZ)[match(corGEM_MM$MotifHSMatrix_name, rowData(seZ)$name), "maxDelta"]
+    corGEM_MM
+  })
+  names(corGEM_MM_list) = names(proj_split)
+  saveRDS(corGEM_MM_list)
+} else {
+  corGEM_MM_list = readRDS(corGEM_fname)
+}
+```
+
+Positive 
+```{r}
+pos_reg_list = map(seq_along(proj_split), function(i) {
+  corGEM_MM = corGEM_MM_list[[i]]
+  corGEM_MM <- corGEM_MM[order(abs(corGEM_MM$cor), decreasing = TRUE), ]
+  corGEM_MM <- corGEM_MM[which(!duplicated(gsub("\\-.*","",corGEM_MM[,"MotifHSMatrix_name"]))), ]
+  corGEM_MM$TFRegulator <- "NO"
+  #corGEM_MM$TFRegulator[which(corGEM_MM$cor > 0.5 & corGEM_MM$padj < 0.01 & corGEM_MM$maxDelta > quantile(corGEM_MM$maxDelta, 0.5))] <- "YES"
+  corGEM_MM$TFRegulator[which(corGEM_MM$cor > 0.5 & corGEM_MM$padj < 0.01)] <- "YES"
+  as.data.frame(corGEM_MM[corGEM_MM$TFRegulator=="YES",])
+}) %>% set_names(names(proj_split)) %>% bind_rows(.id="set")
+```
+
+Negative
+```{r}
+neg_reg_list = map(seq_along(proj_split), function(i) {
+  corGEM_MM = corGEM_MM_list[[i]]
+  corGEM_MM <- corGEM_MM[order(abs(corGEM_MM$cor), decreasing = TRUE), ]
+  corGEM_MM <- corGEM_MM[which(!duplicated(gsub("\\-.*","",corGEM_MM[,"MotifHSMatrix_name"]))), ]
+  corGEM_MM$TFRegulator <- "NO"
+  #corGEM_MM$TFRegulator[which(corGEM_MM$cor > 0.5 & corGEM_MM$padj < 0.01 & corGEM_MM$maxDelta > quantile(corGEM_MM$maxDelta, 0.5))] <- "YES"
+  corGEM_MM$TFRegulator[which(corGEM_MM$cor < -0.5 & corGEM_MM$padj < 0.01)] <- "YES"
+  as.data.frame(corGEM_MM[corGEM_MM$TFRegulator=="YES",])
+}) %>% set_names(names(proj_split)) %>% bind_rows(.id="set")
+```
+
+### DEG
+```{r}
+data_obj_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/obj_clustered.qs"
+```
+
+```{r}
+obj = qread(data_obj_fname)
+#obj$cluster = obj$cluster_snrna
+```
+
+```{r fig.height = 10, fig.width=10}
+DefaultAssay(obj) = "SCT_RAW"
+FeaturePlot_scCustom(obj, features=c("MAFB", "NDNF"), reduction = "umap_rna_int")
+```
+
+```{r}
+table(obj$cluster, obj$position)
+```
+
+```{r}
+#obj = JoinLayers(obj)
+obj_aggr = AggregateExpression(obj, assays = "SCT", return.seurat = T, group.by = c("assignment", "cluster"))
+Idents(obj_aggr) = obj_aggr$cluster
+```
+
+```{r}
+markers = map(pair_list, function(pa) {
+ FindMarkers(obj_aggr, ident.1 = pa[1], ident.2 = pa[2], test.use="DESeq2", assay="SCT") %>% 
+    rownames_to_column("gene")
+}) %>% set_names(names(pair_list)) %>% bind_rows(.id="compare")
+
+markers = markers %>%
+  mutate(p_val_adj_log10 = -1 * log10(p_val_adj))# %>%
+  #mutate(p_val_adj_log10 = if_else(p_val_adj_log10 > 10, 10, p_val_adj_log10))
+```
+
+```{r}
+corGEM_all = map(corGEM_MM_list, as.data.frame) %>% set_names(names(corGEM_MM_list)) %>% bind_rows(.id="compare") %>%
+  dplyr::rename(gene = GeneExpressionMatrix_name) %>%
+  left_join(markers %>% select(compare, gene, avg_log2FC, p_val_adj, p_val_adj_log10))
+
+corGEM_all = corGEM_all %>%
+ mutate(mlog10_padj = -1 * log10(padj))
+
+corGEM_all_sig = corGEM_all %>%
+  mutate(cor_sign = sign(cor)) %>%
+  group_by(compare, cor_sign) %>%
+  filter(padj<.01) %>%
+  filter(p_val_adj<.01) %>% 
+  top_n(10, abs(cor))
+
+corGEM_all_filt = corGEM_all %>% 
+  filter(gene %in% corGEM_all_sig$gene) 
+
+corGEM_all_cor = corGEM_all_filt %>%
+  select(cor, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from="cor") %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+corGEM_all_log2FC = corGEM_all_filt %>%
+  select(avg_log2FC, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from="avg_log2FC") %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+corGEM_all_cor = corGEM_all_cor[,c("ra", "hvc_1", "hvc_2")]
+corGEM_all_log2FC = corGEM_all_log2FC[,c("ra", "hvc_1", "hvc_2")]
+```
+
+### Scatter
+```{r}
+tmp = corGEM_all %>%
+  filter(padj<.01) %>%
+  filter(p_val_adj < .01) %>%
+  mutate(compare = factor(compare, levels=c("ra", "hvc_1", "hvc_2")))
+
+gg = ggplot(tmp,aes(avg_log2FC, cor)) + 
+  geom_hline(yintercept=0, linetype=2) + 
+  geom_vline(xintercept=0, linetype=2) + 
+  geom_point() + 
+  facet_wrap(~compare) + 
+  theme_bw() + 
+  labs(x="log2 FC gene expression song vs. non-song", y = "TF expression vs. motif accessibility correlation")
+gg
+save_plot(file.path(out_dir, "scatter_cor-vs-fc.pdf"), gg, ncol = 3, nrow=1, base_asp=.9, base_height = 3)
+
+gg = gg + geom_label_repel(aes(label=gene))
+save_plot(file.path(out_dir, "scatter_cor-vs-fc_label.pdf"), gg, ncol = 3, nrow=1, base_asp=.9, base_height = 6)
+```
+```{r}
+corGEM_all_tmp = corGEM_all %>%
+  mutate(cor_sign = sign(cor),
+         avg_log2FC_sign = sign(avg_log2FC)) %>%
+  mutate(regulation = if_else((cor_sign * avg_log2FC_sign) > 0, "pos", "neg")) %>% 
+  filter(padj<.05) %>%
+  filter(p_val_adj < .05) %>%
+  mutate(compare = factor(compare, levels=c("ra", "hvc_1", "hvc_2"))) %>%
+  group_by(compare, regulation) %>%
+  arrange(avg_log2FC) %>%
+  mutate(index = 1:n()) 
+corGEM_all_tmp_s = split(corGEM_all_tmp, corGEM_all_tmp$regulation)
+
+iwalk(corGEM_all_tmp_s, function(tmp, reg) {
+  gg = ggplot(tmp, aes(avg_log2FC, p_val_adj_log10)) + 
+    geom_vline(xintercept=0) + 
+    geom_point() + 
+    labs(title=reg) + 
+    theme_bw() + 
+    facet_grid(.~compare)
+  print(gg)
+  save_plot(file.path(out_dir, str_interp("scatter_pval-vs-fc_${reg}.pdf")), gg, ncol = 3, nrow=1, base_asp=.9, base_height = 3)
+  
+  gg = gg + geom_label_repel(aes(label=gene))
+  
+    save_plot(file.path(out_dir, str_interp("scatter_pval-vs-fc_${reg}_label.pdf")), gg, ncol = 3, nrow=1, base_asp=.9, base_height = 6)
+})
+
+gg = ggplot(corGEM_all_tmp, aes(avg_log2FC, p_val_adj_log10)) + 
+  geom_vline(xintercept=0) + 
+  geom_point() + 
+  theme_bw() + 
+  facet_grid(compare~regulation)
+print(gg)
+save_plot(file.path(out_dir, str_interp("scatter_pval-vs-fc_both.pdf")), gg, ncol = 2, nrow=3, base_asp=1.4, base_height = 2)
+
+gg = gg + geom_label_repel(aes(label=gene))
+
+save_plot(file.path(out_dir, str_interp("scatter_pval-vs-fc_both_label.pdf")), gg, ncol = 2, nrow=3, base_asp=.9, base_height = 6)
+
+gg = ggplot(corGEM_all_tmp, aes(index, avg_log2FC, color=cor)) + 
+  geom_hline(yintercept=0) + 
+  geom_point() + 
+  theme_bw() + 
+  scale_color_gradient2(low = "darkblue", mid = "grey", high="darkred") + 
+  facet_wrap(~compare+ regulation, scales="free") +
+  coord_flip()
+print(gg)
+save_plot(file.path(out_dir, str_interp("scatter_fc-vs-index_both.pdf")), gg, ncol = 3, nrow=2, base_asp=.9, base_height = 3)
+
+gg = gg + geom_label_repel(aes(label=gene))
+
+save_plot(file.path(out_dir, str_interp("scatter_fc-vs-index_both_label.pdf")), gg, ncol = 3, nrow=2, base_asp=.9, base_height = 6)
+```
+
+### Heatmap
+```{r}
+hc = hclust(dist(corGEM_all_cor), "ward.D")
+
+width = .5
+height = width * nrow(corGEM_all_cor) / ncol(corGEM_all_cor)
+hm_cor = Heatmap(corGEM_all_cor, 
+                 cluster_columns = F,
+                 cluster_rows = hc,
+                 height = unit(height, "in"),
+                 width = unit(width, "in"))
+hm_cor
+pdf(file.path(out_dir, "heatmap_cor.pdf"), height =height + 2, width=width+2)
+print(hm_cor)
+dev.off()
+
+width = .5
+height = width * nrow(corGEM_all_cor) / ncol(corGEM_all_cor)
+hm_cor = Heatmap(t(corGEM_all_cor), 
+                 cluster_rows = F,
+                 cluster_columns = hc,
+                 height = unit(width, "in"),
+                 width = unit(height, "in"))
+hm_cor
+pdf(file.path(out_dir, "heatmap_cor_horiz.pdf"), height = width+ 2, width= height + 2)
+print(hm_cor)
+dev.off()
+
+```
+
+```{r fig.height=10}
+
+hc = hclust(dist(corGEM_all_cor), "ward.D")
+hm_cor = Heatmap(corGEM_all_cor, cluster_rows = hc, cluster_columns = F)
+
+cols = colorRamp2(breaks = c(-1,0,1), colors = rev(brewer_pal("div", palette = 4)(3)))
+hm_log2FC = Heatmap(corGEM_all_log2FC, cluster_rows = hc, cluster_columns=F, col=cols)
+hm_cor + hm_log2FC
+``` 
+
+### UMAPs
+
+```{r}
+obj_glut_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/combined_glut_umap_dotplot_tfs/obj_clustered.qs"
+obj_glut = qread(obj_glut_fname)
+#obj_glut$cluster = obj_glut$cluster_snrna
+```
+
+```{r}
+corGEM_all_tmp = corGEM_all %>%
+  filter(padj<.01) %>%
+  filter(p_val_adj < .01) 
+  
+to_plot = unique(corGEM_all_tmp$gene)
+DefaultAssay(obj_glut) = "SCT"
+reduction_cur = "umap_harmony_weighted_rna30_atac30_mindist0.3nn30"
+
+tp = intersect(Features(obj_glut), to_plot)
+for (tp in to_plot) {
+  gg = FeaturePlot_scCustom(obj_glut, features = tp, figure_plot = T, 
+                            aspect_ratio = 1, reduction = reduction_cur,
+                            raster = T, 
+                            raster.dpi=c(1024,1024),
+                            pt.size = 2, 
+                            alpha_exp = 1,
+                            alpha_na_exp = .1,
+                            #pt.size = .1
+  ) + theme_nothing()
+  save_plot(file.path(out_dir, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
+  
+  gg = Nebulosa::plot_density(obj_glut, features = tp, size = .1,
+                              reduction = reduction_cur) + 
+    annotate("text", x= 8, y = 10, label=tp, size = 3, hjust=1) +   
+    theme_nothing()
+  save_plot(file.path(out_dir, str_interp("${tp}_density.pdf")), gg, base_width=1.5, base_height=1.5)
+}
+```
+
+### Dotplot
+```{r fig.width=10}
+#to_plot = rownames(corGEM_all_cor)
+DefaultAssay(obj) = "SCT"
+ct_order = c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")
+obj_glut$cluster = factor(obj_glut$cluster, levels=ct_order)
+
+cells = Cells(obj_glut)[!is.na(obj_glut$cluster)]
+obj_glut = subset(obj_glut, cells=cells)
+
+gg = DotPlot_scCustom(obj_glut, features=to_plot, group.by = "cluster", flip_axes = T, x_lab_rotate = T )
+gg
+save_plot(file.path(out_dir, "dotplot.pdf"), gg)
+```
+
+### Heatmap
+
+```{r}
+expr = AggregateExpression(obj_filt2, features=to_plot, assays="SCT",  group.by="cluster")[[1]]
+
+```
+
+```{r}
+mat = log1p(expr)
+mat = as.matrix(mat[,cell_order])
+mat = t(mat)
+
+hc = hclust(dist(t(mat), method="euclidean"), method="ward.D2")
+
+height = 0.8
+width = length(genes_to_plot) * .07
+
+#cols = viridisLite::viridis(9)
+#pal = brewer_pal(type="div")(9)
+pal = brewer_pal(type="seq")(9)
+
+min_val = min(mat)
+max_val = max(mat)
+col = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+
+hm = Heatmap(mat,
+             col = col,
+             cluster_rows = F,
+             cluster_columns = hc,
+             height = unit(height, "in"),
+             width = unit(width, "in"),
+             column_names_gp = gpar(fontsize=6))
+hm
+pdf(file.path(out_dir, "heatmap_tf.pdf"), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+
+hm = Heatmap(t(mat),
+             col = col,
+             cluster_columns = F,
+             cluster_rows = hc,
+             width = unit(height, "in"),
+             height = unit(width, "in"),
+             row_names_gp = gpar(fontsize=6))
+
+pdf(file.path(out_dir, "heatmap_tf_scale.pdf"), height = width + 2, width = height + 2)
+print(hm)
+dev.off()
+```
+
+```{r}
+
+
+mat = log1p(expr)
+mat = as.matrix(mat[,cell_order])
+mat = t(apply(mat, 1, scale))
+colnames(mat) = cell_order
+mat = t(mat)
+
+hc = hclust(dist(t(mat), method="euclidean"), method="ward.D2")
+
+height = 0.6
+width = length(genes_to_plot) * .08
+
+#cols = viridisLite::viridis(9)
+pal = brewer_pal(type="div", palette = 5, direction = -1)(9)
+
+min_val = min(mat)
+max_val = max(mat)
+col = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(1,5,9)]))
+
+hm = Heatmap(mat,
+             col = col,
+             cluster_rows = F,
+             cluster_columns = hc,
+             height = unit(height, "in"),
+             width = unit(width, "in"),
+             column_names_gp = gpar(fontsize=6))
+hm
+pdf(file.path(out_dir, "heatmap_tf_scale.pdf"), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+
+hm = Heatmap(t(mat),
+             col = col,
+             cluster_columns = F,
+             cluster_rows = hc,
+             width = unit(height, "in"),
+             height = unit(width, "in"),
+             row_names_gp = gpar(fontsize=6),
+             column_names_gp = gpar(fontsize=6),
+             column_names_side = "top")
+
+pdf(file.path(out_dir, "heatmap_tf_scale_vert.pdf"), height = width + 2, width = height + 2)
+print(hm)
+dev.off()
+```
+

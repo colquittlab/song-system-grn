@@ -1,0 +1,316 @@
+---
+title: "Untitled"
+format: html
+editor: source
+---
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(scCustomize)
+library(qs)
+library(furrr)
+library(UpSetR)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ComplexHeatmap)
+library(cowplot)
+library(proxy)
+select = dplyr::select
+
+source("~/nest/rstudio/utils/gene_lists.R")
+```
+
+```{r}
+prefix_dir = "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/"
+data_obj = file.path(prefix_dir, "obj_clustered.qs")
+out_dir = file.path(prefix_dir, "deg")
+script_name = "all_deg"
+out_dir = file.path(out_dir, script_name)
+dir.create(out_dir)
+res_to_use = "cluster"
+assay_to_use = "SCT"
+```
+
+```{r}
+ct_order = c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2", 
+             "Glut-NC-1", "Glut-NC-2", "Glut-NC-3", "Glut-NC-4",
+             "Glut-Nido-1", "Glut-Nido-2", "Glut-Nido-3", 
+             "Glut-LMAN-1", "Glut-LMAN-2",
+             "Glut-NR-1", "Glut-NR-2", "Glut-NR-3", "Glut-NR-4","Glut-NR-5",
+             "Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "Glut-Arco-3", "Glut-Arco-4", "Glut-Arco-5",
+             "Glut-Pre-3", "Glut-Pre-2", "Glut-Pre-1",
+             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
+             "GABA-3", "GABA-4-1", "GABA-4-2", 
+             "GABA-5-1", "GABA-5-2", 
+             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-Pre",
+             "Astro-1", "Astro-2", "Astro-3", "Epen", 
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+```
+
+```{r}
+obj = qread(data_obj)
+cells = Cells(obj)[!grepl("/", obj$assignment)]
+obj = subset(obj, cells=cells)
+```
+
+```{r}
+table(obj$cluster, obj$position)
+```
+
+## Cell type table
+
+```{r}
+ct_tab = table(obj$cluster, obj$position)
+pos_order = c("hvc", "nc", "lman", "nr", "ra", "arco")
+```
+
+## Markers - all
+
+```{r}
+#clusters_to_test = unique(obj$cluster)
+#clusters_to_test = grep("Glut", clusters_to_test, value=T, invert=T)
+plan(sequential)
+obj_agg_pos = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use, "assignment"), return.seurat = T)
+Idents(obj_agg_pos) = obj_agg_pos@meta.data[,res_to_use]
+
+#clusters_to_test = unique(obj_agg_pos$cluster)
+#options(future.globals.maxSize = 50 * 1E9)
+#plan(multisession, workers = min(length(clusters_to_test), 20))
+
+position_pairs = list("ra" = c("ra", "arco"),
+                      "hvc" = c("hvc", "nc"),
+                      "lman" = c("lman", "nr"))
+```
+
+```{r}
+assay_to_use = "SCT"
+markers_fname = file.path(out_dir, sprintf("marker_genes_cluster_%s.rds", assay_to_use))
+
+redo_markers = F
+if (redo_markers) {
+  markers_agg = FindAllMarkers(obj_agg_pos, assay=assay_to_use, test.use = "DESeq2")
+  saveRDS(markers_agg, markers_fname)
+} else {
+  markers_agg = readRDS(markers_fname)
+}
+```
+
+### Dotplots
+
+```{r}
+cts = unlist(pairs)
+Idents(obj) = obj$cluster
+obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
+obj$cluster = factor(obj$cluster, levels=rev(ct_order))
+```
+
+```{r}
+markers_agg = markers_agg %>%
+  mutate(class1 = str_extract(cluster, "([A-Z-a-z]+)-*", group=T)) %>%
+  mutate(class1 = sub("-$", "", class1))
+  # mutate(class1 = case_when(grepl("Glut", cluster) ~ "Glut",
+  #                           grepl("GABA", cluster) ~ "GABA",
+  #                           grepl("Pre", cluster) ~ "Neurogenic",
+  #                           grepl("Astro", cluster) ~ "Astro",
+  #                           grepl("Oligo", cluster) ~ ""
+  #                           TRUE ~ cluster))
+```
+
+```{r}
+ngenes = 5
+
+markers_agg_select = markers_agg %>%
+  filter(!grepl("^LOC", gene)) %>% 
+  filter(p_val_adj < 1E-2) %>% 
+  filter(avg_log2FC > 0) %>% 
+  group_by(cluster) %>%
+  top_n(ngenes, avg_log2FC) %>%
+  ungroup() %>% 
+  distinct(gene, .keep_all=T) %>% 
+  mutate(class1 = factor(class1, 
+                         levels=c("Glut-HVC", "Glut-NC", "Glut-Nido", 
+                                  "Glut-LMAN", "Glut-NR", "Glut-RA", "Glut-Arco", 
+                                  "Glut-Pre", "GABA", "GABA-Pre", "Astro", "Epen", "Oligo", "OPC", "Micro", "Endo"))) %>% 
+  mutate(cluster = factor(cluster, levels=ct_order)) %>% 
+  arrange(cluster) %>%
+  select(gene) %>% c() %>% unlist()
+
+names(markers_agg_select) = NULL
+markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+markers_agg_mat = markers_agg_mat[markers_agg_select,]
+
+scale_factor_y = .12
+scale_factor_x = .2
+height = length(markers_agg_select) * scale_factor_y
+width = length(ct_order) * scale_factor_x
+
+# hc = hclust(dist(markers_agg_mat, method="correlation"), method = "ward.D")
+# 
+# markers_agg_select = hc$labels[hc$order]
+
+gg = DotPlot_scCustom(obj, features = markers_agg_select, group.by = "cluster", flip_axes = F, dot.scale=2, dot.min = 0)
+gg = gg +
+  theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
+        axis.text.y = element_text(size=6),
+        axis.line = element_line(linewidth=.5),
+        legend.position="none")
+gg
+save_plot(file.path(out_dir, str_interp("dotplot_${ngenes}.pdf")), gg, base_height=height, base_width=width)
+```
+
+```{r fig.height = 10, fig.width = 10}
+ngenes = 5
+
+markers_agg_select = markers_agg %>%
+  filter(!grepl("^LOC", gene)) %>% 
+  filter(p_val_adj < 1E-2) %>% 
+  filter(avg_log2FC > 0) %>% 
+  group_by(cluster) %>%
+  top_n(ngenes, avg_log2FC) %>%
+  ungroup() %>% 
+  distinct(gene, .keep_all=T) %>% 
+  mutate(class1 = factor(class1, 
+                         levels=c("Glut-HVC", "Glut-NC", "Glut-Nido", 
+                                  "Glut-LMAN", "Glut-NR", "Glut-RA", "Glut-Arco", 
+                                  "Glut-Pre", "GABA", "GABA-Pre", "Astro", "Epen", "Oligo", "OPC", "Micro", "Endo"))) %>% 
+  mutate(cluster = factor(cluster, levels=ct_order)) %>% 
+  arrange(cluster) %>%
+  select(gene) %>% c() %>% unlist()
+
+markers_agg_select = c("SLC17A6", "SYT1", "DACH2", "SATB2", "LHX9", "CACNA1H",
+                       "NECTIN3", "DCX", "SOX4", "NR2E1",
+                       "GAD1", "FOXP2", "NPY", "CEMIP", "NXPH1", "TTLL5", "PENK", "CRH", "LAMP5", "CALB2", "LHX8",
+                       "SLC1A3", "SPEF2", "PLP1", "PDGFRA", "CSF1R", "FLI1")
+#names(markers_agg_select) = NULL
+#markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+#markers_agg_mat = markers_agg_mat[markers_agg_select,]
+
+scale_factor = .08
+height = length(ct_order) * scale_factor
+width = length(markers_agg_select) * scale_factor
+
+# hc = hclust(dist(markers_agg_mat, method="correlation"), method = "ward.D")
+# 
+# markers_agg_select = hc$labels[hc$order]
+
+gg = DotPlot_scCustom(obj, features = markers_agg_select, group.by = "cluster", flip_axes = F, dot.scale=2, dot.min = .05, col.min=0)
+gg = gg +
+  theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
+         panel.border = element_blank(),
+        axis.text.y = element_text(size=6),
+        axis.line = element_line(linewidth=.5))
+
+gg = egg::set_panel_size(p = gg, width = unit(width, "in"), height = unit(height, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "dotplot_manual-markers.pdf"), gg, base_height=height+5, base_width=width+5)
+```
+
+## Markers -- pairwise
+
+```{r}
+pairs_full = combn(ct_order, 2, simplify = F)
+```
+
+```{r}
+markers_pairs_fname = file.path(out_dir, "markers_pairs.qs")
+
+redo = T
+if (redo) {
+  markers_pairs = map(pairs_full, function(pair_cur) {
+    markers_cur = FindMarkers(obj, ident.1 = pair_cur[1], indent.2 = pair_cur[2], group.by=res_to_use, assay=assay_to_use)
+    markers_cur %>% filter(p_val_adj < 0.1)
+  })
+  
+  qsave(markers_pairs, markers_pairs_fname)
+} else {
+  markers_pairs = qread(markers_pairs_fname)
+}
+```
+
+```{r}
+pairs_df = data.frame(ct1 = map_chr(pairs_full, 1), ct2 = map_chr(pairs_full,2))
+pairs_df = pairs_df %>%
+  mutate(pair_name = paste(ct1, ct2, sep="_"))
+names(marker_peaks_glut_df) = pairs_df$pair_name
+marker_peaks_glut_df1 = bind_rows(marker_peaks_glut_df, .id="pair_name")
+marker_peaks_glut_df1 = marker_peaks_glut_df1 %>% left_join(pairs_df)
+marker_peaks_glut_df1 = marker_peaks_glut_df1 %>%
+  mutate(class1 = case_when(grepl("Glut", ct1) ~ "Glut",
+                            grepl("GABA", ct1) ~ "GABA",
+                            grepl("NB|IP", ct1) ~ "Neurogenic",
+                            grepl("OPC|Oligo|Astro|Epen", ct1) ~ "Glial"),
+         class2 = case_when(grepl("Glut", ct2) ~ "Glut",
+                            grepl("GABA", ct2) ~ "GABA",
+                            grepl("NB|IP", ct2) ~ "Neurogenic",
+                            grepl("OPC|Oligo|Astro|Epen", ct2) ~ "Glial"))
+
+marker_peaks_glut_n = marker_peaks_glut_df1 %>% 
+  mutate(Log2FC_sign = sign(Log2FC)) %>%
+  #group_by(pair_name, ct1, ct2, class1, class2, Log2FC_sign) %>%
+  group_by(pair_name, ct1, ct2, class1, class2) %>%
+  summarize(n_peaks = n())
+
+marker_peaks_glut_n = marker_peaks_glut_n %>%
+  #filter(!(grepl("RA|Arco", pair_name) & grepl("NC|Nido|HVC", pair_name))) %>%
+  filter(!(class1 == "Neurogenic" | class2 == "Neurogenic")) %>% 
+  mutate(class_name = paste(class1, class2, sep="_")) %>%
+  mutate(class_name2 = case_when(class_name == "Glial_Glut" ~ "Glut_Glial",
+                                 class_name == "Glial_GABA" ~ "GABA_Glial",
+                                 class_name == "GABA_Glut" ~ "Glut_GABA", 
+                                 TRUE ~ class_name)
+  ) %>% 
+  #mutate(n_peaks_sign = n_peaks * Log2FC_sign) %>%
+  # mutate(song = case_when(pair_name %in% c("Glut-RA_Glut-Arco-1", "Glut-Arco-1_Glut-RA") ~ "RA",
+  #                         pair_name %in% c("Glut-HVC-1_Glut-NC-1", "Glut-NC-1_Glut-HVC-1",
+  #                                        "Glut-HVC-3_Glut-Nido-3", "Glut-Nido-3_Glut-HVC-3") ~ "HVC",
+  #                         TRUE ~ "nonsong"))
+  mutate(song = case_when(grepl("RA", pair_name) ~ "RA",
+                          grepl("HVC", pair_name) ~ "HVC",
+                          TRUE ~ "nonsong")) %>%
+  mutate(song = factor(song, levels=c("nonsong", "HVC", "RA")))
+
+marker_peaks_glut_n_mean = marker_peaks_glut_n %>% 
+  group_by(class_name2) %>%
+  summarize(n_peaks_mean = mean(n_peaks)) %>%
+  arrange(n_peaks_mean)
+         
+```
+
+```{r}
+point_colors = list(nonsong = "grey", RA=position_colors2["ra"], HVC=position_colors2["hvc"])
+gg = ggplot(marker_peaks_glut_n, aes(class_name2, n_peaks, color=song)) + 
+  geom_point(position=position_jitter(width=.1)) + 
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  theme_bw() +
+  scale_color_manual(values=point_colors)
+  
+gg
+```
+
+```{r}
+gg = ggplot(marker_peaks_glut_n %>% filter(class_name2=="Glut_Glut"), aes(n_peaks, fill=song)) + 
+  geom_histogram() +
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  theme_bw() +
+  scale_color_manual(values=point_colors) + 
+  scale_fill_manual(values=point_colors) + 
+  facet_grid(song~.)
+gg
+```
+
+```{r}
+gg = ggplot(marker_peaks_glut_n %>% filter(class_name2=="Glut_Glut"), aes(song, n_peaks, fill=song)) + 
+  geom_boxplot() +   
+  theme_bw() +
+  theme(legend.position="none", 
+        axis.text = element_text(size=6),
+        axis.title = element_text(size=7)) +
+  labs(x="", y="# of DARs") + 
+  scale_color_manual(values=point_colors) + 
+  scale_fill_manual(values=point_colors) 
+gg
+save_plot(file.path(out_dir, "npeaks_boxplot.pdf"), gg, base_height=1.5, base_asp = 1)
+```

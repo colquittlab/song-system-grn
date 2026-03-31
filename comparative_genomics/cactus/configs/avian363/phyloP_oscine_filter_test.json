@@ -1,0 +1,14 @@
+{
+    "results_dir": "/private/groups/colquittlab/assembly/cactus/avian363/phyloP/results",
+    "hal_file": "/private/groups/colquittlab/assembly/cactus/avian363/363-avian-2020_lsd.hal",
+    "maf_dir": "/private/groups/colquittlab/assembly/cactus/avian363/maf/maf_chrom",
+    "target_species": "Lonchura_striata",
+    "maffilter_config": "/private/home/bcolquit/group/assembly/cactus/pipelines/configs/avian363/maffilter_params.txt",
+    "method": "LRT",
+    "mode": "CONACC",
+    "subtree": "birdAnc222",
+    "rescaled_models_dir": "/private/groups/colquittlab/assembly/cactus/avian363/phyloFit/results/rescaled_models",
+    "chrom_sets": {
+        "micro": "chr25"
+    }
+}

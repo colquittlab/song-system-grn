@@ -1,0 +1,10 @@
+---
+title: "SCENIC+ Analysis - All Configs"
+format: html
+params:
+  working_dir: "/ra-arco-hvc-nc_seurat-snrna-clustering"
+  out_dir_base: "~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_cluster-snrna-cr_all"
+---
+
+```{r child='motor-pathway_scenicplus_v2_cluster-snrna-cr_all_template.qmd'}
+```

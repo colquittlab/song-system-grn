@@ -1,0 +1,175 @@
+---
+title: "Full differential accessibility analysis"
+format: html
+---
+
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+out_name = "peaks"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+addArchRThreads(threads = 36)
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+
+```{r}
+plan(multisession(workers = 4))
+```
+
+## Full pairwise differential accessibility
+```{r}
+clusters = unique(proj$cluster)
+pairs_full = combn(clusters, 2, simplify = F)
+
+proj$cluster = as.character(proj$cluster) ## Required for getMarkerFeatures or will error
+
+```
+
+```{r}
+markers_peaks_glut_fname = file.path(out_dir, "peaks_glut.rds")
+redo = F
+if (redo) {
+  cluster_name_cur = "cluster"
+  marker_peaks_glut = future_map(pairs_full, function(pair_cur) {
+    print(pair_cur)
+    getMarkerFeatures(
+      ArchRProj = proj,
+      useMatrix = "PeakMatrix",
+      groupBy = "cluster",
+      useGroups = pair_cur[[1]],
+      bgdGroups = pair_cur[[2]],
+      bias = c("TSSEnrichment", "log10(nFrags)"),
+      testMethod = "wilcoxon"
+    )
+  })
+  saveRDS(marker_peaks_glut, markers_peaks_glut_fname)
+} else {
+  marker_peaks_glut = readRDS(markers_peaks_glut_fname)
+}
+
+marker_peaks_glut_gr = map(marker_peaks_glut, function(x) {
+  getMarkers(x, cutOff = "FDR <= 0.1", returnGR=T)
+})
+
+marker_peaks_glut_se = map(marker_peaks_glut, function(x) {
+  getMarkers(x, cutOff = "FDR <= 0.1", returnGR=F)
+})
+
+marker_peaks_glut_df = map(marker_peaks_glut_gr, as.data.frame)
+```
+
+```{r}
+pairs_df = data.frame(ct1 = map_chr(pairs_full, 1), ct2 = map_chr(pairs_full,2))
+pairs_df = pairs_df %>%
+  mutate(pair_name = paste(ct1, ct2, sep="_"))
+names(marker_peaks_glut_df) = pairs_df$pair_name
+marker_peaks_glut_df1 = bind_rows(marker_peaks_glut_df, .id="pair_name")
+marker_peaks_glut_df1 = marker_peaks_glut_df1 %>% left_join(pairs_df)
+marker_peaks_glut_df1 = marker_peaks_glut_df1 %>%
+  mutate(class1 = case_when(grepl("Glut", ct1) ~ "Glut",
+                            grepl("GABA", ct1) ~ "GABA",
+                            grepl("Pre", ct1) ~ "Neurogenic",
+                            grepl("OPC|Oligo|Astro|Epen|Endo", ct1) ~ "Glial"),
+         class2 = case_when(grepl("Glut", ct2) ~ "Glut",
+                            grepl("GABA", ct2) ~ "GABA",
+                            grepl("Pre", ct2) ~ "Neurogenic",
+                            grepl("OPC|Oligo|Astro|Epen|Endo", ct2) ~ "Glial"))
+
+marker_peaks_glut_n = marker_peaks_glut_df1 %>%
+  mutate(Log2FC_sign = sign(Log2FC)) %>%
+  #group_by(pair_name, ct1, ct2, class1, class2, Log2FC_sign) %>%
+  group_by(pair_name, ct1, ct2, class1, class2) %>%
+  summarize(n_peaks = n())
+
+marker_peaks_glut_n = marker_peaks_glut_n %>%
+  #filter(!(grepl("RA|Arco", pair_name) & grepl("NC|Nido|HVC", pair_name))) %>%
+  filter(!(class1 == "Neurogenic" | class2 == "Neurogenic")) %>%
+  mutate(class_name = paste(class1, class2, sep="_")) %>%
+  mutate(class_name2 = case_when(class_name == "Glial_Glut" ~ "Glut_Glial",
+                                 class_name == "Glial_GABA" ~ "GABA_Glial",
+                                 class_name == "GABA_Glut" ~ "Glut_GABA",
+                                 TRUE ~ class_name)
+  ) %>%
+  #mutate(n_peaks_sign = n_peaks * Log2FC_sign) %>%
+  # mutate(song = case_when(pair_name %in% c("Glut-RA_Glut-Arco-1", "Glut-Arco-1_Glut-RA") ~ "RA",
+  #                         pair_name %in% c("Glut-HVC-1_Glut-NC-1", "Glut-NC-1_Glut-HVC-1",
+  #                                        "Glut-HVC-2_Glut-Nido-3", "Glut-Nido-3_Glut-HVC-2") ~ "HVC",
+  #                         TRUE ~ "nonsong"))
+  mutate(song = case_when(grepl("RA", pair_name) ~ "RA",
+                          grepl("HVC", pair_name) ~ "HVC",
+                          TRUE ~ "nonsong")) %>%
+  mutate(song = factor(song, levels=c("nonsong", "HVC", "RA")))
+
+marker_peaks_glut_n_mean = marker_peaks_glut_n %>%
+  group_by(class_name2) %>%
+  summarize(n_peaks_mean = mean(n_peaks)) %>%
+  arrange(n_peaks_mean)
+
+```
+
+```{r}
+point_colors = list(nonsong = "grey", RA=position_colors2["ra"], HVC=position_colors2["hvc"])
+gg = ggplot(marker_peaks_glut_n, aes(class_name2, n_peaks, color=song)) +
+  geom_point(position=position_jitter(width=.1)) +
+  theme(axis.text.x = element_text(angle=90, hjust=1)) +
+  theme_bw() +
+  scale_color_manual(values=point_colors)
+
+gg
+```
+```{r}
+gg = ggplot(marker_peaks_glut_n %>% filter(class_name2=="Glut_Glut"), aes(n_peaks, fill=song)) +
+  geom_histogram() +
+  theme(axis.text.x = element_text(angle=90, hjust=1)) +
+  theme_bw() +
+  scale_color_manual(values=point_colors) +
+  scale_fill_manual(values=point_colors) +
+  facet_grid(song~.)
+gg
+```
+```{r}
+gg = ggplot(marker_peaks_glut_n %>% filter(class_name2=="Glut_Glut"), aes(song, n_peaks, fill=song)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position="none",
+        axis.text = element_text(size=6),
+        axis.title = element_text(size=7)) +
+  labs(x="", y="# of DARs") +
+  scale_color_manual(values=point_colors) +
+  scale_fill_manual(values=point_colors)
+gg
+save_plot(file.path(out_dir, "npeaks_boxplot.pdf"), gg, base_height=1.5, base_asp = 1)
+```

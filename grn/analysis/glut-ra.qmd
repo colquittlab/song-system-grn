@@ -1,0 +1,552 @@
+---
+title: "Untitled"
+format: html
+---
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(scCustomize)
+library(ArchR)
+library(tidyverse)
+library(qs)
+library(cowplot)
+library(viridis)
+library(ComplexHeatmap)
+library(circlize)
+library(rhdf5)
+library(hdf5r)
+library(anndata)
+select = dplyr::select
+
+source("/home/brad/nest/rstudio/utils/stats.R")
+```
+
+```{r}
+scplus_dir = '/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/'
+working_dir = "glut-ra_glut-arco-1_seurat-snrna-clustering/"
+adata_fname = file.path(scplus_dir, working_dir,
+                  "anndata_rna", "adata.h5ad")
+h5seurat_fname = file.path(scplus_dir, working_dir,
+                  "anndata_rna", "adata.h5seurat")
+
+scenicplus_dir = file.path(scplus_dir, working_dir, "scenicplus")
+
+## Find all config directories that have scplusmdata.h5mu
+config_dirs = list.dirs(scenicplus_dir, recursive = FALSE)
+config_dirs = sort(config_dirs[grepl("config[0-9]+$", config_dirs)])
+config_dirs = config_dirs[file.exists(file.path(config_dirs, "outs", "scplusmdata.h5mu"))]
+message("Found ", length(config_dirs), " config directories: ",
+        paste(basename(config_dirs), collapse=", "))
+
+## Seurat object
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/"
+in_dir_sub = "combined_all_umap"
+in_dir = file.path(analysis_prefix, in_dir_sub)
+obj_fname = file.path(in_dir, "obj_clustered.qs")
+
+out_base = "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
+script_name = "motor-pathway_scenicplus_v2_cluster-snrna-cr_glut-ra"
+out_dir_base = file.path(out_base, script_name)
+dir.create(out_dir_base, showWarnings = FALSE)
+```
+
+## Read anndata
+```{r}
+obj = qread(obj_fname)
+```
+
+## Average expression
+```{r}
+obj_avg = log1p(AggregateExpression(obj, group.by="cluster", assays = "SCT")[[1]])
+```
+
+
+## Helper functions
+
+```{r}
+convert_category_to_factor = function(x) {
+  factor(x$codes, labels = x$categories, levels=0:(length(x$categories)-1))
+}
+
+extract_matrix = function(obs_name, ereg_file) {
+  cur = rhdf5::h5read(ereg_file, name = str_interp(obs_name))
+  rnames = cur[["var"]]$`_index`
+  cnames = cur[["obs"]]$Cell
+  mat = data.frame(t(cur[["X"]]))
+  colnames(mat) = rnames
+  rownames(mat) = cnames
+  mat
+}
+```
+
+## Load TFs
+```{r}
+tfs_db = readr::read_csv("/home/brad/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs_dbd = tfs_db %>% filter(DBD!="Unknown")
+```
+
+## Process all configs
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+cis_types = c("direct", "extended")
+
+for (config_dir in config_dirs) {
+  config_name = basename(config_dir)
+  message("\n========== Processing ", config_name, " ==========")
+
+  ereg_file = file.path(config_dir, "outs", "scplusmdata.h5mu")
+  out_dir = file.path(out_dir_base, config_name)
+  dir.create(out_dir, showWarnings = FALSE)
+
+  ## Extract eRegulon metadata
+  ereg = map(cis_types, \(cis_type) {
+    rhdf5::h5read(ereg_file, name = str_interp("/uns/${cis_type}_e_regulon_metadata")) %>%
+      do.call(cbind.data.frame, .)
+  }) %>% bind_rows() %>% mutate(class = "Glut")
+
+  ## Gene and region AUC
+  gene_auc = map(cis_types, \(cis_type) {
+    extract_matrix(str_interp("/mod/${cis_type}_gene_based_AUC"), ereg_file)
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  region_auc = map(cis_types, \(cis_type) {
+    extract_matrix(str_interp("/mod/${cis_type}_region_based_AUC"), ereg_file)
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  ## Group labels
+  group_set = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts/obs"))
+  group_set = group_set[c("_index", "cluster")]
+  factor_ind = which(map_lgl(group_set, ~length(.x)==2))
+  for (fi in factor_ind) {
+    group_set[[fi]] = convert_category_to_factor(group_set[[fi]])
+  }
+  group_df = cbind.data.frame(group_set)
+
+  labels_order = levels(group_df$cluster)
+  labels_order = c(sort(grep("HVC", labels_order, value=T)),
+                   sort(grep("NC", labels_order, value=T)),
+                   sort(grep("Nido", labels_order, value=T)),
+                   sort(grep("RA", labels_order, value=T)),
+                   sort(grep("Arco", labels_order, value=T)),
+                   sort(grep("Glut-Pre", labels_order, value=T), decreasing = T),
+                   sort(grep("GABA", labels_order, value=T)),
+                   sort(grep("GABA-Pre", labels_order, value=T)),
+                   sort(grep("Astro", labels_order, value=T)),
+                   sort(grep("Epen", labels_order, value=T)),
+                   sort(grep("Oligo", labels_order, value=T)),
+                   sort(grep("OPC", labels_order, value=T)),
+                   sort(grep("Micro", labels_order, value=T)),
+                   sort(grep("Endo", labels_order, value=T)))
+  labels_order = unique(labels_order)
+
+  group_df = group_df %>%
+    mutate(cluster = factor(cluster, levels=labels_order))
+
+  gene_auc = gene_auc %>% left_join(group_df)
+  region_auc = region_auc %>% left_join(group_df)
+
+  gene_auc = gene_auc %>% filter(!is.na(cluster))
+  region_auc = region_auc %>% filter(!is.na(cluster))
+
+  ## Compute derived columns
+  ereg = ereg %>%
+    mutate(importance_x_abs_rho_TF2G = importance_TF2G * abs(rho_TF2G),
+           importance_x_rho_TF2G = importance_TF2G * rho_TF2G) %>%
+    mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
+           importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
+           importance_log_TF2G = log(importance_TF2G))
+
+  ## Filter eRegulons
+  ereg_sane = ereg %>%
+    filter(grepl("\\+\\/\\+", eRegulon_name) | grepl("-\\/-", eRegulon_name))
+  ereg_tf = ereg_sane %>%
+    filter(Gene %in% tfs_dbd$Name)
+
+  ## Export for Cytoscape
+  out_fname = file.path(out_dir, "scenicplus_eRegulons.txt")
+  write_delim(ereg_sane %>% select(-is_extended), out_fname, delim="\t")
+
+  ereg_sane_un = ereg_sane %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(-is_extended)
+  out_fname = file.path(out_dir, "scenicplus_eRegulons_unique-gene.txt")
+  write_delim(ereg_sane_un, out_fname, delim="\t")
+
+  ereg_tf_un = ereg_tf %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(-is_extended)
+  out_fname = file.path(out_dir, "scenicplus_eRegulons_unique-gene_tfs.txt")
+  write_delim(ereg_tf_un, out_fname, delim="\t")
+
+  ## Predicted regulators of MAFB and EMX2
+  target_genes = c("MAFB", "EMX2")
+  regulators = ereg_sane %>%
+    filter(Gene %in% target_genes) %>%
+    distinct(TF, Gene, .keep_all = T) %>%
+    select(Gene, TF, regulation, eRegulon_name,
+           importance_TF2G, rho_TF2G, importance_x_abs_rho_TF2G) %>%
+    arrange(Gene, desc(importance_TF2G))
+  out_fname = file.path(out_dir, "regulators_MAFB_EMX2.txt")
+  write_delim(regulators, out_fname, delim="\t")
+
+  ## Regulators of the regulators of MAFB and EMX2
+  upstream_tfs = unique(regulators$TF)
+  regulators_of_regulators = ereg_sane %>%
+    filter(Gene %in% upstream_tfs) %>%
+    distinct(TF, Gene, .keep_all = T) %>%
+    select(Gene, TF, regulation, eRegulon_name,
+           importance_TF2G, rho_TF2G, importance_x_abs_rho_TF2G) %>%
+    arrange(Gene, desc(importance_TF2G))
+  out_fname = file.path(out_dir, "regulators_of_regulators_MAFB_EMX2.txt")
+  write_delim(regulators_of_regulators, out_fname, delim="\t")
+
+  ## ---- Heatmap: Positive ----
+  ereg_pattern = "\\+\\/\\+"
+  gene_auc_cur = gene_auc %>% select(one_of("cluster"), matches(ereg_pattern))
+  colnames(gene_auc_cur) = sub("_(direct|extended)_\\+\\/\\+_\\([0-9]+[a-z]\\)", "", colnames(gene_auc_cur))
+  gene_auc_cur = gene_auc_cur %>% pivot_longer(-cluster, names_to="tf") %>%
+    filter(!is.na(tf))
+  region_auc_cur = region_auc %>% select(one_of("cluster"), matches(ereg_pattern))
+  colnames(region_auc_cur) = sub("_\\+\\/\\+_\\([0-9]+[a-z]\\)", "", colnames(region_auc_cur))
+
+  gene_auc_cur_mean = gene_auc_cur %>%
+    filter(!is.na(cluster)) %>%
+    group_by(cluster, tf) %>%
+    summarize(value_mean = mean(value), .groups = "drop") %>%
+    group_by(tf) %>%
+    mutate(value_mean_scale = scale_01(value_mean)) %>%
+    pivot_wider(id_cols = cluster, names_from = "tf", values_from = "value_mean_scale") %>%
+    column_to_rownames("cluster") %>%
+    as.matrix() %>%
+    t()
+  gene_auc_cur_mean = na.omit(gene_auc_cur_mean)
+
+  region_auc_cur_mean = region_auc_cur %>%
+    filter(!is.na(cluster)) %>%
+    group_by(cluster) %>%
+    summarize_all(mean) %>%
+    column_to_rownames("cluster") %>%
+    mutate_all(scale) %>%
+    as.matrix() %>%
+    t()
+
+  expr_mat = obj_avg[intersect(rownames(gene_auc_cur_mean), rownames(obj_avg)),
+                     intersect(colnames(gene_auc_cur_mean), colnames(obj_avg))]
+  expr_mat = t(scale(t(expr_mat)))
+  expr_mat[!is.finite(expr_mat)] = NA
+
+  hc = hclust(dist(gene_auc_cur_mean), method="ward.D")
+
+  height = 4; width = 3
+  mat = gene_auc_cur_mean
+  colors = scales::brewer_pal(palette = "Greys", direction = 1)(9)
+  cols = colorRamp2(breaks = seq(min(mat, na.rm=T), max(mat, na.rm=T), length.out=9), colors = colors)
+
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = F, col = cols,
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, "gene_auc_heatmap_pos_no-names.pdf"), height=height+2, width=width+2)
+  print(hm); dev.off()
+
+  height = 10; width = height * ncol(mat) / nrow(mat)
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = T, col = cols,
+               row_names_gp = gpar(fontsize=6), column_names_gp = gpar(fontsize=6),
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, "gene_auc_heatmap_pos_names.pdf"), height=height+10, width=width+10)
+  print(hm); dev.off()
+
+  if (any(is.finite(expr_mat))) {
+    height = 4; width = 3
+    mat = expr_mat
+    cols = colorRamp2(breaks = seq(min(mat, na.rm=T), max(mat, na.rm=T), length.out=9),
+                      colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = F, col = cols,
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, "expr_heatmap_no-names.pdf"), height=height+2, width=width+2)
+    print(hm); dev.off()
+
+    height = 10; width = 3
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = T, col = cols,
+                 row_names_gp = gpar(fontsize=6),
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, "epxr_heatmap_names.pdf"), height=height+2, width=width+2)
+    print(hm); dev.off()
+  }
+
+  ## ---- Heatmap: Negative ----
+  ereg_pattern = "\\-\\/\\-"
+  gene_auc_cur = gene_auc %>% select(one_of("cluster"), matches(ereg_pattern))
+  colnames(gene_auc_cur) = sub("_(direct|extended)_\\-\\/\\-_\\([0-9]+[a-z]\\)", "", colnames(gene_auc_cur))
+  gene_auc_cur = gene_auc_cur %>% pivot_longer(-cluster, names_to="tf") %>%
+    filter(!is.na(tf))
+  region_auc_cur = region_auc %>% select(one_of("cluster"), matches(ereg_pattern))
+  colnames(region_auc_cur) = sub("_\\-\\/\\-_\\([0-9]+[a-z]\\)", "", colnames(region_auc_cur))
+
+  gene_auc_cur_mean = gene_auc_cur %>%
+    group_by(cluster, tf) %>%
+    summarize(value_mean = mean(value), .groups = "drop") %>%
+    group_by(tf) %>%
+    mutate(value_mean_scale = scale_01(value_mean)) %>%
+    pivot_wider(id_cols = cluster, names_from = "tf", values_from = "value_mean_scale") %>%
+    column_to_rownames("cluster") %>%
+    as.matrix() %>%
+    t()
+  gene_auc_cur_mean = na.omit(gene_auc_cur_mean)
+
+  region_auc_cur_mean = region_auc_cur %>%
+    group_by(cluster) %>%
+    summarize_all(mean) %>%
+    column_to_rownames("cluster") %>%
+    mutate_all(scale) %>%
+    as.matrix() %>%
+    t()
+
+  expr_mat = obj_avg[intersect(rownames(gene_auc_cur_mean), rownames(obj_avg)),
+                     intersect(colnames(gene_auc_cur_mean), colnames(obj_avg))]
+  expr_mat = t(scale(t(expr_mat)))
+  expr_mat[!is.finite(expr_mat)] = NA
+
+  hc = hclust(dist(gene_auc_cur_mean), method="ward.D")
+
+  height = 4; width = 3
+  mat = gene_auc_cur_mean
+  colors = scales::brewer_pal(palette = "BuGn", direction = 1)(9)
+  cols = colorRamp2(breaks = seq(min(mat, na.rm=T), max(mat, na.rm=T), length.out=9), colors = colors)
+
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = F, col = cols,
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, "gene_auc_heatmap_negative_no-names.pdf"), height=height+2, width=width+2)
+  print(hm); dev.off()
+
+  height = 10; width = height * ncol(mat) / nrow(mat)
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = T, col = cols,
+               row_names_gp = gpar(fontsize=6),
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, "gene_auc_heatmap_negative_names.pdf"), height=height+10, width=width+10)
+  print(hm); dev.off()
+
+  if (any(is.finite(expr_mat))) {
+    height = 4; width = 3
+    mat = expr_mat
+    cols = colorRamp2(breaks = seq(min(mat, na.rm=T), max(mat, na.rm=T), length.out=9),
+                      colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = F, col = cols,
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, "expr_heatmap_no-names.pdf"), height=height+2, width=width+2)
+    print(hm); dev.off()
+
+    height = 10; width = 3
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = T, col = cols,
+                 row_names_gp = gpar(fontsize=6),
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, "epxr_heatmap_names.pdf"), height=height+2, width=width+2)
+    print(hm); dev.off()
+  }
+
+  
+  umap_dir = file.path(out_dir, "umaps")
+  dir.create(umap_dir, showWarnings = FALSE)
+  # ## ---- UMAPs ----
+
+  # 
+  to_plot = unique(ereg_sane$TF)
+  to_plot = intersect(Features(obj), to_plot)
+  DefaultAssay(obj) = "SCT"
+  reduction_cur = "dims30nn30mindist0.3"
+  # 
+  # for (tp in to_plot) {
+  #   gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
+  #                             aspect_ratio = 1, reduction = reduction_cur,
+  #                             raster = T, raster.dpi=c(1024,1024),
+  #                             pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
+  #   save_plot(file.path(umap_dir, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
+  # 
+  #   gg = Nebulosa::plot_density(obj, features = tp, size = .1,
+  #                               reduction = reduction_cur) + coord_equal()
+  #   save_plot (file.path(umap_dir, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
+  # }
+
+  ## Selected eRegulons UMAPs
+  ereg_select = c("MAFB_extended_+/+", "EMX2_direct_+/+")
+  nplot = 10
+  for (ereg_select_cur in ereg_select) {
+    ereg_sane_cur = ereg_sane %>% filter(eRegulon_name == ereg_select_cur) %>%
+      distinct(Gene, .keep_all=T) %>%
+      arrange(desc(importance_TF2G))
+    to_plot = head(na.omit(ereg_sane_cur$Gene), nplot)
+    to_plot = intersect(Features(obj), to_plot)
+    umap_dir_cur = file.path(umap_dir, sub("/", ":", ereg_select_cur))
+    dir.create(umap_dir_cur, showWarnings = FALSE)
+
+    for (tp in to_plot) {
+      gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
+                                aspect_ratio = 1, reduction = reduction_cur,
+                                raster = T, raster.dpi=c(1024,1024),
+                                pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
+      save_plot(file.path(umap_dir_cur, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
+
+      gg = Nebulosa::plot_density(obj, features = tp, size = .1,
+                                  reduction = reduction_cur) + coord_equal()
+      save_plot(file.path(umap_dir_cur, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
+    }
+  }
+
+  ## ---- Dot plots ----
+  dot_dir = file.path(out_dir, "dotplots")
+  dir.create(dot_dir, showWarnings = FALSE)
+
+  obj$cluster = factor(obj$cluster, levels=labels_order)
+  obj_sub = obj[, !is.na(obj$cluster)]
+  ereg_select = c("MAFB_extended_+/+", "EMX2_direct_+/+")
+  DefaultAssay(obj_sub) = "SCT"
+  nplot = 20
+
+  for (ereg_select_cur in ereg_select) {
+    ereg_select_cur_form = sub("/", ":", ereg_select_cur)
+    ereg_sane_cur = ereg_sane %>% filter(eRegulon_name == ereg_select_cur) %>%
+      distinct(Gene, .keep_all=T) %>%
+      arrange(desc(importance_x_rho_TF2G))
+    to_plot = head(na.omit(ereg_sane_cur$Gene), nplot)
+    to_plot = intersect(to_plot, rownames(obj_sub))
+    if (length(to_plot) == 0) {
+      message("Skipping dot plot for ", ereg_select_cur, " - eRegulon not found in this config")
+      next
+    }
+    gg = DotPlot_scCustom(obj_sub, features=to_plot, group.by = "cluster", flip_axes = T, x_lab_rotate = T)
+    save_plot(file.path(dot_dir, str_interp("${ereg_select_cur_form}.pdf")), gg,
+              base_height = 3 * nplot/10, base_width = 10)
+  }
+
+  ## ---- GO analysis ----
+  # all_genes = rownames(obj)
+  # all_genes_id = bitr(all_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
+  # tfs_cur = unique(ereg_sane$TF)
+  # 
+  # go_fname = file.path(out_dir, "gos.rds")
+  # gos = map(tfs_cur, function(tf) {
+  #   message("GO: ", tf)
+  #   ereg_sane_cur = ereg_sane %>% filter(TF == tf)
+  #   regs = unique(ereg_sane_cur$regulation)
+  #   map(regs, function(reg) {
+  #     ereg_sane_cur1 = ereg_sane_cur %>% filter(regulation==reg)
+  #     sel_genes = unique(ereg_sane_cur1$Gene)
+  #     sel_genes_id = bitr(sel_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
+  #     enrichGO(gene     = sel_genes_id$ENTREZID,
+  #              universe = all_genes_id$ENTREZID,
+  #              OrgDb    = org.Hs.eg.db,
+  #              ont      = "ALL",
+  #              maxGSSize = 200,
+  #              readable = TRUE)
+  #   }) %>% set_names(regs)
+  # }) %>% set_names(tfs_cur)
+  # saveRDS(gos, go_fname)
+  # 
+  # go_df = map(gos, function(go1) {
+  #   map(go1, as.data.frame) %>% bind_rows(.id = "sign")
+  # }) %>% bind_rows(.id="pair")
+
+  ## ---- TF networks ----
+  ereg_sane_out = ereg_sane %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(TF, Gene, regulation, contains("importance"), contains("rho"))
+  out_fname = file.path(out_dir, "scenicplus_sane.txt")
+  write_delim(ereg_sane_out, out_fname, delim="\t")
+
+  ereg_tf_out = ereg_tf %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(TF, Gene, regulation, contains("importance"), contains("rho"))
+  out_fname = file.path(out_dir, "scenicplus_tf-tf.txt")
+  write_delim(ereg_tf_out, out_fname, delim="\t")
+
+  message("Done with ", config_name)
+}
+```
+
+## Summary: regulators of MAFB and EMX2 across configs
+
+```{r}
+## Collect all per-config output directories that have the regulators file
+summary_config_dirs = list.dirs(out_dir_base, recursive = FALSE)
+summary_config_dirs = sort(summary_config_dirs[grepl("config[0-9]+$", summary_config_dirs)])
+summary_config_dirs = summary_config_dirs[
+  file.exists(file.path(summary_config_dirs, "regulators_MAFB_EMX2.txt"))]
+message("Summarizing ", length(summary_config_dirs), " configs: ",
+        paste(basename(summary_config_dirs), collapse = ", "))
+
+## Read all per-config files
+regulators_all = map(summary_config_dirs, \(cd) {
+  read_tsv(file.path(cd, "regulators_MAFB_EMX2.txt"), show_col_types = FALSE) %>%
+    mutate(config = basename(cd))
+}) %>% bind_rows()
+
+ror_all = map(summary_config_dirs, \(cd) {
+  read_tsv(file.path(cd, "regulators_of_regulators_MAFB_EMX2.txt"), show_col_types = FALSE) %>%
+    mutate(config = basename(cd))
+}) %>% bind_rows()
+
+## Order configs numerically
+config_levels = unique(c(regulators_all$config, ror_all$config))
+config_levels = config_levels[order(as.integer(sub("config", "", config_levels)))]
+regulators_all = regulators_all %>% mutate(config = factor(config, levels = config_levels))
+ror_all       = ror_all       %>% mutate(config = factor(config, levels = config_levels))
+
+## Helper: build wide summary with one row per (Gene, TF)
+make_wide_summary = function(df) {
+  wide = df %>%
+    select(Gene, TF, regulation, config, importance_TF2G, rho_TF2G, importance_x_abs_rho_TF2G) %>%
+    pivot_wider(
+      id_cols   = c(Gene, TF, regulation),
+      names_from  = config,
+      values_from = c(importance_TF2G, rho_TF2G, importance_x_abs_rho_TF2G),
+      names_glue  = "{config}_{.value}"
+    )
+
+  summary_cols = df %>%
+    group_by(Gene, TF) %>%
+    summarize(
+      n_configs             = n_distinct(config),
+      configs_present       = paste(sort(unique(as.character(config))), collapse = ","),
+      mean_importance_TF2G  = mean(importance_TF2G),
+      mean_rho_TF2G         = mean(rho_TF2G),
+      .groups = "drop"
+    )
+
+  wide %>%
+    left_join(summary_cols, by = c("Gene", "TF")) %>%
+    arrange(Gene, desc(n_configs), desc(mean_importance_TF2G))
+}
+
+reg_wide = make_wide_summary(regulators_all)
+ror_wide = make_wide_summary(ror_all)
+
+## Write summary files
+write_tsv(reg_wide, file.path(out_dir_base, "summary_regulators_MAFB_EMX2.txt"))
+write_tsv(ror_wide, file.path(out_dir_base, "summary_regulators-of-regulators_MAFB_EMX2.txt"))
+message("Summary files written to ", out_dir_base)
+
+## Quick overview: TFs present in >= 2 configs
+message("\n--- Regulators of MAFB / EMX2 (n_configs >= 2) ---")
+reg_wide %>%
+  filter(n_configs >= 2) %>%
+  select(Gene, TF, regulation, n_configs, configs_present,
+         mean_importance_TF2G, mean_rho_TF2G) %>%
+  print(n = 100)
+
+message("\n--- Regulators of regulators of MAFB / EMX2 (n_configs >= 2) ---")
+ror_wide %>%
+  filter(n_configs >= 2) %>%
+  select(Gene, TF, regulation, n_configs, configs_present,
+         mean_importance_TF2G, mean_rho_TF2G) %>%
+  print(n = 100)
+```
+

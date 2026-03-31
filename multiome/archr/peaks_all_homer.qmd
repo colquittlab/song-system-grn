@@ -1,0 +1,518 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+
+n= dplyr::n
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+out_name = "peaks_all_homer"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+addArchRThreads(threads = 36) 
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+
+## Add peaks
+```{r}
+#pathToMacs2 <- findMacs2()
+
+if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
+  proj <- addReproduciblePeakSet(
+    ArchRProj = proj, 
+    threads = 1, 
+    groupBy = "cluster",
+    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
+    excludeChr = "chrM",
+    genomeSize = 1E9,
+    plot=F,
+    genomeAnnotation = genomeAnnotation,
+    geneAnnotation = geneAnnotation
+  )
+  proj <- addPeakMatrix(proj)
+  saveArchRProject(proj, load=F)
+} 
+
+```
+
+## DARs 
+```{r}
+# pair_list = list(ra= list("Glut-RA"),
+#                  hvc_1 = list("Glut-HVC-1"),
+#                  hvc_2 = list("Glut-HVC-2"),
+#                  gaba4 = list("GABA-4-1"),
+#                  gaba2= list("GABA-2-1"),
+#                  astro = list("Astro-1")
+#                  )
+```
+
+```{r}
+markers_peaks_se_fname = file.path(out_dir, "dars_se.rds")
+
+redo = F
+if (redo) {
+   marker_peaks = getMarkerFeatures(
+      ArchRProj = proj, 
+      useMatrix = "PeakMatrix", 
+      groupBy = "cluster",
+      bias = c("TSSEnrichment", "log10(nFrags)"),
+      testMethod = "wilcoxon")
+  
+  
+  saveRDS(marker_peaks, markers_peaks_se_fname)
+  
+} else {
+  marker_peaks = readRDS(markers_peaks_se_fname)
+}
+
+marker_peaks_gr = getMarkers(marker_peaks, cutOff = "FDR < 0.1 & Log2FC >= 1", returnGR=T)
+
+# marker_peaks_df = map(marker_peaks_gr, as.data.frame) %>%
+#   bind_rows( .id="comparison")
+
+
+```
+
+## HOMER motif enrichment (DARs by comparison)
+```{r}
+dar_homer_dir = file.path(out_dir, "homer_dars")
+dir.create(dar_homer_dir, recursive = TRUE)
+genome_fa = "/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
+
+write_bed = function(gr_sub, path) {
+  if (length(gr_sub) == 0) {
+    file.create(path)
+    return(invisible(NULL))
+  }
+  df = data.frame(
+    seqnames(gr_sub), start(gr_sub), end(gr_sub),
+    paste0(seqnames(gr_sub), ":", start(gr_sub), "-", end(gr_sub)),
+    0, strand(gr_sub)
+  )
+  write_tsv(df, path, col_names = FALSE)
+}
+
+# Write BED files split by Log2FC sign for each comparison
+walk(names(marker_peaks_gr), function(comp) {
+  gr = marker_peaks_gr[[comp]]
+  gr_pos = gr[gr$Log2FC > 0]  # more accessible in foreground group
+  gr_neg = gr[gr$Log2FC < 0]  # less accessible in foreground group
+  message(sprintf("%s: %d DARs", comp, length(gr_pos)))
+  write_bed(gr_pos, file.path(dar_homer_dir, sprintf("%s_pos.bed", comp)))
+})
+```
+
+```{r}
+Sys.setenv(PATH = paste("/opt/homer/bin", Sys.getenv("PATH"), sep = ":"))
+
+walk(names(marker_peaks_gr), function(comp) {
+  bed_pos = file.path(dar_homer_dir, sprintf("%s_pos.bed", comp))
+
+  # Skip if either set is empty
+  if (file.size(bed_pos) == 0) {
+    message(sprintf("%s: skipping HOMER (one BED is empty)", comp))
+    return(invisible(NULL))
+  }
+
+  out_pos = file.path(dar_homer_dir, sprintf("%s_pos_vs_neg", comp))
+  cmd_pos = sprintf(
+    "findMotifsGenome.pl %s %s %s -size given -len 8,10,12 -p 24",
+    bed_pos, genome_fa, out_pos
+  )
+  message(cmd_pos)
+  system(cmd_pos)
+})
+```
+
+```{r}
+# Build vector of all DAR HOMER run IDs; only include dirs that exist
+run_ids = as.character(outer(names(marker_peaks_gr), c("pos_vs_neg"), paste, sep = "_"))
+run_ids = run_ids[dir.exists(file.path(dar_homer_dir, run_ids))]
+run_colors = setNames(scales::hue_pal()(length(run_ids)), run_ids)
+```
+
+```{r}
+# Import HOMER knownResults.txt for each DAR run
+homer_motifs = map_dfr(run_ids, function(rid) {
+  results_file = file.path(dar_homer_dir, rid, "knownResults.txt")
+  if (file.exists(results_file)) {
+    df = read_tsv(results_file, col_names = c("motif_name", "consensus", "pvalue",
+                                               "log_pvalue", "qvalue",
+                                               "n_target", "pct_target",
+                                               "n_bg", "pct_bg"),
+                  skip = 1, show_col_types = FALSE)
+    df$run_id = rid
+    df
+  }
+})
+
+homer_motifs = homer_motifs %>%
+  mutate(pct_target = as.numeric(gsub("%", "", pct_target)),
+         pct_bg = as.numeric(gsub("%", "", pct_bg)),
+         tf = gsub("\\(.*", "", motif_name),
+         enrichment = pct_target / pct_bg)
+```
+
+```{r}
+# Top motifs per run
+homer_top = homer_motifs %>%
+  group_by(run_id) %>%
+  top_n(10, -log_pvalue) %>%
+  ungroup()
+
+homer_top_mat = homer_motifs %>%
+  filter(tf %in% homer_top$tf) %>%
+  select(run_id, tf, enrichment) %>%
+  group_by(run_id, tf) %>%
+  dplyr::summarize(enrichment = mean(enrichment)) %>% 
+  pivot_wider(names_from = "run_id", values_from = "enrichment", values_fill = 0) %>%
+  column_to_rownames("tf") %>% as.matrix()
+
+hm_motifs = Heatmap(log2(homer_top_mat + 1),
+                    name = "log2(enrichment+1)",
+                    cluster_columns = FALSE)
+hm_motifs
+```
+
+```{r}
+# Import known motif matrices from knownResults/ directories
+library(universalmotif)
+
+homer_known_motifs = map_dfr(run_ids, function(rid) {
+  motif_dir = file.path(dar_homer_dir, rid, "knownResults")
+  motif_files = list.files(motif_dir, pattern = "^known\\d+\\.motif$", full.names = TRUE)
+  map_dfr(motif_files, function(f) {
+    lines = readLines(f)
+    header = lines[1]
+    mat_lines = lines[-1]
+    mat = do.call(rbind, lapply(mat_lines, function(l) as.numeric(strsplit(trimws(l), "\\s+")[[1]])))
+    colnames(mat) = c("A", "C", "G", "T")
+    motif_rank = as.integer(gsub(".*known(\\d+)\\.motif", "\\1", f))
+    motif_name_parsed = gsub("^>(\\S+).*", "\\1", header)
+    tibble(run_id = rid, rank = motif_rank, consensus = motif_name_parsed,
+           motif_file = f, mat = list(mat))
+  })
+})
+
+# Add rank to homer_motifs for joining
+homer_motifs = homer_motifs %>%
+  group_by(run_id) %>%
+  dplyr::mutate(rank = row_number()) %>%
+  ungroup()
+```
+
+```{r}
+# Filter known motifs by q-value threshold
+known_qval_thresh = 1E-4
+
+homer_known_motifs_filt = homer_known_motifs %>%
+  inner_join(homer_motifs %>% select(run_id, rank, qvalue), by = c("run_id", "rank")) %>%
+  filter(qvalue <= known_qval_thresh) %>%
+  select(-qvalue)
+
+# Convert filtered known motifs to universalmotif objects
+umotifs_known = map(seq_len(nrow(homer_known_motifs_filt)), function(i) {
+  row = homer_known_motifs_filt[i,]
+  create_motif(t(row$mat[[1]]), type = "PPM",
+               name = sprintf("%s #%d: %s", row$run_id, row$rank, row$consensus))
+})
+```
+
+```{r}
+# Cluster known motifs by sequence similarity
+sim_mat_known = compare_motifs(umotifs_known, method = "PCC")
+sim_mat_known[!is.finite(sim_mat_known)] = 0
+motif_dist_known = as.dist(1 - sim_mat_known)
+motif_hc_known = hclust(motif_dist_known, method = "average")
+```
+
+```{r}
+plot(motif_hc_known, labels = FALSE)
+```
+
+```{r}
+# Cut dendrogram to group similar known motifs
+motif_group_known_h = 0.4
+motif_groups_known = cutree(motif_hc_known, h = motif_group_known_h)
+
+motif_group_known_df = tibble(
+  run_id = homer_known_motifs_filt$run_id,
+  rank = homer_known_motifs_filt$rank,
+  motif_group = motif_groups_known
+)
+
+homer_motifs = homer_motifs %>%
+  select(-any_of(c("motif_group", "motif_group_label"))) %>%
+  left_join(motif_group_known_df, by = c("run_id", "rank"))
+
+motif_group_known_labels = homer_motifs %>%
+  filter(!is.na(motif_group)) %>%
+  group_by(motif_group) %>%
+  slice_min(log_pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(motif_group, motif_group_label = tf)
+
+homer_motifs = homer_motifs %>%
+  select(-any_of("motif_group_label")) %>%
+  left_join(motif_group_known_labels, by = "motif_group")
+```
+
+```{r fig.height=8, fig.width=6}
+# Heatmap of known motif_group enrichment across runs
+motif_group_known_enrich = homer_motifs %>%
+  filter(!is.na(motif_group), is.finite(enrichment)) %>%
+  group_by(run_id, motif_group, motif_group_label) %>%
+  summarize(enrichment = max(enrichment, na.rm = TRUE),
+            log_pvalue = min(log_pvalue, na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(is.finite(enrichment))
+
+motif_group_known_enrich_mat = motif_group_known_enrich %>%
+  mutate(label = sprintf("%d: %s", motif_group, motif_group_label)) %>%
+  select(run_id, label, enrichment) %>%
+  pivot_wider(names_from = "run_id", values_from = "enrichment", values_fill = 1) %>%
+  column_to_rownames("label") %>% as.matrix()
+
+Heatmap(log2(motif_group_known_enrich_mat),
+        name = "log2(enrichment)",
+        cluster_columns = TRUE,
+        row_names_gp = gpar(fontsize = 7))
+```
+
+```{r fig.height=8, fig.width=10}
+# Similarity heatmap for known motifs
+motif_names_known = map_chr(umotifs_known, function(m) m@name)
+rownames(sim_mat_known) = motif_names_known
+colnames(sim_mat_known) = motif_names_known
+
+run_ids_known = homer_known_motifs_filt$run_id
+names(run_ids_known) = motif_names_known
+ha_known = HeatmapAnnotation(run = run_ids_known,
+                              col = list(run = run_colors[unique(run_ids_known)]))
+
+hm_known_sim = Heatmap(sim_mat_known,
+        name = "PCC",
+        cluster_rows = motif_hc_known,
+        cluster_columns = motif_hc_known,
+        top_annotation = ha_known,
+        show_row_names = FALSE,
+        show_column_names = FALSE)
+hm_known_sim
+
+pdf(file.path(out_dir, "dar_known_motif_similarity_heatmap.pdf"), height = 10, width = 10)
+draw(hm_known_sim)
+dev.off()
+```
+
+```{r}
+# Import HOMER homerResults.html (de novo) for each DAR run
+library(rvest)
+
+homer_denovo = map_dfr(run_ids, function(rid) {
+  html_file = file.path(dar_homer_dir, rid, "homerResults.html")
+  if (file.exists(html_file)) {
+    page = read_html(html_file)
+    rows = page %>% html_nodes("tr") %>% tail(-1)
+    map_dfr(seq_along(rows), function(i) {
+      tds = rows[[i]] %>% html_nodes("td") %>% html_text(trim = TRUE)
+      tibble(
+        rank = as.integer(tds[1]),
+        pvalue = tds[3],
+        log_pvalue = as.numeric(tds[4]),
+        pct_target = as.numeric(gsub("%", "", tds[5])),
+        pct_bg = as.numeric(gsub("%", "", tds[6])),
+        best_match = gsub("\\(.*", "", gsub("More Information.*", "", tds[8]))
+      )
+    }) %>% mutate(run_id = rid)
+  }
+})
+
+homer_denovo = homer_denovo %>%
+  mutate(tf = trimws(best_match),
+         enrichment = pct_target / pct_bg,
+         motif_num = rank)
+```
+
+```{r}
+# Top de novo motifs per run
+homer_denovo_top = homer_denovo %>%
+  group_by(run_id) %>%
+  top_n(10, -log_pvalue) %>%
+  ungroup()
+
+homer_denovo_mat = homer_denovo %>%
+  filter(tf %in% homer_denovo_top$tf) %>%
+  group_by(run_id, tf) %>%
+  slice_max(enrichment, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(run_id, tf, enrichment) %>%
+  pivot_wider(names_from = "run_id", values_from = "enrichment", values_fill = 0) %>%
+  column_to_rownames("tf") %>% as.matrix()
+
+hm_denovo = Heatmap(log2(homer_denovo_mat + 1),
+                    name = "log2(enrichment+1)",
+                    cluster_columns = FALSE)
+hm_denovo
+```
+
+```{r fig.height=3, fig.width=8}
+# Import de novo motif matrices
+library(universalmotif)
+
+homer_denovo_motifs = map_dfr(run_ids, function(rid) {
+  motif_dir = file.path(dar_homer_dir, rid, "homerResults")
+  motif_files = list.files(motif_dir, pattern = "^motif\\d+\\.motif$", full.names = TRUE)
+  map_dfr(motif_files, function(f) {
+    lines = readLines(f)
+    header = lines[1]
+    mat_lines = lines[-1]
+    mat = do.call(rbind, lapply(mat_lines, function(l) as.numeric(strsplit(trimws(l), "\\s+")[[1]])))
+    colnames(mat) = c("A", "C", "G", "T")
+    motif_num = as.integer(gsub(".*motif(\\d+)\\.motif", "\\1", f))
+    consensus = gsub("^>(\\S+).*", "\\1", header)
+    best_guess = gsub(".*BestGuess:", "", header)
+    best_guess = gsub("\\s.*", "", best_guess)
+    tibble(run_id = rid, motif_num = motif_num, consensus = consensus,
+           best_guess = best_guess, motif_file = f, mat = list(mat))
+  })
+})
+
+denovo_pval_thresh = 0.01
+
+homer_denovo_motifs_filt = homer_denovo_motifs %>%
+  inner_join(homer_denovo %>% select(run_id, motif_num, pvalue, log_pvalue),
+             by = c("run_id", "motif_num")) %>%
+  filter(as.numeric(pvalue) <= denovo_pval_thresh) %>%
+  select(-pvalue, -log_pvalue)
+
+homer_denovo_top_motifs = homer_denovo_motifs_filt %>%
+  group_by(run_id) %>%
+  filter(motif_num <= 10) %>%
+  ungroup()
+
+umotifs_all = map(seq_len(nrow(homer_denovo_motifs_filt)), function(i) {
+  row = homer_denovo_motifs_filt[i,]
+  create_motif(t(row$mat[[1]]), type = "PPM",
+               name = sprintf("%s #%d: %s", row$run_id, row$motif_num, row$best_guess))
+})
+```
+
+```{r fig.height=10, fig.width=12}
+# Cluster all de novo motifs by sequence similarity
+sim_mat = compare_motifs(umotifs_all, method = "PCC")
+sim_mat[!is.finite(sim_mat)] = 0
+motif_dist = as.dist(1 - sim_mat)
+motif_hc = hclust(motif_dist, method = "average")
+
+view_motifs(umotifs_all[motif_hc$order], dedup.names = TRUE)
+```
+
+```{r fig.height=8, fig.width=10}
+# Similarity heatmap with dendrogram
+motif_names = map_chr(umotifs_all, function(m) m@name)
+rownames(sim_mat) = motif_names
+colnames(sim_mat) = motif_names
+
+run_ids_denovo = homer_denovo_motifs_filt$run_id
+names(run_ids_denovo) = motif_names
+ha = HeatmapAnnotation(run = run_ids_denovo,
+                        col = list(run = run_colors[unique(run_ids_denovo)]))
+
+Heatmap(sim_mat,
+        name = "PCC",
+        cluster_rows = motif_hc,
+        cluster_columns = motif_hc,
+        top_annotation = ha,
+        column_names_gp = gpar(fontsize = 6),
+        row_names_gp = gpar(fontsize = 6))
+```
+
+```{r}
+plot(motif_hc, labels = FALSE)
+```
+
+```{r}
+# Cut dendrogram to group similar de novo motifs
+motif_group_h = 0.3
+motif_groups = cutree(motif_hc, h = motif_group_h)
+
+motif_group_df = tibble(
+  run_id = homer_denovo_motifs_filt$run_id,
+  motif_num = homer_denovo_motifs_filt$motif_num,
+  motif_group = motif_groups
+)
+
+homer_denovo = homer_denovo %>%
+  select(-any_of(c("motif_group", "motif_group_label"))) %>%
+  left_join(motif_group_df, by = c("run_id", "motif_num"))
+```
+
+```{r}
+# Label each motif_group by the best_match of its most significant member
+motif_group_labels = homer_denovo %>%
+  filter(!is.na(motif_group)) %>%
+  group_by(motif_group) %>%
+  slice_min(log_pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(motif_group, motif_group_label = best_match)
+
+homer_denovo = homer_denovo %>%
+  select(-any_of("motif_group_label")) %>%
+  left_join(motif_group_labels, by = "motif_group")
+```
+
+```{r fig.height=8, fig.width=6}
+# Heatmap of de novo motif_group enrichment across runs
+motif_group_enrich = homer_denovo %>%
+  filter(!is.na(motif_group), is.finite(enrichment)) %>%
+  group_by(run_id, motif_group, motif_group_label) %>%
+  summarize(enrichment = max(enrichment, na.rm = TRUE),
+            log_pvalue = min(log_pvalue, na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(is.finite(enrichment))
+
+motif_group_enrich_mat = motif_group_enrich %>%
+  mutate(label = sprintf("%d: %s", motif_group, motif_group_label)) %>%
+  select(run_id, label, enrichment) %>%
+  pivot_wider(names_from = "run_id", values_from = "enrichment", values_fill = 1) %>%
+  column_to_rownames("label") %>% as.matrix()
+
+Heatmap(log2(motif_group_enrich_mat),
+        name = "log2(enrichment)",
+        cluster_columns = TRUE,
+        row_names_gp = gpar(fontsize = 7))
+```
+

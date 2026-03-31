@@ -1,0 +1,159 @@
+```{r}
+library(Seurat)
+library(tidyverse)
+library(qs)
+library(seriation)
+library(cowplot)
+library(scCustomize)
+library(scales)
+library(Nebulosa)
+theme_set(theme_cowplot())
+
+source("~/nest/rstudio/utils/scRNA.R")
+source("~/nest/rstudio/utils/common_aesthetics.R")
+
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+# Directories -------------------------------------------------------------
+```{r}
+dir_root = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
+#scrna_dir =  file.path(dir_root, "")
+
+data_fname = file.path(dir_root, "obj_clustered.qs")
+out_dir = file.path(dir_root, "reduction_viz")
+script_name = "combined_all_umap_cluster-snrna-cr"
+out_dir = file.path(out_dir, script_name)
+dir.create(out_dir, recursive = T)
+
+data_out_obj_fname = file.path(out_dir, "obj_clustered.qs")
+```
+# Load data ---------------------------------------------------------------
+```{r}
+res_to_use = "cluster_snrna"
+
+dims = 30
+n.neighbors = 30L
+min.dist = .3
+pca_name = "pca_harmony"
+reduction.name = sprintf("dims%snn%smindist%s", dims, n.neighbors, min.dist)
+
+set.seed(10)
+
+redo = T
+if (redo) {
+  
+  
+  obj_int_filt = qread(data_fname)
+  obj_int_filt$region = case_when(obj_int_filt$position %in% c("ra", "arco") ~ "arco",
+                                  obj_int_filt$position %in% c("hvc", "nc") ~ "nc")
+  
+  DefaultAssay(obj_int_filt) = "RNA"
+  
+  # obj_list = SplitObject(obj_int_filt, split.by = "region")
+  # obj_list = map(obj_list, function(obj) {
+  #   
+  #   #obj[["RNA"]] = split(obj[["RNA"]], obj$replicate)
+  #   obj = obj %>% 
+  #     FindVariableFeatures() %>%
+  #     ScaleData() %>%
+  #     RunPCA() 
+  #   
+  #   obj = IntegrateLayers(obj, method=HarmonyIntegration, orig.reduction = "pca", assay = "RNA")
+  #   
+    obj_int_filt = RunUMAP(obj_int_filt, reduction = pca_name,
+                  dims = 1:dims,
+                  min.dist = min.dist,
+                  n.neighbors = n.neighbors,
+                  reduction.name=reduction.name)
+  #   
+  #   obj
+  #                 
+  #                 
+  # })
+
+  
+  qsave(obj_int_filt, data_out_obj_fname)
+} else {
+  obj_list = qread(data_out_obj_fname)
+}
+```
+# Plot UMAP --------------------------------------------------------------------
+
+```{r}
+cats = c("position", res_to_use)
+
+  for ( ca in cats ) {
+    ncat = length(unique(obj_int_filt@meta.data[,ca]))
+    print(ncat)
+    gg = DimPlot_scCustom(obj_int_filt, reduction=reduction.name, group.by=ca, label=T, repel = T, raster = T, pt.size = 2,raster.dpi = c(1024,1024),
+                          DiscretePalette_scCustomize(num_colors = ncat,
+                                                      palette = "varibow")) +
+      theme(axis.line = element_blank(),
+            axis.ticks = element_blank(),
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            legend.position="none"
+      ) +
+      labs(x="", y="UMAP2") 
+    gg
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s.pdf", ca, reduction.name)), gg, base_height=7, base_asp =1)
+  }
+
+
+ca = "position"
+  gg = DimPlot(obj_int_filt, reduction=reduction.name, group.by=ca, label=F, repel = T, raster = T, pt.size = 2,raster.dpi = c(1024,1024) ) +
+    theme(axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          legend.position="none"
+    ) +
+    scale_color_manual(values=position_colors)
+  gg
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s.pdf", reduction.name, ca)), gg, base_height=7, base_asp =1 )
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s.png", reduction.name, ca)), gg, base_height=7, base_asp =1 )
+  
+  
+  ca = "position"
+  gg = DimPlot(obj_int_filt, reduction=reduction.name, 
+               group.by=ca,
+               split.by=ca,
+               label=F, repel = T ) +
+    theme(axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          legend.position="none"
+    ) +
+    scale_color_manual(values=position_colors2)
+  
+  gg
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s_split.pdf", reduction.name, ca)), gg, base_height=7, base_asp =1, nrow=1, ncol=2 )
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s_split.png", reduction.name, ca)), gg, base_height=7, base_asp =1, nrow=1, ncol=2 )
+  
+  ca = res_to_use
+  gg = DimPlot_scCustom(obj_int_filt, reduction=reduction.name, group.by=ca, label=F, repel = T, 
+                        DiscretePalette_scCustomize(num_colors = ncat,
+                                                    palette = "varibow")) +
+    theme(axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          legend.position="none"
+    ) 
+  
+  gg
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s_no-label.pdf", reduction.name, ca)), gg, base_height=7, base_asp =1 )
+  save_plot(file.path(out_dir, sprintf("umap_%s_%s_no-label.png", reduction.name, ca)), gg, base_height=7, base_asp =1 )
+
+
+```

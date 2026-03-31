@@ -1,0 +1,804 @@
+---
+title: "Untitled"
+format: html
+editor: source
+---
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(scCustomize)
+library(qs)
+library(UpSetR)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ComplexHeatmap)
+library(cowplot)
+select = dplyr::select
+```
+
+```{r}
+prefix_dir = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
+data_obj = file.path(prefix_dir, "obj_clustered.qs")
+out_dir = file.path(prefix_dir, "deg")
+script_name = "song-surround_deg_glut"
+out_dir = file.path(out_dir, script_name)
+dir.create(out_dir)
+res_to_use = "cluster"
+```
+
+```{r}
+obj = qread(data_obj)
+cells = Cells(obj)[!grepl("/", obj$assignment)]
+obj = subset(obj, cells=cells)
+```
+
+```{r}
+table(obj$cluster, obj$position)
+```
+
+```{r}
+pairs = list(`Glut-RA` = c("Glut-RA", "Glut-Arco-1"),
+             `Glut-HVC-1` = c("Glut-HVC-1", "Glut-NC-1"),
+             `Glut-HVC-2` = c("Glut-HVC-2", "Glut-NC-4"))
+```
+
+# Markers
+
+```{r}
+assay_to_use = "SCT"
+markers_fname = file.path(out_dir, sprintf("marker_genes_cluster_%s.rds", assay_to_use))
+
+obj_agg = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use, "assignment"), return.seurat = T)
+Idents(obj_agg) = obj_agg$cluster
+  
+redo_markers = T
+if (redo_markers) {
+  
+  markers_agg = map(pairs, function(pair_cur) {
+    print(pair_cur)
+    res = FindMarkers(obj_agg, assay=assay_to_use, 
+                      ident.1=pair_cur[1], ident.2=pair_cur[2],
+                      test.use="DESeq2", only.pos = F, logfc.threshold = 0)
+    res = res %>% rownames_to_column(var="gene")
+    res
+  }) %>% set_names(names(pairs)) %>% bind_rows(.id="compare")
+  
+  saveRDS(markers_agg, markers_fname)
+} else {
+  markers_agg = readRDS(markers_fname)
+}
+```
+
+## Scatters
+
+```{r}
+markers_agg_df = markers_agg %>% 
+  filter(p_val_adj < .1) %>% 
+  select(avg_log2FC, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC")
+markers_agg_mat = markers_agg_df %>% column_to_rownames("gene") %>%
+  as.matrix()
+
+cor(markers_agg_mat, use = "complete")
+```
+
+```{r}
+
+ct1 = "Glut-HVC-1"
+ct2 = "Glut-HVC-2"
+ct_pairs = combn(names(pairs), m = 2, simplify = F)
+
+ngenes = 50
+
+markers_agg_df_cur = markers_agg_df %>%
+    filter(!grepl("^LOC", gene)) 
+
+walk(ct_pairs, function(x) {
+  ct1 = x[1]
+  ct2 = x[2]
+  
+markers1 = markers_agg_df_cur %>% 
+  top_n(ngenes, !!as.symbol(ct1)) %>%
+  select(gene) %>% unlist()
+
+markers2 = markers_agg_df_cur %>%
+  top_n(ngenes, !!as.symbol(ct2)) %>% 
+  select(gene) %>% unlist()
+
+top_markers = intersect(markers1, markers2)
+
+markers3 = markers_agg_df_cur %>% 
+  top_n(-1 * ngenes, !!as.symbol(ct1)) %>%
+  select(gene) %>% unlist()
+
+markers4 = markers_agg_df_cur %>%
+  top_n(-1 *ngenes, !!as.symbol(ct2)) %>% 
+  select(gene) %>% unlist()
+
+bottom_markers = intersect(markers3, markers4)
+to_plot_markers = c(bottom_markers, top_markers)
+
+
+markers_agg_df_cur = markers_agg_df %>% select(gene, !!as.symbol(ct1), !!as.symbol(ct2)) %>%
+  mutate(to_plot = if_else(gene %in% to_plot_markers, gene, NA))
+gg = ggplot(markers_agg_df_cur, aes(!!as.symbol(ct1), !!as.symbol(ct2))) + 
+  geom_vline(xintercept=0, linetype = 2) +
+  geom_hline(yintercept=0, linetype = 2) +
+  geom_point() + 
+  ggrepel::geom_text_repel(aes(label=to_plot), na.rm = T, force_pull = 2) +
+  theme_bw() + 
+  coord_equal()
+print(gg)
+save_plot(file.path(out_dir, str_interp("scatter_${ct1}_${ct2}.pdf")), gg)
+})
+```
+
+## Heatmap
+```{r}
+ngenes = 50
+markers_agg_select = markers_agg %>%
+  group_by(compare) %>%
+  top_n(ngenes, abs(avg_log2FC))
+  
+
+markers_agg_mat = markers_agg %>%
+  filter(gene %in% markers_agg_select$gene) %>% 
+  select(avg_log2FC, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC") %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+height = 15
+width = 0.5
+
+max_val = 4
+cols_cur = circlize::colorRamp2(breaks=c(-1*max_val, 0, max_val), colors = c(scales::muted("blue"), "white", scales::muted("red")))
+  
+hc = hclust(dist(markers_agg_mat), method = "ward.D")
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             cluster_rows = hc,
+             #clustering_method_rows = "ward.D",
+             show_column_dend = F,
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+pdf(file.path(out_dir, "heatmap.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+height = 2
+width = 0.5
+
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             cluster_rows = hc,
+             #clustering_method_rows = "ward.D",
+             show_column_dend = F,
+             show_row_names = F,
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+pdf(file.path(out_dir, "heatmap_no_genes.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+```
+```{r}
+
+markers_agg_select = markers_agg %>%
+  filter(p_val_adj < 0.1) %>%
+  filter(abs(avg_log2FC) >= 1) 
+  
+
+markers_agg_mat = markers_agg %>%
+  filter(gene %in% markers_agg_select$gene) %>% 
+  select(avg_log2FC, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC") %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+markers_agg_mat = markers_agg_mat[,c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA")]
+markers_agg_mat = na.omit(markers_agg_mat)
+
+hc = hclust(dist(markers_agg_mat), method = "ward.D")
+
+height = 15
+width = 0.5
+
+max_val = 4
+cols_cur = circlize::colorRamp2(breaks=c(-1*max_val, 0, max_val), colors = c(scales::muted("blue"), "white", scales::muted("red")))
+  
+hc = hclust(dist(markers_agg_mat), method = "ward.D")
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             cluster_rows = hc,
+             cluster_columns = F,
+             #clustering_method_rows = "ward.D",
+             show_column_dend = F,
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+pdf(file.path(out_dir, "heatmap_sig.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+
+
+height = 2
+width = 0.5
+
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             cluster_rows = hc,
+             cluster_columns = F,
+             #clustering_method_rows = "ward.D",
+             show_column_dend = F,
+             show_row_names = F,
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+pdf(file.path(out_dir, "heatmap_sig_no_genes.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+
+dist_mat = as.matrix(dist(markers_agg_mat))
+hc_cut = dynamicTreeCut::cutreeDynamic(hc, cutHeight = 100,  method="hybrid", distM = dist_mat, minClusterSize = 20)
+genes_split = split(hc$labels, hc_cut)
+table(hc_cut)
+```
+
+```{r}
+
+markers_agg = markers_agg %>%
+  mutate(avg_log2FC_sign = sign(avg_log2FC))
+
+markers_agg_select = markers_agg %>%
+  filter(p_val_adj < 0.1) %>%
+  filter(abs(avg_log2FC) >= 1) 
+  
+markers_agg_select_label = markers_agg_select %>%
+  group_by(compare, avg_log2FC_sign ) %>% 
+  filter(!grepl("LOC|nbis", gene)) %>% 
+  top_n(5, abs(avg_log2FC)) %>%
+  ungroup() %>% 
+  distinct(gene)
+
+markers_agg_mat = markers_agg %>%
+  filter(gene %in% markers_agg_select$gene) %>% 
+  select(avg_log2FC, compare, gene) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+markers_agg_mat = markers_agg_mat[,c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")]
+#markers_agg_mat[marke]
+
+
+
+hc = hclust(dist(markers_agg_mat), method = "ward.D2")
+
+height = 3
+width = 0.5
+
+max_val = 4
+cols_cur = circlize::colorRamp2(breaks=c(-1*max_val, 0, max_val), colors = c(scales::muted("blue"), "white", scales::muted("red")))
+  
+markers_agg_select_label_ind = na.omit(match(markers_agg_select_label$gene,
+                                             rownames(markers_agg_mat)))
+
+ha = rowAnnotation(foo = anno_mark(at = markers_agg_select_label_ind, 
+                                   labels = markers_agg_select_label$gene, 
+                                   labels_gp = gpar(fontsize=5), 
+                                   lines_gp=gpar(lwd=.5)) )
+
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             
+             show_row_names = F,
+             cluster_rows = hc,
+             cluster_columns = F,
+             right_annotation = ha,
+             show_column_dend = F,
+             row_dend_gp = gpar(lwd=.5),
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+print(hm)
+pdf(file.path(out_dir, "heatmap_sig_label.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+
+
+dist_mat = as.matrix(dist(markers_agg_mat))
+hc_cut = dynamicTreeCut::cutreeDynamic(hc, method="hybrid", distM = dist_mat, minClusterSize = 20)
+table(hc_cut)
+
+hc_cut_df = data.frame(gene = rownames(markers_agg_mat), hc_cut = hc_cut)
+markers_agg_select_label = markers_agg_select %>% 
+  left_join(hc_cut_df) %>% 
+  group_by(hc_cut) %>% 
+  filter(!grepl("LOC|nbis", gene)) %>% 
+  top_n(4, abs(avg_log2FC)) %>%
+  ungroup() %>% 
+  distinct(gene)
+
+height = 3
+width = 0.5
+
+max_val = 4
+cols_cur = circlize::colorRamp2(breaks=c(-1*max_val, 0, max_val), colors = c(scales::muted("blue"), "white", scales::muted("red")))
+  
+markers_agg_select_label_ind = na.omit(match(markers_agg_select_label$gene,
+                                             rownames(markers_agg_mat)))
+
+ha = rowAnnotation(foo = anno_mark(at = markers_agg_select_label_ind, 
+                                   labels = markers_agg_select_label$gene, 
+                                   labels_gp = gpar(fontsize=5), 
+                                   lines_gp=gpar(lwd=.5)) )
+
+hm = Heatmap(markers_agg_mat, col = cols_cur,
+             show_row_names = F,
+             cluster_rows = hc,
+             cluster_columns = F,
+             right_annotation = ha,
+             show_column_dend = F,
+             row_dend_gp = gpar(lwd=.5),
+             height = unit(height, "inch"),
+             width = unit(width, "inch"))
+print(hm)
+pdf(file.path(out_dir, "heatmap_sig_label_cluster.pdf"), width = width + 4, height = height + 4)
+print(hm)
+dev.off()
+
+```
+
+### UMAPs
+```{r}
+umap_dir = file.path(out_dir, "umaps")
+dir.create(umap_dir)
+```
+
+```{r}
+obj_umap_fname =  file.path(prefix_dir, "reduction_viz", "combined_all_umap_glut", "obj_clustered.qs")
+obj_umap = qread(obj_umap_fname)
+```
+
+```{r}
+reductions_to_use = c(arco="dims10nn30mindist0.4", nido="dims20nn40mindist0.5") 
+```
+
+```{r}
+genes_to_plot = markers_agg_select_label$gene
+assays_to_use = c("SCT", "MAGIC_SCT")
+plot_dims = list(arco = c(height = 3, width = 3), nido = c(height = 4, width = 4 ))
+point_size_factors = list(arco = 1.5, nido = 1)
+walk(names(obj_umap), function(region_cur) {
+  obj_cur = obj_umap[[region_cur]]
+  reduction_to_use = reductions_to_use[region_cur]
+  plot_dim = plot_dims[[region_cur]]
+  point_size_factor = point_size_factors[[region_cur]]
+  
+  walk(assays_to_use, function(assay_to_use) {
+    DefaultAssay(obj_cur) = assay_to_use
+    walk(genes_to_plot, function(gene_to_plot) {
+      # gg = Nebulosa::plot_density(obj_cur, 
+      #                             features=gene_to_plot, 
+      #                             size = .5 * point_size_factor,
+      #                             reduction = reduction_to_use, raster = T) + 
+      #   coord_equal() + 
+      #   theme_void()
+      # save_plot(file.path(umap_dir, 
+      #                     str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}_density.pdf")), 
+      #           gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
+      
+      gg = FeaturePlot_scCustom(obj_cur,
+                                features=gene_to_plot,
+                                reduction=reduction_to_use,
+                                raster = T, raster.dpi = c(1024,1024),
+                                pt.size=2 * point_size_factor) + 
+        coord_equal()  + 
+        theme_void()
+      save_plot(file.path(umap_dir, 
+                          str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}.pdf")),
+                gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
+    })
+  })
+})
+```
+
+### GO, DEG clusters
+
+
+
+
+```{r}
+obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=res_to_use, return.seurat = T)
+mat = GetAssayData(obj_agg_cluster, assay = assay_to_use, layer = "data")
+
+to_keep = apply(mat, 1, function(x) sum(x>0) >= (ncol(mat) * 1))
+mat_expr = mat[to_keep,]
+```
+
+```{r}
+go_res_fname = file.path(out_dir, "go_res.rds")
+redo = T
+if (redo) {
+  entrezid = bitr(Features(obj), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+  
+  go_res = imap(genes_split, function(gene_set, gene_set_name) {
+    
+    gene_set_cur = entrezid$ENTREZID[match(gene_set, entrezid$SYMBOL)]
+    gene_set_cur = gene_set_cur[!is.na(gene_set_cur)]
+    
+    universe = rownames(mat_expr)
+    universe = entrezid$ENTREZID[match(universe, entrezid$SYMBOL)]
+    universe = universe[!is.na(universe)]
+    
+    go_res = enrichGO(gene_set_cur, universe = universe, OrgDb = org.Hs.eg.db, ont = "ALL", maxGSSize = 200 )
+    as.data.frame(go_res)
+  }) %>% set_names(names(genes_split)) %>% bind_rows(.id="gene_set")
+  
+  saveRDS(go_res, go_res_fname)
+} else {
+  go_res = readRDS(go_res_fname)
+}
+```
+
+
+## Dotplots
+
+```{r}
+cts = unlist(pairs)
+Idents(obj) = obj$cluster
+obj_sub = subset(obj, subset=cluster %in% cts)
+obj_sub$cluster = factor(obj_sub$cluster, levels = c("Glut-HVC-1","Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-LMAN-1", "Glut-NR-1", "Glut-LMAN-2", "Glut-NR-4", "Glut-RA", "Glut-Arco-1"))
+
+obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
+#Idents(obj_agg_cluster) = obj_agg$cluster
+
+```
+
+```{r}
+ngenes = 5
+
+scale_factor_y = .12
+scale_factor_x = .2
+height = nrow(markers_agg_mat) * scale_factor_y
+width = length(cts) * scale_factor_x
+
+markers_agg_select_up = markers_agg %>%
+  filter(!grepl("^LOC", gene)) %>% 
+  group_by(compare) %>%
+  top_n(ngenes, avg_log2FC) %>%
+  ungroup() %>% 
+  select(gene) %>% unlist() %>% unique()
+
+markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+markers_agg_mat = markers_agg_mat[markers_agg_select_up, cts]
+
+hc = hclust(dist(markers_agg_mat), method = "ward.D")
+
+markers_agg_select = hc$labels[hc$order]
+gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = "cluster", flip_axes = T, dot.scale=2)
+gg = gg + 
+  theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
+        axis.text.y = element_text(size=6),
+        axis.line = element_line(linewidth=.5),
+        legend.position="none")
+gg
+save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}.pdf")), gg, base_height=height, base_width=width)
+
+
+markers_agg_select_down = markers_agg %>%
+  filter(!grepl("^LOC", gene)) %>% 
+  group_by(compare) %>%
+  top_n(-1*ngenes, avg_log2FC) %>%
+  ungroup() %>% 
+  select(gene) %>% unlist() %>% unique()
+
+markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+markers_agg_mat = markers_agg_mat[markers_agg_select_down, cts]
+
+
+hc = hclust(dist(markers_agg_mat), method = "ward.D")
+
+markers_agg_select = hc$labels[hc$order]
+
+gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = "cluster", flip_axes = T, dot.scale=2)
+gg = gg + 
+  theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
+        axis.text.y = element_text(size=6),
+        axis.line = element_line(linewidth=.5),
+        legend.position="none")
+gg
+save_plot(file.path(out_dir, str_interp("dotplot_down_${ngenes}.pdf")), gg, base_height=height, base_width=width)
+
+```
+## Volcano
+
+```{r}
+markers_agg = markers_agg %>%
+  mutate(sig = p_val_adj < .1, 
+         avg_log2FC_sign = sign(avg_log2FC),
+         p_val_adj_mlog10 = -1 * log10(p_val_adj)) 
+
+markers_agg_to_plot = markers_agg %>%
+  group_by(avg_log2FC_sign, compare) %>% 
+  filter(!grepl("LOC", gene)) %>% 
+  top_n(5, p_val_adj_mlog10) %>%
+  mutate(gene_to_label = gene) %>% select(compare, gene_to_label, gene)
+
+markers_agg_tmp = markers_agg %>% left_join(markers_agg_to_plot)
+gg = ggplot(markers_agg_tmp, aes(avg_log2FC, p_val_adj_mlog10)) + 
+  geom_point(size=.1) + 
+  ggrepel::geom_text_repel(aes(label=gene_to_label), size=2.1) + 
+  facet_grid(.~compare, scales="free") + 
+  labs(x="", y="") + 
+  theme_bw() + 
+  theme(legend.position="none", 
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth=.25),
+        axis.line = element_line(linewidth=.25),
+        axis.ticks = element_line(linewidth=.25),
+        axis.text = element_text(size=6),
+        strip.text = element_text(size=7),
+        strip.background = element_blank()) 
+gg = egg::set_panel_size(p=gg, width = unit(.6, "in"), height=unit(1, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "deg-celltype-pairs_volcano.pdf"), gg, base_height = 2.5, base_width=1, ncol=5)
+```
+
+## Violins
+
+```{r}
+cts = unlist(pairs)
+Idents(obj) = obj$cluster
+obj_sub = subset(obj, subset=cluster %in% cts)
+obj_sub$cluster = factor(obj_sub$cluster, levels = c("Glut-HVC-1","Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-LMAN-1", "Glut-NR-1", "Glut-LMAN-2", "Glut-NR-4", "Glut-RA", "Glut-Arco-1"))
+```
+
+```{r}
+VlnPlot_scCustom(obj_sub, features = c("DPP6", "ADARB1"), group.by="cluster")
+```
+
+## Overlap of DEG
+
+```{r}
+markers_agg_split = split(markers_agg, markers_agg$compare)
+markers_agg_sig = map(markers_agg_split, function(x) {
+  x %>% 
+    dplyr::filter(p_val_adj < 0.1) %>%
+    #dplyr::filter(abs(avg_log2FC) >= 1) %>%
+    dplyr::select(gene) %>%
+    unlist()
+})
+set_order = rev(c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA", "Glut-LMAN-1", "Glut-LMAN-2"))
+#markers_agg_sig = markers_agg_sig[]
+markers_agg_sig_upset = fromList(markers_agg_sig)
+gg = upset(fromList(markers_agg_sig), group.by = "sets", order.by="freq", keep.order = T, sets = set_order, empty.intersections = "on", nintersects = 100) 
+gg
+```
+
+```{r}
+
+intersect_names = list(SMP = c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA"),
+                       NIDO = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2"),
+                       SONG = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA"),
+                       HVC = c("Glut-HVC-1", "Glut-HVC-2"),
+                       LMAN  = c("Glut-LMAN-1", "Glut-LMAN-2"),
+                       PP = c("Glut-HVC-1", "Glut-LMAN-1"),
+                       PS = c("Glut-HVC-2", "Glut-LMAN-2"))
+
+intersects = map(intersect_names, function(inter_cur) {
+  sort(Reduce(intersect, markers_agg_sig[inter_cur]))
+}) %>% set_names(names(intersect_names))
+```
+
+## GO Terms
+
+```{r}
+obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=res_to_use, return.seurat = T)
+mat = GetAssayData(obj_agg_cluster, assay = assay_to_use, layer = "data")
+
+thresh = .05
+plot(density(mat[,"Glut-HVC-1"]))
+mat_expr = map(1:ncol(mat), function(i) rownames(mat)[mat[,i] >= thresh]) %>%
+  set_names(colnames(mat))
+```
+
+```{r}
+
+entrezid = bitr(markers_agg_split[[1]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+
+go_res = map(names(intersect_names), function(compare) {
+  cts = intersect_names[[compare]]
+  
+  gene_set = entrezid$ENTREZID[match(intersects[[compare]], entrezid$SYMBOL)]
+  gene_set = gene_set[!is.na(gene_set)]
+  
+  universe = Reduce(intersect, mat_expr[cts])
+  universe = entrezid$ENTREZID[match(universe, entrezid$SYMBOL)]
+  universe = universe[!is.na(universe)]
+  
+  go_res = enrichGO(gene_set, universe = universe, OrgDb = org.Hs.eg.db, ont = "ALL", maxGSSize = 200 )
+  as.data.frame(go_res)
+}) %>% set_names(names(intersect_names)) %>% bind_rows(.id="compare")
+```
+
+## GSEA
+
+```{r}
+library(fgsea)
+gmt_dir = "/home/brad/nest/gene_lists/gmt/"
+gmt_files = list.files(gmt_dir, full.names = T)
+gmt_files = gmt_files[grep("c5.all.v7", gmt_files)]
+
+gmt_pathway = gmtPathways(gmt_files)
+```
+
+```{r}
+compare = markers_agg_split[[1]]
+gse_res_list = map(markers_agg_split, function(compare) {
+  compare = compare %>% 
+    arrange(-avg_log2FC)
+  gene_set = compare %>% select(avg_log2FC) %>% unlist()
+  names(gene_set) = compare$gene
+  #names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
+  gene_set = gene_set[!is.na(gene_set)]
+  gene_set = gene_set[!is.na(names(gene_set))]
+  gsea_res = fgseaMultilevel(pathways = gmt_pathway,
+                             stats = gene_set,
+                             minSize=20,
+                             maxSize=200)
+  
+  gsea_res_filt = gsea_res %>% filter(padj<.2) %>% arrange(pval)
+  collapsedPathways = collapsePathways(gsea_res_filt, pathways = gmt_pathway, stats = gene_set, pval.threshold = .05)
+  gsea_res_ind = gsea_res %>% filter(pathway %in% collapsedPathways$mainPathways) %>%
+    arrange(-NES)
+  return(list(gsea_res, gsea_res_ind))
+})
+gse_res = map(gse_res_list, 1) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+```
+
+```{r}
+# markers_agg = markers_agg %>% 
+#   mutate(p_val_adj_log10p1 = -1 * log10(p_val_adj + 1E-300))
+# markers_agg_split = split(markers_agg, markers_agg$compare)
+# 
+# gse_res = map(markers_agg_split, function(compare) {
+#   #compare = compare %>% arrange(-p_val_adj_log10p1)
+#   #gene_set = compare %>% select(p_val_adj_log10p1) %>% unlist()
+#   compare = compare %>% 
+#     arrange(-avg_log2FC)
+#   gene_set = compare %>% select(avg_log2FC) %>% unlist()
+#   names(gene_set) = compare$gene
+#   names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
+#   gene_set = gene_set[!is.na(gene_set)]
+#   gene_set = gene_set[!is.na(names(gene_set))]
+#   
+#   gse_res = gseGO(gene_set, 
+#                   OrgDb = org.Hs.eg.db,
+#                   ont = "ALL",
+#                   maxGSSize = 250,  
+#                   pvalueCutoff = .2,
+#                   keyType = "ENTREZID")
+#   gse_res_simp = simplify(gse_res)
+# 
+#   as.data.frame(gse_res_simp)
+# }) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+# 
+# gse_res = gse_res %>% 
+#   mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>%
+#   mutate(core_enrichment_symbol = map(core_enrichment_split, function(x) entrezid$SYMBOL[match(x, entrezid$ENTREZID)])) %>%
+#   mutate(core_enrichment_symbol = map_chr(core_enrichment_symbol, paste, collapse=","))
+```
+
+```{r}
+set_order = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")
+  gse_res_ind_select = gse_res_ind %>%
+    mutate(p.adjust_sign = -1 * log10(padj)) %>%
+    mutate(NES_sign = sign(NES)) %>%
+    filter(padj<.05) %>% 
+    select(pathway, compare) %>%
+    mutate(is_sig = TRUE) #%>% 
+    #group_by(compare, NES_sign) #%>%
+    #top_n(5, abs(NES))
+  
+  gse_res_ind_filt = gse_res %>% 
+    # mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>% 
+   # mutate(pathway = Description) %>% 
+    filter(pathway %in% gse_res_ind_select$pathway) %>%
+    distinct(compare, pathway, .keep_all=T) %>%
+    left_join(gse_res_ind_select) %>%
+    mutate(is_sig = if_else(is.na(is_sig), FALSE, is_sig)) %>% 
+    mutate(pathway = sub("^GO", "", pathway ),
+           pathway = gsub("_", " ", pathway), 
+           pathway = tolower(pathway)) %>% 
+    mutate(pathway = case_when(
+      grepl("establishment of protein", pathway) ~ "protein localization to ER",
+      grepl("anaphase promoting complex", pathway) ~ "APC-dependent catabolic process",
+       grepl("cell adhesion via plasma", pathway) ~ "cell-cell adhesion",
+       grepl("nuclear transcribed", pathway) ~ "nonsense mediated decay",
+                              
+       grepl("cellular component assembly involved in morphogenesis", pathway) ~ "cellular component assembly in morphogenesis",
+                               TRUE ~ pathway))
+  
+  go_res_mat = gse_res_ind_filt %>% 
+    select(compare, pathway, NES) %>%
+    pivot_wider(names_from = "compare", values_from = "NES", values_fill = 0) %>%
+    column_to_rownames("pathway") %>% as.matrix()
+  
+  hc_row = hclust(dist(go_res_mat), method="ward.D")
+  hc_row_order = hc_row$labels[hc_row$order]
+  
+  
+  gse_res_ind_filt = gse_res_ind_filt %>% 
+    mutate(leadingEdge_len = map_int(leadingEdge, length))
+  
+  gse_res_ind_filt = gse_res_ind_filt %>%
+    mutate(pathway = factor(pathway, levels=hc_row_order)) %>%
+    mutate(compare = factor(compare, levels=set_order)) %>%
+    complete(pathway, compare, fill=list(NES=NA, size=NA, leadingEdge_len = NA))
+  
+  #size_limits = seq(round(min(gsea_res_ind_filt$size, na.rm=T), -1), round(max(gsea_res_ind_filt$size, na.rm=T), -1), by=50)
+  size_limits = seq(round(min(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), round(max(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), by=20)
+  gg = ggplot(gse_res_ind_filt, aes(compare, pathway)) + 
+    geom_point(shape=21, aes(size=leadingEdge_len, fill=NES, color=is_sig)) + 
+    scale_color_manual(values=c(`TRUE`="black", `FALSE`=NA)) + 
+    scale_fill_gradient2(low=scales::muted("blue"), high=scales::muted("red")) +
+    scale_size_continuous(range=c(.5, 3), breaks=size_limits) + 
+    labs(x = "", y ="") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle=90, vjust=.5, hjust=1, size=6),
+          axis.text.y = element_text(hjust=1, size=6),
+          axis.ticks = element_line(size=.25),
+          panel.border = element_blank()) + 
+    coord_fixed()
+
+  ncols = ncol(go_res_mat)
+  nrows = nrow(go_res_mat)
+  
+  scale_factor = .1
+  width = ncols * scale_factor
+  height = nrows * scale_factor
+  gg = egg::set_panel_size(gg, width = unit(width, "in"), height = unit(height, "in"))
+  plot(gg)  
+  save_plot(file.path(out_dir, sprintf("gse_terms_by_compare.pdf")), gg, base_height = height + 4, base_width = width + 4)
+```
+
+## Load SFARI genes
+
+```{r}
+sfari = read_csv("~/nest/gene_lists/SFARI/SFARI-Gene_genes_03-28-2024release_07-17-2024export.csv")
+colnames(sfari) = make.names(colnames(sfari))
+sfari = sfari %>% dplyr::rename(gene = gene.symbol)
+```
+
+```{r}
+markers_sfari = markers_agg %>% left_join(sfari)
+#markers_sfari = markers_sfari %>% filter(!is.na(gene.score))
+markers_sfari = markers_sfari %>% 
+  mutate(gene.score = as.factor(gene.score)) %>%
+  mutate(eagle = if_else(is.na(eagle), 0, eagle)) %>%
+  mutate(p_val_adj_log10 = -1 * log10(p_val_adj))
+```
+
+```{r}
+markers_cur = markers_sfari #%>% filter(compare=="HVC_3")
+gg = ggplot(markers_cur, aes(eagle, avg_log2FC)) + 
+  geom_point() + 
+  facet_wrap(~compare)
+gg
+```
+
+```{r}
+markers_sfari_cur = markers_sfari %>% filter(p_val_adj < .1)
+gg = ggplot(markers_sfari_cur, aes(gene.score, avg_log2FC)) + 
+  geom_violin() +
+  facet_wrap(~compare)
+gg
+```
+
+```{r}
+
+gg = ggplot(markers_sfari %>% filter(eagle>0), aes(avg_log2FC, p_val_adj_log10, color=log2(eagle))) + 
+  geom_point() +
+  scale_color_viridis_c() + 
+  facet_wrap(~compare)
+gg
+```

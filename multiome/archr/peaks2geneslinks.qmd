@@ -1,0 +1,203 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr"
+out_name = "peaks2geneslinks"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+addArchRThreads(threads = 36) 
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+
+```{r}
+clusters = unique(proj$cluster)
+pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
+                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
+                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4"),
+                 gaba = grep("GABA", clusters, value=T),
+                 pre = clusters[grepl("Pre", clusters) & !grepl("GABA", clusters)],
+                 arco_glut = grep("Arco|RA", clusters, value=T),
+                 nido_glut = grep("HVC|NC|Nido", clusters, value=T),
+                 neuroglia = grep("Astro|Oligo|OPC", clusters, value=T)
+                 )
+```
+
+## Peak2Gene
+```{r}
+redo = T
+if (redo) {
+  
+cell_names = getCellNames(proj)
+# proj_split = map(pair_list, function(pl) {
+#   cell_names[proj$cluster %in% unlist(pl)]
+# })
+
+cells_list = map(pair_list, function(pl) {
+  cell_names[proj$cluster %in% unlist(pl)]
+})
+
+proj_split = map(cells_list, function(cells_cur) {
+  addPeak2GeneLinks(
+    ArchRProj = proj, 
+    cellsToUse = cells_cur,
+    reducedDims = "Harmony_ATAC", 
+    useMatrix = "GeneExpressionMatrix"
+  )
+})
+names(proj_split) = names(pair_list)
+}
+```
+
+```{r}
+
+if (redo) {
+regions = unique(proj$region)
+# proj_regions= map(regions, function(reg) {
+#   proj[proj$region == reg]
+# })
+
+cell_regions = map(regions, function(reg) {
+  cell_names[proj$region == reg]
+})
+proj_regions = map(cell_regions, function(cells_cur) {
+  addPeak2GeneLinks(
+    ArchRProj = proj, cellsToUse = cells_cur,
+    reducedDims = "Harmony_ATAC", 
+    useMatrix = "GeneExpressionMatrix"
+  )
+})
+names(proj_regions) = names(regions)
+}
+```
+
+```{r}
+getPeak2GeneLinksAsBed = function(proj, 
+                                  resolution = 100,
+                                  corCutOff = .45,
+                                  FDRCutOff = 1e-02,
+                                  varCutOffATAC = 0.25,
+                                  varCutOffRNA =  0.25 ) {
+  p2g <- metadata(proj@peakSet)$Peak2GeneLinks
+  p2g <- p2g[which(p2g$Correlation >= corCutOff & p2g$FDR <= FDRCutOff), ,drop=FALSE]
+  
+  if(!is.null(varCutOffATAC)){
+    p2g <- p2g[which(p2g$VarQATAC > varCutOffATAC),]
+  }
+  
+  if(!is.null(varCutOffRNA)){
+    p2g <- p2g[which(p2g$VarQRNA > varCutOffRNA),]
+  }
+  
+  peakSet = metadata(p2g)$peakSet
+  peak_name = paste(seqnames(peakSet), paste(start(peakSet), end(peakSet), sep="-"), sep="_")
+  geneSet = metadata(p2g)$geneSet
+  peakSummits <- resize(metadata(p2g)$peakSet, 1, "center")
+  geneStarts <- resize(metadata(p2g)$geneSet, 1, "start")
+  
+  if(!is.null(resolution)){
+    summitTiles <- floor(start(peakSummits) / resolution) * resolution + floor(resolution / 2)
+    geneTiles <- floor(start(geneStarts) / resolution) * resolution + floor(resolution / 2)
+  }else{
+    summitTiles <- start(peakSummits)
+    geneTiles <- start(geneStarts)
+  }
+  
+  loops <- ArchR:::.constructGR(
+    seqnames = seqnames(peakSummits[p2g$idxATAC]),
+    start = summitTiles[p2g$idxATAC],
+    end = geneTiles[p2g$idxRNA]
+  )
+  
+  mcols(loops)$value <- p2g$Correlation
+  mcols(loops)$FDR <- p2g$FDR
+  mcols(loops)$geneID = geneSet$name[p2g$idxRNA]
+  mcols(loops)$peakID = peak_name[p2g$idxATAC]
+  
+  loops <- loops[order(mcols(loops)$value, decreasing=TRUE)]
+  loops <- unique(loops)
+  loops <- loops[width(loops) > 0]
+  loops <- sort(sortSeqlevels(loops))
+  
+  bed = data.frame(chrom = seqnames(loops), 
+                   chromStart = start(loops),
+                   chromEnd = end(loops),
+                   name = paste(loops$geneID, loops$peakID, sep="<>"),
+                   score = round(1000 * loops$value) ,
+                   value = loops$value,
+                   exp = ".",
+                   color = "red",
+                   sourceChrom = seqnames(loops),
+                   sourceStart = start(loops)-50,
+                   sourceEnd = start(loops)+50,
+                   sourceName = loops$geneID,
+                   sourceStrand = ".",
+                   targetChrom = seqnames(loops),
+                   targetStart = end(loops)-50,
+                   targetEnd = end(loops)+50,
+                   targetName = loops$peakID,
+                   targetStrand = "."
+  )
+  return(bed)
+}
+```
+
+
+```{r}
+
+cor_cut_offs = seq(0.2, .45, .05)
+
+for (cor_cut_off in cor_cut_offs) {
+if (redo) {
+walk(names(proj_split), function(name_cur) {
+  bed_fname = file.path(out_dir, sprintf("peak2geneLinks_%s_corCutOff-%s.bed", name_cur, cor_cut_off))
+  p2g_bed = getPeak2GeneLinksAsBed(proj_split[[name_cur]], corCutOff = cor_cut_off)
+    
+  write_delim(p2g_bed, bed_fname, delim="\t", col_names=FALSE)
+})
+
+walk(names(proj_regions), function(name_cur) {
+  bed_fname = file.path(out_dir, sprintf("peak2geneLinks_%s_corCutOff-%s.bed", name_cur, cor_cut_off))
+  p2g_bed = getPeak2GeneLinksAsBed(proj_regions[[name_cur]], corCutOff = cor_cut_off)
+    
+  write_delim(p2g_bed, bed_fname, delim="\t", col_names=FALSE)
+})
+}
+}
+```
+

@@ -1,0 +1,808 @@
+---
+title: "ArchR with Seurat clustering"
+format: html
+---
+
+
+```{r}
+library(ArchR)
+library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
+library(TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled)
+library(org.Lstriata.eg.db)
+library(tidyverse)
+library(qs)
+library(SingleCellExperiment)
+library(cowplot)
+library(furrr)
+library(Seurat)
+library(SeuratDisk)
+library(BiocParallel)
+library(ComplexHeatmap)
+library(GenomicRanges)
+library(rtracklayer)
+library(scCustomize)
+library(circlize)
+library(ggrepel)
+
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+```{r}
+set.seed = 10
+```
+
+```{r}
+params_table = read_csv("~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.csv")
+params_table = params_table %>% filter(process)
+params_list = split(params_table, seq(nrow(params_table)))
+```
+
+```{r}
+# data_dir = file.path("~/nest/multiome", map(params_list, "data_subdir"), map(params_list, "sample_to_process"), "outs" )
+setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr"
+out_name = "motor-pathway_archr_processing_cluster-snrna-cr"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+
+ArrowFiles = list.files("~/hdd/rstudio/archr/motor-pathway/archr_motor-pathway_multiome/ArrowFiles/", full.names = T)
+feature_h5 = file.path(data_dir, "filtered_feature_bc_matrix.h5")
+atac_frags = file.path(data_dir, "atac_fragments.tsv.gz")
+sample_names = map_chr(params_list, "sample_short")
+
+seu_dir = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
+seu_fname = file.path(seu_dir, "obj_clustered.h5seurat")
+```
+
+```{r}
+knitr::opts_knit$set(root.dir = out_dir)
+setwd(out_dir)
+addArchRThreads(threads = 1) 
+```
+
+```{r}
+geneAnnotation = readRDS(file.path(setup_dir, "geneAnnotation_lonStrDom2_ucsc.rds"))
+genomeAnnotation = readRDS(file.path(setup_dir, "genomeAnnotation_lonStrDom2_ucsc.rds"))
+#chrM = "NC_029475.1"
+chrM = "chrM"
+```
+
+## Process samples
+```{r}
+redo = F
+if (redo) {
+  # ArrowFiles <- createArrowFiles(
+  #   inputFiles = atac_frags,
+  #   sampleNames = sample_names,
+  #   threads = 8,
+  #   subThreading = F,
+  #   minTSS = 1, #Dont set this too high because you can always increase later
+  #   minFrags = 1000, 
+  #   addTileMat = TRUE,
+  #   addGeneScoreMat = TRUE, 
+  #   excludeChr = chrM,
+  #   geneAnnotation = geneAnnotation, 
+  #   genomeAnnotation = genomeAnnotation,
+  #   force = F
+  # )
+  
+  proj <- ArchRProject(
+    ArrowFiles = ArrowFiles,
+    geneAnnotation = geneAnnotation, 
+    genomeAnnotation = genomeAnnotation,
+    outputDirectory = out_dir,
+    copyArrows = T #This is recommened so that if you modify the Arrow files you have an original copy for later usage.
+  )
+  
+  short_names = proj$Sample
+  position = str_extract(short_names, "^[a-z]+")
+  run =  str_extract(short_names, "[a-z]+[0-9]$")
+  replicate = case_when(position %in% c("hvc", "nc") & run == "run1" ~ "rep1", 
+                        position %in% c("hvc", "nc") & run == "run2" ~ "rep2", 
+                        position %in% c("ra", "arco") & run == "run2" ~ "rep1",
+                        position %in% c("ra", "arco") & run == "run3" ~ "rep2")
+  
+  proj$position = position
+  proj$run = run
+  proj$replicate = replicate
+  
+
+  # cells = intersect(proj$cellNames, colnames(scRNA))
+  # proj = proj[cells,]
+  # scRNA = scRNA[,cells]
+  # proj <- addGeneExpressionMatrix(input = proj, seRNA = scRNA, force = TRUE, strictMatch = T)
+  # 
+  saveArchRProject(proj)
+
+} else {
+  proj = loadArchRProject(out_dir)
+}
+```
+
+## Load preprocessed Seurat metadata
+```{r}
+redo = T
+if (redo) {
+  seu_hfile = Connect(seu_fname)
+  seu_md = as.data.frame(seu_hfile[["meta.data"]])
+  
+  ## Synchronize seurat and ArchR cell names
+  seu_md = seu_md %>%
+    rownames_to_column() %>%
+    mutate(rowname_mod = map_chr(rowname, function(x) str_replace(x, "-[0-9]", "-1"))) %>%
+    mutate(rowname_mod2 = paste(sample_short, rowname_mod, sep="#")) %>%
+    column_to_rownames("rowname_mod2") %>%
+    select(-rowname_mod)
+  
+  
+  ## Filter ArchR for Seurat cells and add metadata
+  common_cells = intersect(getCellNames(proj), rownames(seu_md))
+  proj = subsetCells(proj, common_cells)
+  seu_md = seu_md[common_cells,]
+  
+  ccd = proj@cellColData
+  ccd = cbind(ccd, seu_md %>% rename(position2 = position) %>% select(assignment, cluster, position2))
+  proj@cellColData = ccd
+}
+```
+
+## Load Seurat cellbender data
+```{r}
+redo = T
+if (redo) {
+  seu_hfile = Connect(seu_fname)
+  #seu_counts = as.matrix(seu_hfile[["assays/RNA/layers/counts"]])
+  seu_counts = as.matrix(seu_hfile[["assays/SCT/counts"]])
+  seu_cells = as.matrix(seu_hfile[["cell.names"]])[,1]
+  seu_cells = rownames(seu_md)[match(seu_cells, seu_md$rowname)]
+  seu_features = as.matrix(seu_hfile[["/assays/SCT/features"]])[,1]
+  
+  colnames(seu_counts) = seu_cells
+  rownames(seu_counts) = seu_features
+  
+  cells = intersect(proj$cellNames, colnames(seu_counts))
+  proj = proj[cells,]
+  seu_counts = seu_counts[,cells]
+  
+  ## Load scRNA to get feature ranges
+  scRNA <- import10xFeatureMatrix(
+    input = feature_h5,
+    names = sample_names
+  )
+  rr = rowRanges(scRNA)
+  rr = rr[intersect(names(rr), rownames(seu_counts)),]
+  
+  seqs_to_keep = grep("NW", seqlevels(rr), value=T, invert=T)
+  
+  rr = rr[seqnames(rr) %in% seqs_to_keep,]
+  seu_counts = seu_counts[names(rr),]
+  
+  #a = as.matrix(seu_counts)
+  se_counts = SummarizedExperiment(assays=SimpleList(counts=as.matrix(seu_counts)), rowRanges=rr)
+  proj <- addGeneExpressionMatrix(input = proj, seRNA = se_counts, force = TRUE, strictMatch = T)
+  
+  saveArchRProject(proj)
+  
+} 
+```
+
+
+
+```{r}
+proj$position2_cluster = paste(proj$position2, proj$cluster, sep="#")
+proj$region = case_when(proj$position2 %in% c("ra", "arco") ~ "ARCO",
+                        proj$position2 %in% c("hvc", "nc") ~ "NIDO")
+```
+
+
+## Load Seurat reductions
+```{r}
+seu_hfile = Connect(seu_fname)
+reds = c("pca", "pca_harmony", "umap_rna", "umap_rna_int")
+seu_reds = map(reds, function(red_cur) {
+  reduction = SeuratDisk:::AssembleDimReduc(
+      reduction = red_cur,
+      file = seu_hfile
+    )
+  reduction@cell.embeddings
+})
+
+```
+
+## Dim reduce
+
+```{r}
+redo = F
+if (redo) {
+proj <- addIterativeLSI(
+    ArchRProj = proj,
+    useMatrix = "TileMatrix", 
+    name = "LSI_ATAC", 
+    iterations = 2, 
+    clusterParams = list( #See Seurat::FindClusters
+        resolution = c(0.2), 
+        sampleCells = 10000, 
+        n.start = 10
+    ), 
+    force = T,
+    varFeatures = 25000, 
+    dimsToUse = 1:30
+)
+
+rna_res = 1
+proj <- addIterativeLSI(
+    ArchRProj = proj,
+    iterations = 2,
+    clusterParams = list(
+      resolution = .2, 
+      sampleCells = 10000,
+      n.start = 10
+    ),
+    saveIterations = FALSE,
+    useMatrix = "GeneExpressionMatrix", 
+    depthCol = "Gex_nUMI",
+    varFeatures = 2000,
+    firstSelection = "variable",
+    binarize = FALSE,
+    name = "LSI_RNA",
+    force = T,
+    dimsToUse = 1:30
+)
+
+proj <- addHarmony(
+  ArchRProj = proj,
+  reducedDims = "LSI_ATAC",
+  name = "Harmony_ATAC",
+  groupBy = "Sample",
+  force = T
+)
+
+proj <- addHarmony(
+  ArchRProj = proj,
+  dimsToUse = 1:30,
+  reducedDims = "LSI_RNA",
+  name = "Harmony_RNA",
+  groupBy = "Sample", 
+  force = T
+)
+
+proj <- addCombinedDims(proj, 
+                        reducedDims = c("Harmony_ATAC", "Harmony_RNA"), 
+                        name =  "Harmony_Combined"
+                        )
+
+saveArchRProject(proj)
+}
+```
+
+## UMAP
+```{r}
+nNeighbors = 30
+minDist = 0.5
+umap_suffix = paste(nNeighbors, minDist, sep="_")
+
+redo = F
+if (redo) {
+proj <- addUMAP(
+    ArchRProj = proj, 
+    reducedDims = "LSI_ATAC", 
+    name = paste("UMAP_ATAC", umap_suffix, sep="_"), 
+    nNeighbors = nNeighbors, 
+    minDist = minDist, 
+    metric = "cosine",
+    force = T
+)
+
+proj <- addUMAP(
+    ArchRProj = proj, 
+    reducedDims = "Harmony_ATAC", 
+    name = paste("UMAP_Harmony_ATAC", umap_suffix, sep="_"), 
+    nNeighbors = nNeighbors, 
+    minDist = minDist, 
+    metric = "cosine",
+    force = T
+)
+
+
+proj <- addUMAP(
+    ArchRProj = proj, 
+    reducedDims = "LSI_RNA", 
+    name = paste("UMAP_RNA", umap_suffix, sep="_"), 
+    nNeighbors = nNeighbors, 
+    minDist = minDist, 
+    metric = "cosine",
+    force = T
+)
+
+proj <- addUMAP(
+    ArchRProj = proj, 
+    reducedDims = "Harmony_RNA", 
+    name = paste("UMAP_Harmony_RNA", umap_suffix, sep="_"), 
+    nNeighbors = nNeighbors, 
+    minDist = minDist, 
+    metric = "cosine",
+    force = T
+)
+
+
+proj <- addUMAP(
+  proj,
+  reducedDims = "Harmony_Combined",
+  name = paste("UMAP_Harmony_Combined", umap_suffix, sep="_"),
+  nNeighbors = nNeighbors,
+  minDist = minDist,
+  force = T
+  )
+
+saveArchRProject(proj)
+}
+
+```
+
+```{r fig.height =5}
+umap_suffix_cur = "30_0.5"
+
+em_to_plot = c("UMAP_ATAC", "UMAP_Harmony_ATAC", "UMAP_RNA", "UMAP_Harmony_RNA", "UMAP_Harmony_Combined" )
+em_to_plot = paste(em_to_plot, umap_suffix_cur, sep="_")
+color_by = "Sample"
+walk(em_to_plot, function(tp) {
+  p = plotEmbedding(
+    ArchRProj = proj, 
+    colorBy = "cellColData",
+    name = color_by, 
+    embedding = tp
+  )
+  print(p)
+  # plotPDF(p, name = paste(tp, color_by, sep="-"), ArchRProj = proj, 
+  #         addDOC = F, width = 5, height = 5)
+})
+```
+
+
+```{r}
+umap_suffix_cur = "30_0.5"
+em_to_plot = c( "UMAP_Harmony_RNA" )
+em_to_plot = paste(em_to_plot, umap_suffix_cur, sep="_")
+color_by = c("Gex_nUMI", "Gex_nGenes", "Gex_MitoRatio")
+walk(em_to_plot, function(tp) {
+  p = plotEmbedding(
+    ArchRProj = proj, 
+    colorBy = "cellColData",
+    name = color_by, plotAs = "points",
+    embedding = tp
+  )
+  print(p)
+  # plotPDF(p, name = paste(tp, "QC-Statistics", sep="-"), ArchRProj = proj, 
+  #         addDOC = T, width = 5, height = 5)
+})
+```
+```{r fig.height = 10, fig.width = 10}
+proj = addImputeWeights(proj, reducedDims = "Harmony_RNA")
+plotEmbedding(proj, embedding = "UMAP_Harmony_RNA_30_0.5", colorBy = "GeneExpressionMatrix", name = c("SLC17A6", "GAD1", "EMX2", "MAFB", "NDNF", "PVALB", "SIX2"), plotAs = "points")
+```
+```{r}
+plotEmbedding(proj, embedding = "UMAP_Harmony_RNA_30_0.5", colorBy = "MotifHSMatrix", name = c("z:MAFB_150", "z:MAF_144", "z:MAFK_149"), plotAs = "points")
+```
+
+## Add pseudobulk reps
+```{r}
+try({
+  proj = addGroupCoverages(ArchRProj = proj, groupBy = "cluster", force = F)
+})
+```
+
+## Add peaks
+```{r}
+#pathToMacs2 <- findMacs2()
+
+if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
+  proj <- addReproduciblePeakSet(
+    ArchRProj = proj, 
+    threads = 1, 
+    groupBy = "cluster",
+    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
+    excludeChr = chrM,
+    genomeSize = 1E9,
+    plot=F,
+    genomeAnnotation = genomeAnnotation,
+    geneAnnotation = geneAnnotation
+  )
+  proj <- addPeakMatrix(proj)
+  saveArchRProject(proj, load=F)
+} 
+
+```
+
+### Export beds
+```{r}
+bed_dir = file.path(out_dir, "beds")
+dir.create(bed_dir)
+
+bed_fname = file.path(bed_dir, "peak_set.bed")
+gr = getPeakSet(proj)
+rtracklayer::export(gr, bed_fname)
+  
+```
+
+
+
+## Differential peaks
+```{r}
+plan(multisession(workers = 36))
+```
+
+```{r}
+markers_dir = file.path(out_dir, "markers")
+dir.create(markers_dir)
+```
+
+
+### Pairs
+```{r}
+pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
+                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
+                 hvc_3 = list("Glut-HVC-2", "Glut-NC-4")
+                 )
+```
+
+```{r}
+markers_peaks_glut_fname = file.path(markers_dir, "markers_peaks_glut.rds")
+redo = T
+if (redo) {
+  cluster_name_cur = "cluster"
+  proj_cur = proj[grep("Glut", proj@cellColData[,cluster_name_cur])]
+  cluster_data = getCellColData(proj_cur, cluster_name_cur)
+  clusters = unique(cluster_data)[,1]
+  
+  proj_cur$cluster = as.character(proj_cur$cluster) ## Required for getMarkerFeatures or will error
+  
+  marker_peaks_glut = map(pair_list, function(pair_cur) {
+    print(pair_cur)
+    getMarkerFeatures(
+      ArchRProj = proj_cur,
+      useMatrix = "PeakMatrix", 
+      groupBy = "cluster",
+      useGroups = pair_cur[[1]],
+      bgdGroups = pair_cur[[2]],
+      bias = c("TSSEnrichment", "log10(nFrags)"),
+      testMethod = "wilcoxon"
+    )
+  })
+  saveRDS(marker_peaks_glut, markers_peaks_glut_fname)
+} else {
+  marker_peaks_glut = readRDS(markers_peaks_glut_fname)
+}
+
+marker_peaks_glut_gr = map(marker_peaks_glut, function(x) {
+  getMarkers(x, cutOff = "FDR <= 0.1", returnGR=T)
+})
+
+marker_peaks_glut_se = map(marker_peaks_glut, function(x) {
+  getMarkers(x, cutOff = "FDR <= 0.1", returnGR=F)
+})
+
+marker_peaks_glut_df = map(marker_peaks_glut_gr, as.data.frame)
+```
+
+### Intersect song enriched
+```{r}
+marker_peaks_glut_gr = map(marker_peaks_glut_gr, function(x) x[[1]])
+marker_peaks_glut_inter = Reduce(GenomicRanges::intersect, marker_peaks_glut_gr)
+```
+
+### Union song enriched
+```{r}
+marker_peaks_glut_union = Reduce(GenomicRanges::union, marker_peaks_glut_gr)
+```
+
+
+### Export beds
+```{r}
+bed_dir = file.path(out_dir, "beds")
+dir.create(bed_dir)
+
+walk(seq_along(marker_peaks_glut_df), function(i) {
+  d = marker_peaks_glut_df[[i]]
+  pair_cur = pair_list[[i]]
+  pair_cur_name = sprintf("%s_vs_%s", pair_cur[[1]], paste(pair_cur[[2]], collapse="_"))
+  d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(sign = sign(Log2FC)) %>%
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end))
+  
+  signs = unique(d_out$sign)
+  walk(unique(signs), function(sign_cur) {
+    d_out_cur = d_out %>%
+      filter(sign == sign_cur) %>% 
+      select(seqnames, start, end, name, Log2FC, strand)
+    fname = file.path(bed_dir, sprintf("%s_%s.bed", pair_cur_name, sign_cur))
+    write_delim(d_out_cur, fname, delim="\t", col_names = F )
+  })
+  
+  #cluster_cur = unique(d$cluster)
+  
+
+})
+
+d = as.data.frame(marker_peaks_glut_inter)
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_intersect"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+  
+d = as.data.frame(marker_peaks_glut_union)
+d_out = d %>% 
+    arrange(seqnames, start) %>% 
+    mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
+    select(seqnames, start, end, name)
+  #cluster_cur = unique(d$cluster)
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_union"))
+  write_delim(d_out, fname, delim="\t", col_names = F )
+  
+```
+
+
+## Footprinting
+```{r}
+motifPositions <- getPositions(proj)
+
+motifs = c("SIX2", "PPARG", "MAFB", "NFIC", "TBR1", "BACH2", "FOS", "FOSL2", "MAFA", "CIC", "AR")
+markerMotifs <- unlist(lapply(motifs, function(x) grep(x, names(motifPositions), value = TRUE)))
+
+
+```
+
+
+
+## Co-Accessibility
+```{r}
+proj <- addCoAccessibility(
+    ArchRProj = proj,
+    reducedDims = "Harmony_ATAC",
+)
+```
+
+```{r}
+cA <- getCoAccessibility(
+    ArchRProj = proj,
+    corCutOff = 0.5,
+    resolution = 1000,
+    returnLoops = T
+)
+```
+
+```{r}
+markerGenes  <- c(
+  "NDNF", "SIX2", "AR", "NFIC", "MAFB", "PPARG", "TBR1"
+)
+
+proj$cluster = as.character(proj$cluster)
+proj_sub = proj[grepl("Glut", proj$cluster),]
+p <- plotBrowserTrack(
+    ArchRProj = proj_sub,
+    groupBy = "cluster", 
+    geneSymbol = markerGenes, 
+    upstream = 100000,
+    downstream = 50000,
+    loops = getCoAccessibility(proj_sub, resolution = 1000, corCutOff = .7 )
+)
+
+# plotPDF(plotList = p, 
+#         name = sprintf("Tracks-Marker-Genes-with-CoAccessibility.pdf"), 
+#         ArchRProj = proj_sub, 
+#         addDOC = FALSE, width = 5, height = 5)
+
+```
+
+```{r}
+grid::grid.newpage()
+grid::grid.draw(p$AR)
+```
+
+
+## Peak2Gene
+```{r}
+peak2gene_dir = file.path(out_dir, "peak2gene")
+dir.create(peak2gene_dir)
+```
+
+```{r}
+redo = T
+if (redo) {
+proj_split = map(pair_list, function(pl) {
+  proj[proj$cluster %in% unlist(pl)]
+ # proj_glut[proj_glut$region==re]
+})
+
+proj_split = map(proj_split, function(proj_cur) {
+  addPeak2GeneLinks(
+    ArchRProj = proj_cur,
+    reducedDims = "Harmony_ATAC", 
+    useMatrix = "GeneExpressionMatrix"
+  )
+})
+names(proj_split) = names(pair_list)
+}
+```
+
+```{r}
+
+if (redo) {
+regions = unique(proj$region)
+proj_regions= map(regions, function(reg) {
+  proj[proj$region == reg]
+})
+
+proj_regions = map(proj_regions, function(proj_cur) {
+  addPeak2GeneLinks(
+    ArchRProj = proj_cur,
+    reducedDims = "Harmony_ATAC", 
+    useMatrix = "GeneExpressionMatrix"
+  )
+})
+names(proj_regions) = names(regions)
+}
+```
+
+```{r}
+getPeak2GeneLinksAsBed = function(proj, 
+                                  resolution = 1000,
+                                  corCutOff = .45,
+                                  FDRCutOff = 1e-02,
+                                  varCutOffATAC = 0.25,
+                                  varCutOffRNA =  0.25 ) {
+  p2g <- metadata(proj@peakSet)$Peak2GeneLinks
+  p2g <- p2g[which(p2g$Correlation >= corCutOff & p2g$FDR <= FDRCutOff), ,drop=FALSE]
+  
+  if(!is.null(varCutOffATAC)){
+    p2g <- p2g[which(p2g$VarQATAC > varCutOffATAC),]
+  }
+  
+  if(!is.null(varCutOffRNA)){
+    p2g <- p2g[which(p2g$VarQRNA > varCutOffRNA),]
+  }
+  
+  peakSet = metadata(p2g)$peakSet
+  peak_name = paste(seqnames(peakSet), paste(start(peakSet), end(peakSet), sep="-"), sep="_")
+  geneSet = metadata(p2g)$geneSet
+  peakSummits <- resize(metadata(p2g)$peakSet, 1, "center")
+  geneStarts <- resize(metadata(p2g)$geneSet, 1, "start")
+  
+  if(!is.null(resolution)){
+    summitTiles <- floor(start(peakSummits) / resolution) * resolution + floor(resolution / 2)
+    geneTiles <- floor(start(geneStarts) / resolution) * resolution + floor(resolution / 2)
+  }else{
+    summitTiles <- start(peakSummits)
+    geneTiles <- start(geneStarts)
+  }
+  
+  loops <- ArchR:::.constructGR(
+    seqnames = seqnames(peakSummits[p2g$idxATAC]),
+    start = summitTiles[p2g$idxATAC],
+    end = geneTiles[p2g$idxRNA]
+  )
+  
+  mcols(loops)$value <- p2g$Correlation
+  mcols(loops)$FDR <- p2g$FDR
+  mcols(loops)$geneID = geneSet$name[p2g$idxRNA]
+  mcols(loops)$peakID = peak_name[p2g$idxATAC]
+  
+  loops <- loops[order(mcols(loops)$value, decreasing=TRUE)]
+  loops <- unique(loops)
+  loops <- loops[width(loops) > 0]
+  loops <- sort(sortSeqlevels(loops))
+  
+  bed = data.frame(chrom = seqnames(loops), 
+                   chromStart = start(loops),
+                   chromEnd = end(loops),
+                   name = paste(loops$geneID, loops$peakID, sep="<>"),
+                   score = round(1000 * loops$value) ,
+                   value = loops$value,
+                   exp = ".",
+                   color = "red",
+                   sourceChrom = seqnames(loops),
+                   sourceStart = start(loops)-50,
+                   sourceEnd = start(loops)+50,
+                   sourceName = loops$geneID,
+                   sourceStrand = ".",
+                   targetChrom = seqnames(loops),
+                   targetStart = end(loops)-50,
+                   targetEnd = end(loops)+50,
+                   targetName = loops$peakID,
+                   targetStrand = "."
+  )
+  return(bed)
+}
+```
+
+
+```{r}
+if (redo) {
+walk(names(proj_split), function(name_cur) {
+  bed_fname = file.path(peak2gene_dir, sprintf("peak2geneLinks_%s.bed", name_cur))
+  p2g_bed = getPeak2GeneLinksAsBed(proj_split[[name_cur]])
+    
+  write_delim(p2g_bed, bed_fname, delim="\t", col_names=FALSE)
+})
+
+walk(names(proj_regions), function(name_cur) {
+  bed_fname = file.path(peak2gene_dir, sprintf("peak2geneLinks_%s.bed", name_cur))
+  p2g_bed = getPeak2GeneLinksAsBed(proj_regions[[name_cur]])
+    
+  write_delim(p2g_bed, bed_fname, delim="\t", col_names=FALSE)
+})
+}
+```
+
+
+## Genes linked to DARs
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+```
+
+```{r}
+pair_cur = "ra"
+
+pair_region = c(ra = "ARCO", 
+                hvc_1 = "NIDO",
+                hvc_3 = "NIDO")
+
+Log2FC_thresh = 1
+FDR_thresh = 1E-2
+
+gos = map(names(pair_list), function(pair_cur) {
+  print(pair_cur)
+  #region_cur = pair_region[[pair_cur]]
+  pgl_bed = getPeak2GeneLinksAsBed(proj_split[[pair_cur]])
+  #all_genes = unique(pgl_bed$sourceName)
+  all_genes = getFeatures(proj_split[[pair_cur]])
+  all_genes_id = bitr(all_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db )
+  
+  marker_peaks_glut_df_cur = marker_peaks_glut_df[[pair_cur]]
+  marker_peaks_glut_df_cur = marker_peaks_glut_df_cur %>%
+    mutate(name = sprintf("%s_%s-%s", seqnames, start, end)) %>%
+    mutate(sign = sign(Log2FC)) %>%
+    filter(abs(Log2FC) >= Log2FC_thresh,
+           FDR < FDR_thresh)
+  
+  map(c(-1, 1), function(sign_cur) {
+    print(sign_cur)
+    marker_peaks_glut_df_cur2 = marker_peaks_glut_df_cur %>%
+      filter(sign==sign_cur)
+
+    pgl_bed_cur = pgl_bed %>%
+      filter(targetName %in% marker_peaks_glut_df_cur2$name)
+    
+    pgl_bed_genes = unique(pgl_bed_cur$sourceName)
+    pgl_bed_genes_id = bitr(pgl_bed_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db )
+    go <- enrichGO(gene     = pgl_bed_genes_id$ENTREZID, 
+                   universe = all_genes_id$ENTREZID,
+                   OrgDb    = org.Hs.eg.db,
+                   ont      = "ALL", 
+                   readable = TRUE)
+    
+    go 
+  }) %>% set_names(c(-1, 1))
+}) %>% set_names(names(pair_region))
+```
+
+```{r}
+go_df = map(gos, function(go1) {
+  map(go1, as.data.frame) %>% bind_rows(.id = "sign")
+}) %>% bind_rows(.id="pair")
+```
+

@@ -1,0 +1,1473 @@
+---
+title: "Untitled"
+format: html
+---
+
+## Setup
+```{r}
+library(qs)
+library(ArchR)
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+library(ComplexUpset)
+library(patchwork)
+library(ggdensity)
+library(ggrastr)
+source("~/nest/rstudio/utils/common_aesthetics.R")
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+
+select = dplyr::select
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr//"
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+out_name = "chromvar"
+out_dir = file.path(analysis_prefix, out_name)
+dir.create(out_dir, recursive = T)
+```
+
+```{r}
+tfs = read_delim("/mnt/nest/gene_lists/lambert_tfs/tfs.csv")
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+```
+
+## Motifs - cisbp, human
+```{r}
+if (length(proj@peakAnnotation) == 0) {
+  proj <- addMotifAnnotations(ArchRProj = proj, 
+                              motifSet = "cisbp",
+                              annoName = "MotifHS",
+                              species="Homo sapiens",
+                              force=T)
+  saveArchRProject(proj)
+}
+```
+
+### Write out motif positions bed
+```{r}
+
+redo = FALSE
+if (redo) {
+  motifPositions <- getPositions(proj)
+  bed_motifs_dir = file.path(proj_dir, "beds", "motifs")
+  dir.create(bed_motifs_dir)
+  bed_fname = file.path(bed_motifs_dir, "motor-pathway_peakset_motifs_all.bed")
+  bed = map_dfr(names(motifPositions), function(name_cur) {
+    motif_cur = motifPositions[[name_cur]]
+    bed = data.frame(chrom = seqnames(motif_cur), 
+                     start=start(motif_cur), 
+                     end=end(motif_cur), 
+                     name=paste(name_cur, 1:length(motif_cur), motif_cur$score, sep="_"),
+                     score = motif_cur$score,
+                     strand = strand(motif_cur))
+    #bed_fname_cur = sprintf(bed_fname, name_cur)
+    return(bed)
+  })
+  
+  bed = bed %>% arrange(chrom, start) %>%
+    mutate(score = round(1000* (score - min(score)) / (max(score) - min(score))))
+  write_delim(bed, bed_fname, delim="\t", col_names=F)
+}
+```
+
+## Load differential peaks
+```{r}
+markers_peaks_glut_fname = file.path(proj_dir, "peaks", "peaks_nonsong_glut_se.rds")
+marker_peaks_sns_glut = readRDS(markers_peaks_glut_fname)
+```
+
+### Calculate motif enrichment
+```{r}
+
+motifs_up_list = map(marker_peaks_sns_glut, function(peaks) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC >= .6"
+    )
+}) %>% set_names(names(marker_peaks_sns_glut))
+
+motifs_up_df = map(motifs_up_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+
+```
+
+```{r}
+#plan(multisession(workers=length(markers_peaks_glut)))
+motifs_down_list = map(marker_peaks_sns_glut, function(peaks) {
+  #future_map(peaks, function(x) {
+    peakAnnoEnrichment(
+      seMarker =  peaks,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = "FDR <= 0.01 & Log2FC <= -0.6"
+    )
+  #}) 
+}) %>% set_names(names(marker_peaks_sns_glut))
+
+motifs_down_df = map(motifs_down_list, function(x) {
+  #map(peak_set, function(x) {
+    df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = df[order(df$mlog10Padj, decreasing = TRUE),]
+    df$rank <- seq_len(nrow(df))
+    df
+  }) %>% bind_rows(.id="pair")
+motifs_down_df = motifs_down_df %>%
+  mutate(enrichment = -1 * enrichment)
+```
+
+```{r}
+motifs_df = bind_rows(list(up = motifs_up_df, down = motifs_down_df), .id="direction")
+motifs_df = motifs_df %>%
+  mutate(Name = str_extract(TF, "[A-Z0-9]+")) %>%
+  left_join(tfs)
+```
+
+### Plot motif enrichment
+
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+
+motifs_df_m = map(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(20, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  #motifs_df_m = log2(motifs_df_m + 1)
+  
+  return(motifs_df_m)
+}) %>% do.call(rbind, .)
+
+pal = brewer_pal(type="div", palette = 3 )(9)
+min_val = min(motifs_df_m)
+max_val = max(motifs_df_m)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+height = 3
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut_motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+##### Plot up and down separately
+```{r}
+
+top_motifs_n = 25
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur)
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("TF") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .6
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("song-glut_motifs_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+#### Group by DBD
+```{r}
+
+top_motifs_n = 50
+motifs_df_m = walk(c("up", "down"), function(direction_cur) {
+  motifs_df_cur = motifs_df %>% filter(direction == direction_cur) 
+  #browser()
+  motifs_df_f = motifs_df_cur %>%
+    group_by(pair) %>% 
+    top_n(top_motifs_n, mlog10Padj)
+  
+  print(head(motifs_df_cur))
+  motifs_df_m = motifs_df_cur %>%
+    filter(TF %in% motifs_df_f$TF) %>% 
+    filter(!is.na(DBD)) %>% 
+    group_by(DBD, pair) %>% 
+    summarize(enrichment = median(enrichment)) %>% 
+    select(pair, DBD, enrichment) %>%
+    pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+    column_to_rownames("DBD") %>% as.matrix()
+  
+  #pal = brewer_pal(type="div", palette = 3 )(9)
+  min_val = min(motifs_df_m)
+  max_val = max(motifs_df_m)
+  
+  if (direction_cur == "up") {
+    pal = viridis_pal(option="C")(9)
+  } else {
+    pal = viridis_pal(option="E", direction = -1)(9)
+  }
+  cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+  
+  width = .6
+  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  height = 3
+  
+  cor_dist = function(x) proxy::dist(x, method="correlation")
+  
+  hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
+                              # clustering_distance_rows = cor_dist,
+                               cluster_columns=F,
+                               row_names_gp = gpar(fontsize=6),
+                               width = unit(width, "in"),
+                               height = unit(height, "in")
+  )
+  print(hm)
+  pdf(file.path(out_dir, str_interp("song-glut_motifs_dbd_${direction_cur}_top${top_motifs_n}_heatmap.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+```
+```{r fig.height = 10}
+#motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+motifs_up_df_f = motifs_up_df %>%
+  group_by(pair) %>%
+  top_n(20, mlog10Padj)
+
+motifs_up_df_m = motifs_up_df %>% filter(TF %in% motifs_up_df_f$TF) %>% 
+    select(pair, TF, enrichment) %>%
+  pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+  # select(pair, TF, mlog10Padj) %>%
+  # pivot_wider(names_from = "pair", values_from = "mlog10Padj", values_fill = 0) %>%
+  column_to_rownames("TF") %>% as.matrix()
+motifs_up_df_m = log2(motifs_up_df_m + 1)
+#motifs_df_m[motifs_df_m==0] = NA
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_up_df_m) / ncol(motifs_up_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_up_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+
+```{r fig.height=10, fig.width = 4}
+motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
+  group_by(pair) %>%
+  top_n(20, mlog10Padj)
+motifs_df_m = motifs_df %>% 
+  filter(TF %in% motifs_df_f$TF) %>% 
+  select(pair, TF, enrichment) %>%
+  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_no-fos-jun-smarcc_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+```{r}
+motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
+  group_by(pair) %>%
+  filter(mlog10Padj>6) 
+
+motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% select(pair, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+motifs_df_m = log2(motifs_df_m + 1)
+cols = viridisLite::viridis(9)
+
+width = .6
+height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "song-glut-enriched_motifs_sig_heatmap.pdf"), height = height + 5, width = width + 5)
+print(hm)
+dev.off()
+```
+
+```{r}
+proj_se_ge = getGroupSE(
+  ArchRProj = proj,
+  useMatrix = "GeneExpressionMatrix",
+  groupBy = "cluster"
+)
+proj_df_ge = assay(proj_se_ge)
+rownames(proj_df_ge) = getFeatures(proj, "GeneExpressionMatrix")
+```
+
+
+
+### Intersection
+```{r}
+marker_peaks_comb = marker_peaks_sns_glut[[1]]
+
+for (name in names(marker_peaks_sns_glut)) {
+  new_log = assays(marker_peaks_sns_glut[[name]])[["Log2FC"]]
+  colnames(new_log) = "Glut-RA"
+  assays(marker_peaks_comb)[[str_interp("Log2FC_${name}")]] = new_log
+  
+  new_fdr = assays(marker_peaks_sns_glut[[name]])[["FDR"]]
+  colnames(new_fdr) = "Glut-RA"
+  assays(marker_peaks_comb)[[str_interp("FDR_${name}")]] = new_fdr
+}
+
+```
+
+```{r}
+
+log2fc_thresh = 0.6
+motifs_inter_up = peakAnnoEnrichment(
+      seMarker =  marker_peaks_comb,
+      ArchRProj = proj,
+      peakAnnotation = "MotifHS",
+      cutOff = str_interp("FDR_ra < 0.01 & Log2FC_ra >= ${log2fc_thresh} & FDR_hvc_1 < 0.01 & Log2FC_hvc_1 >= ${log2fc_thresh} & FDR_hvc_2 < 0.01 & Log2FC_hvc_2 >= ${log2fc_thresh}")
+    )
+```
+```{r}
+motifs_inter_df = data.frame(TF = rownames(motifs_inter_up), 
+                             mlog10Padj = assay(motifs_inter_up)[,1], 
+                             enrichment = assay(motifs_inter_up, "Enrichment")[,1])
+motifs_inter_df = motifs_inter_df[order(motifs_inter_df$mlog10Padj, decreasing = TRUE),]
+motifs_inter_df$rank = seq_len(nrow(motifs_inter_df))
+motifs_inter_df$to_plot = ""
+motifs_inter_df$to_plot[1:20] = motifs_inter_df$TF[1:20]
+```
+
+```{r}
+gg = ggplot(motifs_inter_df, aes(rank, mlog10Padj)) +
+  geom_point() +
+  geom_text_repel(aes(label=to_plot), size=3) + 
+  theme_bw()
+gg
+```
+```{r}
+motifs_inter_df_fam = motifs_inter_df %>%
+  mutate(family = case_when(grepl("CTCF", TF) ~ "CTCF",
+                            grepl("^FOS", TF) ~ "FOS",
+                            grepl("JUN", TF) ~ "JUN",
+                            grepl("^MAF", TF) ~ "MAF",
+                            grepl("^MEF2", TF) ~ "MEF2",
+                            grepl("^NFE2", TF) ~ "NFE2",
+                            grepl("^NR3C", TF) ~ "NR3C",
+                            grepl("^PPAR", TF) ~ "PPAR",
+                            grepl("^NFI[A-Z]", TF) ~ "NFI",
+                            TRUE ~ str_extract(TF, "[A-Z]+"))) %>%
+  group_by(family) %>%
+  summarize(mlog10Padj = mean(mlog10Padj),
+            enrichment = mean(enrichment)) %>%
+  ungroup() %>%
+  arrange(desc(mlog10Padj) ) %>%
+  mutate(rank = 1:n()) %>%
+  mutate(to_plot = if_else(rank<=20, family, ""))
+```
+
+```{r}
+library(ggbreak)
+gg = ggplot(motifs_inter_df_fam, aes(rank, mlog10Padj)) +
+  geom_point() +
+  geom_text_repel(aes(label=to_plot), size=3, direction="x") + 
+  theme_bw() + 
+  scale_y_break(breaks=c(100,120))
+gg
+
+gg = ggplot(motifs_inter_df_fam, aes(rank, mlog10Padj)) +
+  geom_point() +
+  geom_text_repel(aes(label=to_plot), size=3) + 
+  theme_bw() + 
+  ylim(150,300)
+gg
+#save_plot(file.path(out_dir, "motif-enrich_inter_upper.pdf"), gg, base_widt)
+
+gg = ggplot(motifs_inter_df_fam, aes(rank, mlog10Padj)) +
+  geom_point() +
+  geom_text_repel(aes(label=to_plot), size=3, direction = "x") + 
+  theme_bw() + 
+  ylim(0,80)
+gg
+```
+
+```{r fig.height = 10}
+# #motifs_df_cur = motifs_df %>% filter(pair == cur_set)
+# motifs_inter_df_f = motifs_inter_df %>%
+#   top_n(20, mlog10Padj)
+# 
+# motifs_inter_df_m = motifs_inter_df %>% filter(TF %in% motifs_inter_df_f$TF) %>% 
+#     select(TF, enrichment) %>%
+#   pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
+#   # select(pair, TF, mlog10Padj) %>%
+#   # pivot_wider(names_from = "pair", values_from = "mlog10Padj", values_fill = 0) %>%
+#   column_to_rownames("TF") %>% as.matrix()
+# motifs_df_m = log2(motifs_df_m + 1)
+# #motifs_df_m[motifs_df_m==0] = NA
+# cols = viridisLite::viridis(9)
+# 
+# width = .6
+# height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+# hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
+#                              width = unit(width, "in"),
+#                              height = unit(height, "in")
+#                              )
+# print(hm)
+# pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"))
+# print(hm)
+# dev.off()
+```
+
+## Upset
+```{r}
+marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.1", returnGR=T)
+  gr
+})
+
+marker_peaks_sns_glut_df = map(marker_peaks_sns_glut_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+
+marker_peaks_sns_glut_df = marker_peaks_sns_glut_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+
+marker_peaks_sns_glut_w = marker_peaks_sns_glut_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+comparisons = unique(marker_peaks_sns_glut_df$comparison)
+comparisons = rev(c("hvc_1", "hvc_2", "ra"))
+label_func = function(x) {
+  case_when(x=="hvc_1" ~ "Glut-HVC-1",
+            x=="hvc_2" ~ "Glut-HVC-2",
+            x=="ra" ~ "Glut-RA")
+}
+gg = upset(marker_peaks_sns_glut_w, comparisons , name='', width_ratio=0.4, sort_sets = F, labeller=label_func,
+           matrix = (
+             'intersection_matrix'=intersection_matrix(
+               geom = geom_point(size=1), 
+               segment=geom_segment(
+                 linewidth=.25
+               ),
+             )
+           ),
+           base_annotations=list(
+             'Intersection size'=intersection_size(
+               text=list(
+                 size=1.5, angle=90, vjust=0.5, hjust = -0.5, color="black"
+               ) 
+             ) + ylim(0, 100000)
+           ),
+           themes=upset_modify_themes(
+             list(
+               'intersections_matrix'=theme(text=element_text(size=6)),
+               'Intersection size'=theme(text=element_text(size=6), panel.grid=element_blank()),
+               'overall_sizes'=theme(axis.text.x= element_text(angle=90, size = 6, hjust=1),
+                                     axis.title.x = element_text(size=6))
+             ))
+)
+gg
+ggsave(file.path(out_dir, "upset_dars.pdf"), gg, width = 2, height = 2)
+```
+
+```{r}
+marker_peaks_sns_glut2_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.01 & Log2FC >= 0.6", returnGR=T)
+  gr
+})
+
+marker_peaks_sns_glut2_df = map(marker_peaks_sns_glut2_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+```
+
+```{r}
+marker_peaks_sns_glut2_df = marker_peaks_sns_glut2_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+marker_peaks_sns_glut2_w = marker_peaks_sns_glut2_df %>%
+  dplyr::select(-Log2FC, -group_name, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "comparison", values_from = "group", values_fill = 0)
+```
+
+```{r}
+
+comparisons = rev(c("hvc_1", "hvc_2", "ra"))
+label_func = function(x) {
+  case_when(x=="hvc_1" ~ "Glut-HVC-1",
+            x=="hvc_2" ~ "Glut-HVC-2",
+            x=="ra" ~ "Glut-RA")
+}
+gg = upset(marker_peaks_sns_glut2_w, comparisons , name='', width_ratio=0.4, sort_sets = F, labeller=label_func,
+           matrix = (
+             'intersection_matrix'=intersection_matrix(
+               geom = geom_point(size=1), 
+               segment=geom_segment(
+                 linewidth=.25
+               ),
+             )
+           ),
+           base_annotations=list(
+             'Intersection size'=intersection_size(
+               text=list(
+                 size=1.5, angle=90, vjust=0.5, hjust = -0.5, color="black"
+               ) 
+             ) + ylim(0, 50000)
+           ),
+           themes=upset_modify_themes(
+             list(
+               'intersections_matrix'=theme(text=element_text(size=6)),
+               'Intersection size'=theme(text=element_text(size=6), panel.grid=element_blank()),
+               'overall_sizes'=theme(axis.text.x= element_text(angle=90, size = 6, hjust=1),
+                                     axis.title.x = element_text(size=6))
+             ))
+)
+gg
+ggsave(file.path(out_dir, "upset_dars_up.pdf"), gg, width = 2, height = 2)
+```
+
+## Points -- Accessibility
+```{r}
+marker_peaks_sns_glut3_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+  gr = getMarkers(peaks_cur, cutOff="FDR<=1", returnGR=T)
+  gr
+})
+
+
+marker_peaks_sns_glut3_df = map(marker_peaks_sns_glut3_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+
+marker_peaks_sns_glut2_df = marker_peaks_sns_glut2_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+
+marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
+  dplyr::select(-group, -comparison, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "group_name", values_from = "Log2FC", values_fill = 0) %>%
+  sample_frac(.1) 
+```
+
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+walk(to_plot_list, function(to_plot) {
+  gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, linewidth=.25) + 
+    geom_vline(xintercept=0, linetype=1, linewidth=.25) +
+    #geom_abline(intercept=0, slope=1, linetype=2, color="grey50") + 
+    rasterize(geom_hdr_points(size=.1), dpi=300) +
+    geom_smooth(method="lm", se=F, color="darkred", linewidth=.5) + 
+    coord_equal() + 
+    theme_bw() + 
+    lims(x=c(-6,6), y = c(-6, 6)) + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6),
+          legend.position = "none",
+          legend.title = element_blank(),
+          legend.text = element_text(size=6),
+          legend.position.inside = c(.9, .2))
+  print(gg)
+  print(to_plot)
+  print(sprintf("cor: %s", cor(marker_peaks_sns_glut3_w[,to_plot[1]], marker_peaks_sns_glut3_w[,to_plot[2]])))
+  save_plot(file.path(out_dir, sprintf("dars_log2FC_hdr_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
+})
+
+to_plot = to_plot_list[[1]]
+gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, size=.25) + 
+    geom_vline(xintercept=0, linetype=1, size=.25) +
+    #geom_abline(intercept=0, slope=1, linetype=2, color="grey50") + 
+    rasterize(geom_hdr_points(size=.2), dpi=300) +
+    geom_smooth(method="lm", se=F, color="darkred", linewidth=.5) + 
+    coord_equal() + 
+    theme_bw() + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6),
+          legend.position = "inside",
+          legend.title = element_blank(),
+          legend.text = element_text(size=6),
+          legend.position.inside = c(.9, .2))
+  print(gg)
+  print(to_plot)
+  print(sprintf("cor: %s", cor(marker_peaks_sns_glut3_w[,to_plot[1]], marker_peaks_sns_glut3_w[,to_plot[2]])))
+  save_plot(file.path(out_dir, sprintf("dars_log2FC_hdr_%s_vs_%s_legend.pdf", to_plot[1], to_plot[2])), gg, base_height=5, base_asp=1)
+  
+```
+
+#### Filtered by MeanDiff
+```{r}
+marker_peaks_sns_glut3_df = map(marker_peaks_sns_glut3_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+
+meandiff_thresh = .05
+marker_peaks_sns_glut3_df = marker_peaks_sns_glut3_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end)) 
+
+marker_peaks_pass = marker_peaks_sns_glut3_df %>%
+  filter(abs(MeanDiff) > meandiff_thresh) %>%
+  distinct(region)
+
+marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
+  filter(region %in% marker_peaks_pass$region) %>% 
+  dplyr::select(-group, -comparison, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "group_name", values_from = "Log2FC", values_fill = 0) #%>%
+ # sample_frac(.1) 
+```
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+walk(to_plot_list, function(to_plot) {
+  gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, linewidth=.25) + 
+    geom_vline(xintercept=0, linetype=1, linewidth=.25) +
+    #geom_abline(intercept=0, slope=1, linetype=2, color="grey50") + 
+    rasterize(geom_hdr_points(size=.1), dpi=300) +
+    geom_smooth(method="lm", se=F, color="darkred", linewidth=.5) + 
+    coord_equal() + 
+    theme_bw() + 
+    lims(x=c(-6,6), y = c(-6, 6)) + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6),
+          legend.position = "none",
+          legend.title = element_blank(),
+          legend.text = element_text(size=6),
+          legend.position.inside = c(.9, .2))
+  print(gg)
+  print(to_plot)
+  print(sprintf("cor: %s", cor(marker_peaks_sns_glut3_w[,to_plot[1]], marker_peaks_sns_glut3_w[,to_plot[2]])))
+  save_plot(file.path(out_dir, sprintf("dars_log2FC_hdr_filter-meandiff_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
+})
+
+```
+
+
+#### Filtered by FDR
+```{r}
+marker_peaks_sns_glut3_df = map(marker_peaks_sns_glut3_gr, as.data.frame) %>%
+  bind_rows( .id="comparison")
+
+
+marker_peaks_sns_glut3_df = marker_peaks_sns_glut3_df %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end)) 
+
+fdr_thresh = .01
+marker_peaks_pass = marker_peaks_sns_glut3_df %>%
+  filter(FDR < fdr_thresh) %>%
+  distinct(region)
+
+marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
+  filter(region %in% marker_peaks_pass$region) %>% 
+  dplyr::select(-group, -comparison, -MeanDiff, -FDR) %>%
+  pivot_wider(names_from = "group_name", values_from = "Log2FC", values_fill = 0) %>%
+  sample_frac(.1) 
+```
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+walk(to_plot_list, function(to_plot) {
+  gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, linewidth=.25) + 
+    geom_vline(xintercept=0, linetype=1, linewidth=.25) +
+    #geom_abline(intercept=0, slope=1, linetype=2, color="grey50") + 
+    rasterize(geom_hdr_points(size=.1), dpi=300) +
+    geom_smooth(method="lm", se=F, color="darkred", linewidth=.5) + 
+    coord_equal() + 
+    theme_bw() + 
+    lims(x=c(-6,6), y = c(-6, 6)) + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6),
+          legend.position = "none",
+          legend.title = element_blank(),
+          legend.text = element_text(size=6),
+          legend.position.inside = c(.9, .2))
+  print(gg)
+  print(to_plot)
+  print(sprintf("cor: %s", cor(marker_peaks_sns_glut3_w[,to_plot[1]], marker_peaks_sns_glut3_w[,to_plot[2]])))
+  save_plot(file.path(out_dir, sprintf("dars_log2FC_hdr_filter-FDR_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
+})
+
+```
+
+
+## chromVar -- cisbp, human
+```{r}
+redo = F
+if (! ("MotifHS" %in% getPeakAnnotation(proj)$Name) || redo) {
+  
+  if (class(getBgdPeaks) == "RangedSummarizedExperiment") 
+    proj <- addBgdPeaks(proj)
+  
+  proj <- addDeviationsMatrix(
+    ArchRProj = proj,
+    peakAnnotation = "MotifHS",
+    force = TRUE
+  )
+  proj = saveArchRProject(proj)
+}
+```
+
+```{r}
+plotVarDev <- getVarDeviations(proj, name = "MotifHSMatrix", plot = TRUE)
+plotVarDev
+```
+
+```{r}
+redo = T
+if (redo) {
+  md = as.data.frame(getCellColData(proj)) %>%
+    rownames_to_column() %>%
+    filter(cluster %in% c("Glut-RA", "Glut-Arco-1", 
+                          "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4"))
+  proj_sub = proj[md$rowname,]
+  
+  proj_sub <- addBgdPeaks(proj_sub, force=T)
+  
+  proj_sub <- addDeviationsMatrix(
+    ArchRProj = proj_sub,
+    peakAnnotation = "MotifHS",
+    force = TRUE
+  )
+}
+```
+
+```{r}
+motifs <- c("SMARCC1", "FOS", "FOS2L", "JUNB", "JUN", "JUND",
+             "BACH1", "BACH2", "JDP2", "NFE2", "NFE2L2", "BATF", "IRF4", 
+            "MAFK", "MAFB", "MAFF", "MAF", "MAFG", "NR3C1", "NFIC", "AR_",
+            "CIC", 
+            "MEF2", "TCF7", "SIX2", "EMX", "PPAR", "RFX", "TCF", "ARID", "BHLH", "NEUROD", "OLIG", "ATOH", "NEUROG", "TAL")
+markerMotifs <- getFeatures(proj_sub, select = paste(motifs, collapse="|"), useMatrix = "MotifHSMatrix")
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs
+```
+
+```{r}
+proj_sub$cluster = as.character(proj_sub$cluster)
+p <- plotGroups(ArchRProj = proj_sub, 
+  groupBy = "cluster", 
+  colorBy = "MotifHSMatrix", 
+  #name = sub("z:", "", markerMotifs),
+  name = markerMotifs,
+  imputeWeights = NULL
+)
+p
+```
+### Scatter plots
+```{r}
+markerMotifs_sub_z = sub("z:", "", markerMotifs)
+mat = getMatrixFromProject(proj_sub, useMatrix = "MotifHSMatrix")
+mat_f = mat[markerMotifs_sub_z,]
+mat_z = assay(mat_f, "z")
+
+md = as.data.frame(getCellColData(proj_sub)) %>% 
+  rownames_to_column("barcode") %>%
+  mutate(cluster = factor(cluster, levels=rev(c("Glut-HVC-1", "Glut-NC-1",  
+                                                "Glut-HVC-2", "Glut-NC-4", 
+                                                "Glut-RA", "Glut-Arco-1")))) %>%
+  mutate(position_cur = tolower(map_chr(cluster, function(x) map_chr(str_split(x, "-"),2)))) %>%
+  mutate(position_cur = if_else(position_cur == "nido", "nc", position_cur))
+
+mat_z_l = as.data.frame(as.matrix(mat_z)) %>% rownames_to_column() %>%
+  pivot_longer(-rowname, names_to = "barcode", values_to="value") %>%
+  left_join(md %>% select(barcode, cluster, position_cur)) %>%
+  rename(TF = rowname) 
+mat_z_l$colors = position_colors2[match(mat_z_l$position_cur, names(position_colors2))]
+```
+
+```{r}
+TF_cur = "AR_689"
+
+for (TF_cur in markerMotifs_sub_z) {
+  print(TF_cur)
+  mat_z_l_cur = mat_z_l %>%
+    filter(TF==TF_cur)
+  gg = ggplot(mat_z_l_cur, aes(value, y=cluster, fill=colors)) + 
+    geom_density_ridges() + 
+    theme_bw() + 
+    scale_fill_identity() +
+    labs(x="motif enrichment\n(z-scored)", y ="") + 
+    theme(axis.text = element_text(size=6),
+          axis.title = element_text(size=7))
+  print(gg)
+  fname = file.path(out_dir, sprintf("chromVar_motif-enrichment_%s.pdf", TF_cur))
+  save_plot(fname, gg, base_height=1.5, base_asp=1)
+}
+```
+
+```{r}
+mat_z_mean = mat_z_l %>% 
+  group_by(cluster, TF) %>%
+  summarize(value_mean = mean(value), 
+            sd = sd(value)) 
+
+mat_z_w = mat_z_mean %>% 
+  select(TF, value_mean, cluster) %>%
+  pivot_wider(names_from = "cluster", values_from = "value_mean")
+
+mat_z_w_top = mat_z_mean %>%
+  mutate(value_mean_sign = sign(value_mean)) %>%
+  group_by(value_mean_sign, cluster) %>%
+  top_n(10, abs(value_mean))
+
+
+
+```
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+for (to_plot in to_plot_list) {
+  mat_z_w_top_cur = mat_z_w_top %>%
+    filter(cluster %in% to_plot)
+  
+  mat_z_w = mat_z_w %>%
+    mutate(to_label = if_else(TF %in% mat_z_w_top_cur$TF, TF, ""))
+  gg = ggplot(mat_z_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point(size=.5) + 
+    #ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=2, base_asp=1)
+}
+```
+```{r fig.height = 10}
+
+mat = mat_z_w %>% column_to_rownames("TF") %>% 
+  select(-to_label) %>% 
+  as.matrix()
+
+mat = mat[,c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")]
+
+cols = viridisLite::viridis(9)
+pal = brewer_pal(type="div")(9)
+
+min_val = min(mat)
+max_val = max(mat)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+width = .6
+height = width * nrow(mat) / ncol(mat)
+hm = ComplexHeatmap::Heatmap(mat, col=cols, cluster_columns=F,
+                             row_names_gp = gpar(fontsize=6),
+                             column_names_gp = gpar(fontsize=6),
+                             column_names_side = "top",
+                             clustering_method_rows = "ward.D",
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "chromvar_all_heatmap.pdf"), height = height + 2, width = width + 2)
+print(hm)
+dev.off()
+```
+
+### Group by DBD
+
+
+```{r}
+mat_z_mean = mat_z_l %>% 
+  group_by(cluster, TF) %>%
+  summarize(value_mean = mean(value), 
+            sd = sd(value)) %>%
+  mutate(Name = str_extract(TF, "[A-Z0-9]+")) %>%
+  left_join(tfs)
+
+mat_z_mean_dbd = mat_z_mean %>% 
+  group_by(cluster, DBD) %>%
+  summarize(value_mean = mean(value_mean))
+
+mat_z_w = mat_z_mean %>% 
+  select(TF, value_mean, cluster) %>%
+  pivot_wider(names_from = "cluster", values_from = "value_mean")
+
+mat_z_dbd_w = mat_z_mean_dbd %>% 
+  select(DBD, value_mean, cluster) %>%
+  pivot_wider(names_from = "cluster", values_from = "value_mean")
+
+
+mat_z_w_top = mat_z_mean %>%
+  mutate(value_mean_sign = sign(value_mean)) %>%
+  group_by(value_mean_sign, cluster) %>%
+  top_n(10, abs(value_mean))
+
+mat_z_dbd_w_top = mat_z_mean_dbd %>%
+  mutate(value_mean_sign = sign(value_mean)) %>%
+  group_by(value_mean_sign, cluster) %>%
+  top_n(10, abs(value_mean))
+```
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+for (to_plot in to_plot_list) {
+  mat_z_w_top_cur = mat_z_w_top %>%
+    filter(cluster %in% to_plot)
+  
+  mat_z_w = mat_z_w %>%
+    mutate(to_label = if_else(TF %in% mat_z_w_top_cur$TF, TF, ""))
+  gg = ggplot(mat_z_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point() + 
+    #ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=3, base_asp=1)
+}
+```
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+for (to_plot in to_plot_list) {
+  mat_z_dbd_w_top_cur = mat_z_dbd_w_top %>%
+    filter(cluster %in% to_plot)
+  
+  mat_z_dbd_w = mat_z_dbd_w %>%
+    mutate(to_label = if_else(DBD %in% mat_z_dbd_w_top_cur$DBD, DBD, ""))
+  gg = ggplot(mat_z_dbd_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point() + 
+    ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_dbd_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=3, base_asp=1)
+}
+```
+
+### Remove redundant TFs
+```{r}
+mat_z_mean = mat_z_l %>% 
+  group_by(cluster, TF) %>%
+  summarize(value_mean = mean(value), 
+            sd = sd(value)) %>%
+  mutate(family = case_when(grepl("CTCF", TF) ~ "CTCF",
+                            grepl("^FOS", TF) ~ "FOS",
+                            grepl("JUN", TF) ~ "JUN",
+                            grepl("^MAF", TF) ~ "MAF",
+                            grepl("^MEF2", TF) ~ "MEF2",
+                            grepl("^NFE2", TF) ~ "NFE2",
+                            grepl("NR3C1", TF) ~ "NR3C",
+                            grepl("PPAR", TF) ~ "PPAR",
+                            grepl("NFIC", TF) ~ "NFI",
+                            TRUE ~ str_extract(TF, "[A-Z]+")))
+mat_z_mean_fam = mat_z_mean %>% 
+  group_by(cluster, family) %>%
+  summarize(value_mean = mean(value_mean))
+
+mat_z_fam_w = mat_z_mean_fam %>% 
+  select(family, value_mean, cluster) %>%
+  pivot_wider(names_from = "cluster", values_from = "value_mean")
+
+mat_z_fam_w_top = mat_z_mean_fam %>%
+  mutate(value_mean_sign = sign(value_mean)) %>%
+  group_by(value_mean_sign, cluster) %>%
+  top_n(10, abs(value_mean))
+
+mat_z_mean_fam_rel = mat_z_mean_fam %>% mutate(set = case_when(grepl("RA|Arco", cluster) ~ "ra",
+                                                               cluster %in% c("Glut-HVC-1", "Glut-NC-1") ~ "hvc1",
+                                                               cluster %in% c("Glut-HVC-2", "Glut-NC-4") ~ "hvc2"),
+                                               song = if_else(grepl("RA|HVC", cluster), "song", "nonsong")) %>%
+  group_by(set, family) %>% 
+  mutate(value_mean_rel = value_mean - value_mean[song=="nonsong"])
+
+mat_z_mean_fam_rel_w = mat_z_mean_fam_rel %>% 
+  ungroup() %>% 
+  select(family, value_mean_rel, cluster) %>%
+  pivot_wider(names_from = "cluster", values_from = "value_mean_rel")
+
+```
+
+
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+for (to_plot in to_plot_list) {
+  mat_z_fam_w_top_cur = mat_z_fam_w_top %>%
+    filter(cluster %in% to_plot)
+  
+  mat_z_fam_w = mat_z_fam_w %>%
+    mutate(to_label = if_else(family %in% mat_z_fam_w_top_cur$family, family, ""))
+  gg = ggplot(mat_z_fam_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point(size=0.5) + 
+ #   ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=2, base_asp=1)
+  
+  gg = ggplot(mat_z_fam_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point(size=2) + 
+    ggrepel::geom_label_repel(aes(label=family)) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
+  
+  ## Relative to nonsong
+  gg = ggplot(mat_z_mean_fam_rel_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, size=.25) + 
+    geom_vline(xintercept=0, linetype=1, size=.25) +
+    #geom_abline(intercept=0, slope=1, linetype=2, color="grey50") + 
+    geom_point(size=0.5) + 
+ #   ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
+    theme_bw() + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6))
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_norm.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
+  
+
+  gg = ggplot(mat_z_mean_fam_rel_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point(size=2) + 
+    ggrepel::geom_label_repel(aes(label=family)) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_norm_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
+}
+  print(cor(mat_z_mean_fam_rel_w$`Glut-RA`, mat_z_mean_fam_rel_w$`Glut-HVC-1`))  
+  print(cor(mat_z_mean_fam_rel_w$`Glut-RA`, mat_z_mean_fam_rel_w$`Glut-HVC-2`))
+  print(cor(mat_z_mean_fam_rel_w$`Glut-HVC-1`, mat_z_mean_fam_rel_w$`Glut-HVC-2`))
+```
+
+
+```{r fig.height = 10}
+
+mat = mat_z_fam_w %>% column_to_rownames("family") %>% 
+  select(-to_label) %>% 
+  as.matrix()
+
+mat = mat[,c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")]
+
+cols = viridisLite::viridis(9)
+pal = brewer_pal(type="div")(9)
+
+min_val = min(mat)
+max_val = max(mat)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+width = .6
+height = width * nrow(mat) / ncol(mat)
+hm = ComplexHeatmap::Heatmap(mat, col=cols, cluster_columns=F,
+                             row_names_gp = gpar(fontsize=6),
+                             column_names_gp = gpar(fontsize=6),
+                             column_names_side = "top",
+                             clustering_method_rows = "ward.D",
+                             width = unit(width, "in"),
+                             height = unit(height, "in")
+                             )
+print(hm)
+pdf(file.path(out_dir, "chromvar_family_heatmap.pdf"))
+print(hm)
+dev.off()
+```
+
+#### Plot TF DE by family
+```{r}
+#deg_fname = file.path("~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/deg/song-surround_deg_glut/marker_genes_cluster_SCT.rds")
+deg_fname = file.path("~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/deg/song-surround_deg_glut/marker_genes_cluster_SCT.rds")
+deg = readRDS(deg_fname)
+
+```
+
+
+
+```{r}
+tf_terms = unique(mat_z_fam_w$family)
+tf_terms = paste("^", tf_terms, sep="")
+tf_terms = case_when(tf_terms == "^AR" ~ "^AR$",
+                     tf_terms == "^RFX" ~ "^RFX[0-9]+",
+                     tf_terms == "^IRF" ~ "^IRF[0-9]+$",
+                     tf_terms == "^TAL" ~ "^TAL[0-9]+$",
+                     TRUE ~ tf_terms)
+deg_filt = map(tf_terms, function(tft) {
+  deg %>% filter(grepl(tft, gene))
+}) %>% bind_rows()
+
+deg_filt_mat = deg_filt %>% select(gene, compare, avg_log2FC) %>% 
+  filter(grepl("RA|HVC", compare)) %>% 
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+```
+
+```{r}
+hm = Heatmap(deg_filt_mat)
+hm
+```
+```{r}
+tf_terms_to_use = list(AP1 = c("^SMARCC", "^JUN", "^FOS", "^JDP"),
+                    NFI = c("^NFI"),
+                    IRF = c("^IRF[0-9]+$"),
+                    MAF = c("^MAF[^0-9]", "^MAF$"),
+                    NR3 = c("^NR3C"),
+                    CIC = "^CIC",
+                                 BACH =  "^BACH",
+                    BATF = "^BATF",
+                    BHLH = "^BHLH",
+                    OLIG = "^OLIG",
+                    NEURO = "^NEURO",
+                    ATOH = "^ATOH", 
+                    TAL = "^TAL[0-9]+$", 
+                    MEF2 = "^MEF2",
+                    PPAR = "^PPAR",
+                    SIX = "^SIX",
+                    TCF = c("^TCF[0-9]+", "^TCFL[0-9]+"),
+                    AR = "^AR$",
+                    PGR = "^PGR$",
+                    ARID = "^ARID", 
+                    EMX = "^EMX",
+                    RFX = "^RFX[0-9]+")
+
+
+
+genes_to_use = map(tf_terms_to_use, function(tf_term_cur) {
+  tf_term_cur = paste(tf_term_cur, collapse="|")
+  print(tf_term_cur)
+  sort(grep(tf_term_cur, Features(obj_glut), value=T))
+}) %>% unlist()
+
+deg_filt = deg %>% filter(gene %in% genes_to_use)
+
+deg_filt_mat = deg_filt %>% select(gene, compare, avg_log2FC) %>% 
+  filter(grepl("RA|HVC", compare)) %>% 
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+pal = brewer_pal(type="div", palette = 3)(9)
+min_val = min(deg_filt_mat)
+max_val = max(deg_filt_mat)
+cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
+
+
+filter_val = .5
+to_keep = apply(deg_filt_mat, 1, function(x) any(abs(x) >= filter_val))
+deg_filt_mat = deg_filt_mat[to_keep,]
+if (ncol(deg_filt_mat) < 3) 
+  return()
+
+deg_filt_mat = deg_filt_mat[,c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA")]
+
+size_factor = 0.1
+height = nrow(deg_filt_mat) * size_factor
+width = ncol(deg_filt_mat) * size_factor
+hm = Heatmap(deg_filt_mat,
+             cluster_columns = F,
+             row_names_gp = gpar(fontsize = 6),
+             column_names_gp = gpar(fontsize = 6),
+             height = unit(height, "in"),
+             width = unit(width, "in"))
+plot(hm)
+  
+
+iwalk(tf_terms_to_use, function(tf_term_cur, tf_name) {
+  
+  tf_term_cur = paste(tf_term_cur, collapse="|")
+  print(tf_term_cur)
+  genes = sort(grep(tf_term_cur, Features(obj_glut), value=T))
+  if (length(genes) < 2) 
+    return()
+  deg_filt = deg %>% filter(gene %in% genes)
+  
+  deg_filt_mat = deg_filt %>% select(gene, compare, avg_log2FC) %>% 
+    filter(grepl("RA|HVC", compare)) %>% 
+    pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0) %>%
+    column_to_rownames("gene") %>%
+    as.matrix()
+  
+  if (ncol(deg_filt_mat) < 3) 
+    return()
+  
+  deg_filt_mat = deg_filt_mat[,c("Glut-RA", "Glut-HVC-1", "Glut-HVC-2")]
+  
+  size_factor = 0.1
+  height = nrow(deg_filt_mat) * size_factor
+  width = ncol(deg_filt_mat) * size_factor
+  hm = Heatmap(deg_filt_mat, col= cols,
+               cluster_columns = F,
+               row_names_gp = gpar(fontsize = 6),
+               column_names_gp = gpar(fontsize = 6),
+               height = unit(height, "in"),
+               width = unit(width, "in"))
+  plot(hm)
+  pdf(file.path(out_dir, str_interp("heatmap_deg_${tf_name}.pdf")),
+      height = height +2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+
+
+```
+```{r}
+to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
+                    c("Glut-RA", "Glut-HVC-2"),
+                    c("Glut-HVC-1", "Glut-HVC-2"))
+
+genes_to_use = map(tf_terms_to_use, function(tf_term_cur) {
+  tf_term_cur = paste(tf_term_cur, collapse="|")
+  print(tf_term_cur)
+  sort(grep(tf_term_cur, Features(obj_glut), value=T))
+}) %>% unlist()
+
+deg_filt = deg %>% filter(gene %in% genes_to_use)
+
+deg_filt_mat = deg_filt %>% select(gene, compare, avg_log2FC) %>% 
+  filter(grepl("RA|HVC", compare)) %>% 
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0)# %>%
+ # column_to_rownames("gene") 
+
+
+for (to_plot in to_plot_list) {
+  
+  gg = ggplot(deg_filt_mat, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=1, linewidth=.25) + 
+    geom_vline(xintercept=0, linetype=1, linewidth=.25) +
+    geom_point(size=0.5) + 
+    theme_bw() + 
+    theme(axis.title = element_text(size=7),
+          axis.text = element_text(size=6))
+    save_plot(file.path(out_dir, sprintf("points_deg_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
+    
+  gg = ggplot(deg_filt_mat, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
+    geom_hline(yintercept=0, linetype=2) + 
+    geom_vline(xintercept=0, linetype=2) + 
+    geom_point(size=0.5) + 
+    ggrepel::geom_label_repel(aes(label=gene), force = 5) + 
+    theme_bw()
+  print(gg)
+  save_plot(file.path(out_dir, sprintf("points_deg_%s_vs_%s_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
+}  
+
+print(cor(deg_filt_mat$`Glut-RA`, deg_filt_mat$`Glut-HVC-1`))  
+print(cor(deg_filt_mat$`Glut-RA`, deg_filt_mat$`Glut-HVC-2`))
+print(cor(deg_filt_mat$`Glut-HVC-1`, deg_filt_mat$`Glut-HVC-2`))
+```
+
+
+#### Expression
+```{r}
+obj_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/obj_clustered.qs"
+obj = qread(obj_fname)
+```
+
+```{r}
+obj_agg = AggregateExpression(obj, assay="SCT", group.by = c("cluster", "assignment"), return.seurat = F)
+obj_agg = log1p(obj_agg$SCT)
+
+obj_agg_glut = obj_agg[,grepl("Glut-HVC|Glut-RA|Glut-Arco-1|Glut-NC-1|Glut-NC-4", colnames(obj_agg))]
+```
+
+```{r}
+ct_to_select = c("Glut-RA", "Glut-Arco-1",
+                 "Glut-HVC-1", "Glut-NC-1", 
+                 "Glut-HVC-2", "Glut-NC-4"
+)
+cells = Cells(obj)[obj$cluster %in% ct_to_select ]
+obj_glut = subset(obj, cells=cells)
+obj_glut$cluster = factor(obj$cluster, levels=rev(ct_to_select))
+```
+
+
+
+
+```{r}
+tf_terms = unique(mat_z_fam_w$family)
+tf_terms = paste("^", tf_terms, sep="")
+tf_terms = case_when(tf_terms == "^AR" ~ "^AR$",
+                     tf_terms == "^RFX" ~ "^RFX[0-9]+",
+                     tf_terms == "^IRF" ~ "^IRF[0-9]+$",
+                     tf_terms == "^TAL" ~ "^TAL[0-9]+$",
+                     TRUE ~ tf_terms)
+
+tf_terms_to_use = list(AP1 = c("^SMARCC", "^JUN", "^FOS", "^JDP"),
+                    NFI = c("^NFI"),
+                    BACH =  "^BACH",
+                    IRF = c("^IRF[0-9]+$"),
+                    MAF = c("^MAF[^0-9]", "^MAF$"),
+                    NR3 = c("^NR3C"),
+                    CIC = "^CIC",
+                    BATF = "^BATF",
+                    BHLH = "^BHLH",
+                    OLIG = "^OLIG",
+                    NEURO = "^NEURO",
+                    ATOH = "^ATOH", 
+                    TAL = "^TAL[0-9]+$", 
+                    MEF2 = "^MEF2",
+                    PPAR = "^PPAR",
+                    SIX = "^SIX",
+                    TCF = c("^TCF[0-9]+", "^TCFL[0-9]+"),
+                    ARID = "^ARID", 
+                    EMX = "^EMX",
+                    RFX = "^RFX[0-9]+")
+
+
+
+iwalk(tf_terms_to_use, function(tf_term_cur, tf_name) {
+  tf_term_cur = paste(tf_term_cur, collapse="|")
+  genes = sort(grep(tf_term_cur, Features(obj_glut), value=T))
+  if (length(genes) < 2) 
+    return()
+  gg = DotPlot_scCustom(obj_glut, features=genes, group.by="cluster", flip_axes=T)
+  gg = gg + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  print(gg)
+  save_plot(file.path(out_dir, str_interp("dotplot_expr_${tf_name}.pdf")), gg, base_height = 4, base_width = 4)
+})
+```
+```{r}
+obj_glut_agg = AggregateExpression(obj_glut, assays="SCT", group.by="cluster")
+obj_glut_agg = log1p(obj_glut_agg[[1]])
+obj_glut_agg = obj_glut_agg[,ct_to_select]
+```
+
+```{r}
+
+tf_terms_to_use = list(AP1 = c("^SMARCC", "^JUN", "^FOS", "^BACH", "^JDP"),
+                    NFI = c("^NFI"),
+                    IRF = c("^IRF[0-9]+$"),
+                    MAF = c("^MAF[^0-9]", "^MAF$"),
+                    NR3 = c("^NR3C"),
+                    CIC = "^CIC",
+                    BATF = "^BATF",
+                    BHLH = "^BHLH",
+                    OLIG = "^OLIG",
+                    NEURO = "^NEURO",
+                    ATOH = "^ATOH", 
+                    TAL = "^TAL[0-9]+$", 
+                    MEF2 = "^MEF2",
+                    PPAR = "^PPAR",
+                    SIX = "^SIX",
+                    TCF = c("^TCF[0-9]+", "^TCFL[0-9]+"),
+                    ARID = "^ARID", 
+                    EMX = "^EMX",
+                    RFX = "^RFX[0-9]+")
+
+genes_all = map(tf_terms_to_use, function(tf_term_cur) {
+tf_term_cur = paste(tf_term_cur, collapse="|")
+genes = sort(grep(tf_term_cur, Features(obj_glut), value=T))
+}) %>% unlist()
+
+obj_glut_agg_filt = obj_glut_agg[genes_all,]
+
+pal = brewer_pal(type="seq", palette = 3)(9)
+min_val = min(obj_glut_agg_filt)
+max_val = max(obj_glut_agg_filt)
+cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
+
+iwalk(tf_terms_to_use, function(tf_term_cur, tf_name) {
+  tf_term_cur = paste(tf_term_cur, collapse="|")
+  genes = sort(grep(tf_term_cur, Features(obj_glut), value=T))
+  if (length(genes) < 2) 
+    return()
+  
+  obj_glut_agg_cur = as.matrix(obj_glut_agg[genes,])
+   if (ncol(deg_filt_mat) < 3) 
+    return()
+  
+  size_factor = 0.1
+  height = nrow(obj_glut_agg_cur) * size_factor
+  width = ncol(obj_glut_agg_cur) * size_factor
+  hm = Heatmap(obj_glut_agg_cur, col= cols,
+               cluster_columns = F,
+               row_names_gp = gpar(fontsize = 6),
+               column_names_gp = gpar(fontsize = 6),
+               height = unit(height, "in"),
+               width = unit(width, "in"))
+  plot(hm)
+  pdf(file.path(out_dir, str_interp("heatmap_expr_${tf_name}.pdf")),
+      height = height +2, width = width + 2)
+  print(hm)
+  dev.off()
+})
+```
+

@@ -1,0 +1,184 @@
+```{r}
+library(Seurat)
+library(tidyverse)
+library(qs)
+
+library(pvclust)
+library(future)
+library(furrr)
+library(ComplexHeatmap)
+library(circlize)
+library(scCustomize)
+plan(sequential)
+source("~/nest/rstudio/utils/scRNA.R")
+source("~/nest/rstudio/utils/stats.R")
+```
+
+# Parameters 
+```{r}
+#hclust_method = "ward.D"
+hclust_method = "average"
+dist_method = "correlation"
+```
+
+# Directories 
+```{r}
+dir_root = "~/hdd/rstudio/snRNA/snrna_cellranger"
+scrna_dir =  file.path(dir_root, "snrna_seurat_cellbender.0.01_preprocess")
+obj_fname = file.path(scrna_dir, "obj_clustered.qs")
+
+
+out_dir = file.path(scrna_dir, "trees")
+script_name = "celltypes_hclust_all_new-clust"
+out_dir = file.path(out_dir, script_name)
+out_sub_dir = file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
+dir.create(out_dir, recursive = T)
+dir.create(out_sub_dir) 
+
+res_to_use = "cluster"
+
+obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs")
+
+
+data_out_avg_fname = file.path(out_dir, "data_avg.qs")
+data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs")
+
+tfs = read_delim("~/nest/gene_lists/lambert_tfs/tfs.csv") %>%
+  filter(DBD!="Unknown")
+```
+# Load data 
+
+```{r}
+redo = F
+if (redo) {
+  obj = qread(obj_fname)
+  idents = FetchData(obj, res_to_use) %>%
+    mutate_all(as.factor)
+  Idents(obj) = idents[,1]
+  
+  cells = Cells(obj)[!grepl("/", obj$assignment)]
+  obj_sub = subset(obj, cells=cells)
+
+  qsave(obj_sub, obj_out_fname)
+
+} else {
+
+  obj_sub = qread(obj_out_fname)
+
+}
+
+```
+
+```{r}
+obj_sub$region = case_when(obj_sub$position %in% c("ra", "arco") ~ "ARCO",
+                           obj_sub$position %in% c("lman", "nr", "hvc", "nc") ~ "NIDO")
+```
+
+```{r}
+table(obj_sub$cluster)
+```
+
+### Manual order
+```{r}
+ct_order = c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2", 
+             "Glut-NC-1", "Glut-NC-2", "Glut-NC-3", "Glut-NC-4",
+             "Glut-Nido-1", "Glut-Nido-2", "Glut-Nido-3", 
+             "Glut-LMAN-1", "Glut-LMAN-2",
+             "Glut-NR-1", "Glut-NR-2", "Glut-NR-3", "Glut-NR-4","Glut-NR-5",
+             "Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "Glut-Arco-3", "Glut-Arco-4", "Glut-Arco-5",
+             "Glut-Pre-3", "Glut-Pre-2", "Glut-Pre-1",
+             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
+             "GABA-3", "GABA-4-1", "GABA-4-2", 
+             "GABA-5-1", "GABA-5-2", 
+             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-Pre",
+             "Astro-1", "Astro-2", "Astro-3", "Epen", 
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+```
+
+# Average data
+```{r}
+assay_to_use = "SCT"
+Idents(obj_sub) = paste(obj_sub@meta.data[,res_to_use], obj_sub$assignment, sep="_")
+Idents(obj_sub) = obj_sub@meta.data[,res_to_use]
+#obj_int_avg = AverageExpression(obj_sub,assays = assay_to_use )
+obj_int_avg = AggregateExpression(obj_sub, assays=assay_to_use)
+obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
+colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
+#obj_int_avg1 = obj_int_avg1[, !(colnames(obj_int_avg1) %in% c("Glut-Nido-1-1"))]
+qsave(obj_int_avg1, data_out_avg_fname)
+```
+
+```{r}
+tab = table(obj_sub$position, obj_sub$cluster)
+tab = tab[c("hvc", "nc", "lman", "nr","ra", "arco"), ct_order] 
+tab = sweep(tab, 1, rowSums(tab), FUN="/")
+tab = sweep(tab, 2, colSums(tab), FUN="/")
+tab_spec = apply(tab, 2, calc_tissue_specificity)
+```
+
+```{r}
+scale_factor = 0.08
+height = nrow(tab) * scale_factor
+width = ncol(tab) * scale_factor
+
+tab = tab[,ct_order]
+tab_spec = tab_spec[ct_order]
+
+ncolors=9
+cols = colorRamp2(breaks = seq(0,1,length.out=ncolors), colors = scales::brewer_pal(palette = "Greys")(ncolors))
+
+bar_cols = data.frame(cluster_type = c("Glut", "Glut-Pre", "GABA", "GABA-Pre", "Non-neuron"),
+                      col = c("#008000", "#90ca90", "#800000", "#c37474", "#808000"))
+ct_df = data.frame(cluster = names(tab_spec)) %>%
+  mutate(cluster_type = case_when(
+    grepl("Glut-Pre", cluster) ~ "Glut-Pre",
+    grepl("Glut", cluster) ~ "Glut",
+    grepl("GABA-Pre", cluster) ~ "GABA-Pre",
+    grepl("GABA", cluster) ~ "GABA",
+    TRUE ~ "Non-neuron")) %>% 
+  left_join(bar_cols)
+
+bar_colors = ct_df$col
+ab = anno_barplot(tab_spec, 0, which = "column", border=F, 
+                  gp = gpar(fill=bar_colors)
+                  )
+hm_row = HeatmapAnnotation(ab=ab, which="column")
+
+hm = Heatmap(tab, cluster_columns=F,
+             cluster_rows=F, 
+             col=cols,
+             height = unit(height, "in"),
+             width = unit(width, "in"), 
+             column_names_gp = gpar(fontsize=6),
+             row_names_gp = gpar(fontsize=6))
+hm 
+hm2 =  hm_row %v% hm
+hm2
+
+pdf(file.path(out_sub_dir, "cluster_proportions_horiz_with-bar_ordered.pdf"), height = height + 4, width = width + 4)
+print(hm2)
+dev.off()
+
+ab = anno_barplot(tab_spec, 0, which = "row", border=F, 
+                  gp = gpar(fill=bar_colors)
+                  )
+hm_row = HeatmapAnnotation(ab=ab, which="row")
+
+
+hm = Heatmap(t(tab), cluster_rows=F, show_row_names=T, row_names_side = "left",
+             cluster_columns=F, 
+             col=cols,
+             height = unit(width, "in"),
+             width = unit(height, "in"), 
+             column_names_gp = gpar(fontsize=6),
+             row_names_gp = gpar(fontsize=6))
+hm
+hm2 = hm + hm_row
+hm2
+pdf(file.path(out_sub_dir, "cluster_proportions_vert_with-bar_ordered.pdf"), height = width + 4, width = height + 4)
+print(hm2)
+dev.off()
+```
+
