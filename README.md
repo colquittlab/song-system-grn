@@ -13,8 +13,8 @@ Raw sequencing data are available at GEO:
 
 | Dataset | Accession |
 |---------|-----------|
-| snRNA-seq + Multiome (songbird) | [GSE316539](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE316539) |
-| Overexpression (chicken) | [GSE316538](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE316538) |
+| snRNA-seq | [GSE316539](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE316539) |
+| Multiome | [GSE316538](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE316538) |
 
 ---
 
