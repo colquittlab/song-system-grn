@@ -22,22 +22,26 @@ obtained separately and configured in `config/paths.R` (R scripts) and
 Two custom BSgenome packages for *Lonchura striata domesticus* (lonStrDom2, 2019)
 are distributed as release assets on this repository (too large for git):
 
-| Package | Chromosome names | Used by |
-|---------|-----------------|---------|
-| `BSgenome.LStriataDom.Brainard.lonStrDom2` | NCBI | — |
-| `BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc` | UCSC | `multiome/archr/peaks.qmd`, `dreme.qmd`, `dreme_tfbs.qmd` |
+| Package | Version | Used by |
+|---------|---------|---------|
+| `BSgenome.LStriataDom.Brainard.lonStrDom2` | 2.0.0 | — |
+| `BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc` | 2.0.0 | `multiome/archr/peaks.qmd`, `dreme.qmd`, `dreme_tfbs.qmd` |
+| `TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled` | 1.0 | `multiome/archr/archr_processing.qmd` |
+| `org.Lstriata.eg.db` | 0.1 | `multiome/archr/archr_processing.qmd` |
 
 Install from the [v1.0 release](https://github.com/colquittlab/song-system-grn/releases/tag/v1.0):
 
 ```r
-install.packages(
-  "https://github.com/colquittlab/song-system-grn/releases/download/v1.0/BSgenome.LStriataDom.Brainard.lonStrDom2_2.0.0.tar.gz",
-  repos = NULL, type = "source"
-)
-install.packages(
-  "https://github.com/colquittlab/song-system-grn/releases/download/v1.0/BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc_2.0.0.tar.gz",
-  repos = NULL, type = "source"
-)
+base_url <- "https://github.com/colquittlab/song-system-grn/releases/download/v1.0"
+
+install.packages(file.path(base_url, "BSgenome.LStriataDom.Brainard.lonStrDom2_2.0.0.tar.gz"),
+                 repos = NULL, type = "source")
+install.packages(file.path(base_url, "BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc_2.0.0.tar.gz"),
+                 repos = NULL, type = "source")
+install.packages(file.path(base_url, "TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled_1.0.tar.gz"),
+                 repos = NULL, type = "source")
+install.packages(file.path(base_url, "org.Lstriata.eg.db_0.1.tar.gz"),
+                 repos = NULL, type = "source")
 ```
 
 These are also recorded in `renv.lock`; however, because they are not on CRAN or
