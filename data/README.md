@@ -55,7 +55,7 @@ Bioconductor, `renv::restore()` cannot install them automatically — run the
 The following files must be downloaded and their paths set in `config/paths.R`
 and `config/paths.sh`.
 
-### Zebra finch genome (lonStrDom2 / GCF_005870125.1)
+### Bengalese finch genome (lonStrDom2 / GCF_005870125.1)
 
 | Variable | File | Source |
 |----------|------|--------|
