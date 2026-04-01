@@ -17,6 +17,35 @@ obtained separately and configured in `config/paths.R` (R scripts) and
 
 ---
 
+## Custom R packages
+
+Two custom BSgenome packages for *Lonchura striata domesticus* (lonStrDom2, 2019)
+are distributed as release assets on this repository (too large for git):
+
+| Package | Chromosome names | Used by |
+|---------|-----------------|---------|
+| `BSgenome.LStriataDom.Brainard.lonStrDom2` | NCBI | — |
+| `BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc` | UCSC | `multiome/archr/peaks.qmd`, `dreme.qmd`, `dreme_tfbs.qmd` |
+
+Install from the [v1.0 release](https://github.com/colquittlab/song-system-grn/releases/tag/v1.0):
+
+```r
+install.packages(
+  "https://github.com/colquittlab/song-system-grn/releases/download/v1.0/BSgenome.LStriataDom.Brainard.lonStrDom2_2.0.0.tar.gz",
+  repos = NULL, type = "source"
+)
+install.packages(
+  "https://github.com/colquittlab/song-system-grn/releases/download/v1.0/BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc_2.0.0.tar.gz",
+  repos = NULL, type = "source"
+)
+```
+
+These are also recorded in `renv.lock`; however, because they are not on CRAN or
+Bioconductor, `renv::restore()` cannot install them automatically — run the
+`install.packages()` calls above first.
+
+---
+
 ## External reference data
 
 The following files must be downloaded and their paths set in `config/paths.R`

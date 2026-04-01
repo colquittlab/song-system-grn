@@ -119,7 +119,8 @@ Some packages require additional setup before `renv::restore()`:
   BiocManager::install()  # sets up repos
   ```
 - **ArchR**: installed from GitHub (`GreenleafLab/ArchR`); renv will handle this automatically but requires `remotes`.
-- **Custom packages** (e.g., `TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled`): contact the Colquitt lab for access.
+- **Custom BSgenome packages** (`BSgenome.LStriataDom.Brainard.lonStrDom2` and `.ucsc`): distributed as assets on the [v1.0 release](https://github.com/colquittlab/song-system-grn/releases/tag/v1.0). Install with `install.packages(<url>, repos=NULL, type="source")` before running `renv::restore()`. See `data/README.md` for the full install commands.
+- **Other custom packages** (e.g., `TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled`): contact the Colquitt lab for access.
 
 ### Reference data
 
