@@ -157,10 +157,6 @@ scale_factor_x = .075
 height = length(markers_agg_select) * scale_factor_y
 width = length(ct_order) * scale_factor_x
 
-# hc = hclust(dist(markers_agg_mat, method="correlation"), method = "ward.D")
-# 
-# markers_agg_select = hc$labels[hc$order]
-
 gg = DotPlot_scCustom(obj, features = markers_agg_select, group.by = "cluster", flip_axes = F, dot.scale=2, dot.min = 0)
 gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
@@ -504,39 +500,6 @@ gse_res_list = map(markers_agg_split, function(cluster) {
 })
 gse_res = map(gse_res_list, 1) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="cluster")
 gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="cluster")
-```
-
-```{r}
-# markers_agg = markers_agg %>% 
-#   mutate(p_val_adj_log10p1 = -1 * log10(p_val_adj + 1E-300))
-# markers_agg_split = split(markers_agg, markers_agg$cluster)
-# 
-# gse_res = map(markers_agg_split, function(cluster) {
-#   #cluster = cluster %>% arrange(-p_val_adj_log10p1)
-#   #gene_set = cluster %>% select(p_val_adj_log10p1) %>% unlist()
-#   cluster = cluster %>% 
-#     arrange(-avg_log2FC)
-#   gene_set = cluster %>% select(avg_log2FC) %>% unlist()
-#   names(gene_set) = cluster$gene
-#   names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
-#   gene_set = gene_set[!is.na(gene_set)]
-#   gene_set = gene_set[!is.na(names(gene_set))]
-#   
-#   gse_res = gseGO(gene_set, 
-#                   OrgDb = org.Hs.eg.db,
-#                   ont = "ALL",
-#                   maxGSSize = 250,  
-#                   pvalueCutoff = .2,
-#                   keyType = "ENTREZID")
-#   gse_res_simp = simplify(gse_res)
-# 
-#   as.data.frame(gse_res_simp)
-# }) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="cluster")
-# 
-# gse_res = gse_res %>% 
-#   mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>%
-#   mutate(core_enrichment_symbol = map(core_enrichment_split, function(x) entrezid$SYMBOL[match(x, entrezid$ENTREZID)])) %>%
-#   mutate(core_enrichment_symbol = map_chr(core_enrichment_symbol, paste, collapse=","))
 ```
 
 ```{r}

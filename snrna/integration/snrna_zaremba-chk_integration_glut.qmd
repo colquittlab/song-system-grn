@@ -278,13 +278,6 @@ colors_df = data.frame(cluster = cluster_order) %>%
                          grepl("NR", cluster) ~ position_colors["nido"],
                          grepl("RA", cluster) ~ position_colors["ra"],
                          grepl("Arco", cluster) ~ position_colors["arco"]))
-# colors_df = data.frame(cluster = c("Glut-HVC-1", "Glut-NC-1", "Glut-NC-2", "Glut-NC-3"
-#                                    "Glut-HVC-3", "Glut-Nido-3",
-#                                    "Glut-LMAN-1", "Glut-NR-2",
-#                                    "Glut-LMAN-2", "Glut-NR-3",
-#                                    "Glut-RA", "Glut-Arco-1"),
-#                        col = position_colors[c("hvc", "ncl", "hvc", "ncl", 
-#                                                 "lman", "nido", "lman", "nido", "ra", "arco")])
 ```
 
 

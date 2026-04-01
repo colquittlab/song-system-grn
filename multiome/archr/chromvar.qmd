@@ -461,33 +461,6 @@ gg = ggplot(motifs_inter_df_fam, aes(rank, mlog10Padj)) +
 gg
 ```
 
-```{r fig.height = 10}
-# #motifs_df_cur = motifs_df %>% filter(pair == cur_set)
-# motifs_inter_df_f = motifs_inter_df %>%
-#   top_n(20, mlog10Padj)
-# 
-# motifs_inter_df_m = motifs_inter_df %>% filter(TF %in% motifs_inter_df_f$TF) %>% 
-#     select(TF, enrichment) %>%
-#   pivot_wider(names_from = "pair", values_from = "enrichment", values_fill = 0) %>%
-#   # select(pair, TF, mlog10Padj) %>%
-#   # pivot_wider(names_from = "pair", values_from = "mlog10Padj", values_fill = 0) %>%
-#   column_to_rownames("TF") %>% as.matrix()
-# motifs_df_m = log2(motifs_df_m + 1)
-# #motifs_df_m[motifs_df_m==0] = NA
-# cols = viridisLite::viridis(9)
-# 
-# width = .6
-# height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
-# hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
-#                              width = unit(width, "in"),
-#                              height = unit(height, "in")
-#                              )
-# print(hm)
-# pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"))
-# print(hm)
-# dev.off()
-```
-
 ## Upset
 ```{r}
 marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {

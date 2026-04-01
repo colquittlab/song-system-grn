@@ -53,15 +53,6 @@ if (redo) {
                               orig.reduction = "pca", 
                               new.reduction = 'pca_harmony', verbose = FALSE)
   
-  # obj_filt =  RunUMAP(
-  #   object = obj_filt,
-  #   reduction = "pca_harmony",
-  #   reduction.name = "umap_rna_int", 
-  #   assay = "SCT",
-  #   dims = 1:rna_dims,
-  #   verbose = TRUE
-  # )
-  
   for (i in 1:nrow(params)) {
     dims = params$dims_list[i]
     n.neighbors = params$n.neighbors_list[i]

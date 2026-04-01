@@ -605,58 +605,6 @@ print(hm)
 dev.off()
 ```
 
-```{r fig.height=10, fig.width = 4}
-# motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
-#   group_by(pair) %>%
-#   top_n(20, mlog10Padj)
-# motifs_df_m = motifs_df %>% 
-#   filter(TF %in% motifs_df_f$TF) %>% 
-#   select(pair, TF, enrichment) %>%
-#   pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
-# cols = viridisLite::viridis(9)
-# 
-# width = .6
-# height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
-# hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols,
-#                              width = unit(width, "in"),
-#                              height = unit(height, "in")
-#                              )
-# print(hm)
-# pdf(file.path(out_dir, "song-glut-enriched_motifs_no-fos-jun-smarcc_heatmap.pdf"))
-# print(hm)
-# dev.off()
-```
-```{r}
-# motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
-#   group_by(pair) %>%
-#   filter(mlog10Padj>6) 
-# 
-# motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% select(pair, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
-# motifs_df_m = log2(motifs_df_m + 1)
-# cols = viridisLite::viridis(9)
-# 
-# width = .6
-# height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
-# hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
-#                              width = unit(width, "in"),
-#                              height = unit(height, "in")
-#                              )
-# print(hm)
-# pdf(file.path(out_dir, "song-glut-enriched_motifs_sig_heatmap.pdf"), height = height + 5, width = width + 5)
-# print(hm)
-# dev.off()
-```
-
-```{r}
-# proj_se_ge = getGroupSE(
-#   ArchRProj = proj,
-#   useMatrix = "GeneExpressionMatrix",
-#   groupBy = "cluster"
-# )
-# proj_df_ge = assay(proj_se_ge)
-# rownames(proj_df_ge) = getFeatures(proj, "GeneExpressionMatrix")
-```
-
 ### Upset
 
 ```{r}

@@ -69,10 +69,6 @@ if (redo) {
   cells = Cells(obj_sub)[!grepl("/", obj_sub$assignment)]
   obj_sub = subset(obj, cells=cells)
   
-  #obj_sub$cluster = if_else(obj_sub$cluster == "Glut-HVC-1a", "Glut-HVC-1", obj_sub$cluster)
-  #cells = Cells(obj_sub)[!(obj_sub$cluster %in% c("HVC-Glut-3", "Glut-Arco-5"))] ## Arco-Glut-5 only present in one individual
-  #cells = Cells(obj_sub)[!(obj_sub$cluster %in% c("HVC-Glut-3"))]
-  #obj_sub = subset(obj_sub, cells=cells)
   qsave(obj_sub, obj_out_fname)
 
 } else {

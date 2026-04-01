@@ -654,39 +654,6 @@ gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% b
 ```
 
 ```{r}
-# markers_agg = markers_agg %>% 
-#   mutate(p_val_adj_log10p1 = -1 * log10(p_val_adj + 1E-300))
-# markers_agg_split = split(markers_agg, markers_agg$compare)
-# 
-# gse_res = map(markers_agg_split, function(compare) {
-#   #compare = compare %>% arrange(-p_val_adj_log10p1)
-#   #gene_set = compare %>% select(p_val_adj_log10p1) %>% unlist()
-#   compare = compare %>% 
-#     arrange(-avg_log2FC)
-#   gene_set = compare %>% select(avg_log2FC) %>% unlist()
-#   names(gene_set) = compare$gene
-#   names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
-#   gene_set = gene_set[!is.na(gene_set)]
-#   gene_set = gene_set[!is.na(names(gene_set))]
-#   
-#   gse_res = gseGO(gene_set, 
-#                   OrgDb = org.Hs.eg.db,
-#                   ont = "ALL",
-#                   maxGSSize = 250,  
-#                   pvalueCutoff = .2,
-#                   keyType = "ENTREZID")
-#   gse_res_simp = simplify(gse_res)
-# 
-#   as.data.frame(gse_res_simp)
-# }) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
-# 
-# gse_res = gse_res %>% 
-#   mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>%
-#   mutate(core_enrichment_symbol = map(core_enrichment_split, function(x) entrezid$SYMBOL[match(x, entrezid$ENTREZID)])) %>%
-#   mutate(core_enrichment_symbol = map_chr(core_enrichment_symbol, paste, collapse=","))
-```
-
-```{r}
 set_order = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")
   gse_res_ind_select = gse_res_ind %>%
     mutate(p.adjust_sign = -1 * log10(padj)) %>%

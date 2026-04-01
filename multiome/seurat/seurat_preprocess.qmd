@@ -41,9 +41,7 @@ base_dir = "~/nest/multiome"
 
 aggr_csv = read_csv(file.path(base_dir, "motor-pathway_aggr.csv"))
 sample_names = aggr_csv$library_id
-#aggr_csv = aggr_csv[match(sample_names, aggr_csv$library_id),]
 
-#sample_names = params_table$sample_short
 ## Cellbender
 cb_dirs = file.path(base_dir, params_table$data_subdir, "cellbender", paste(params_table$sample_to_process, "gex", sep="_"))
 cb_fnames = map(cb_dirs, list.files, full.names=T, pattern="FPR_0.05_filtered.h5")
@@ -298,8 +296,6 @@ VlnPlot(obj, "perc_mito")
 ## Process
 
 ```{r}
-# plan(multisession(workers=24))
-# options(future.globals.maxSize = 20000 * 1024^2)
 plan(sequential)
 ```
 
@@ -476,7 +472,6 @@ table(soc_clusters$assignment)
 
 ```{r}
 obj = AddMetaData(obj, soc_clusters)
-# obj = subset(obj, subset= doublet_status=="singlet")
 ```
 
 ## Doublet detection
@@ -1040,18 +1035,6 @@ obj_glut_arco@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut_arco@m
 md_cur = FetchData(obj_glut_arco, c("position", out_cluster_cur)) %>%
   mutate(position = case_when(grepl("Glut-RA", !!out_cluster_cur_sym) ~ "ra",
                               !grepl("Glut-RA", !!out_cluster_cur_sym)~ "arco"))
-#   rename(celltype_n_glut_new = celltype_n_glut_arco) %>%
-#   rownames_to_column()
-# 
-# md_glut = FetchData(obj_glut, "celltype_n_glut") %>%
-#   rownames_to_column() %>%
-#   left_join(md_cur) %>%
-#   mutate(celltype_n_glut_new = droplevels(if_else(is.na(celltype_n_glut_new), celltype_n_glut, celltype_n_glut_new))) %>%
-#   select(-celltype_n_glut) %>% 
-#   rename(celltype_n_glut = celltype_n_glut_new) %>% 
-#   column_to_rownames()
-# obj_glut = AddMetaData(obj_glut, md_glut)
-
 obj_glut_arco = AddMetaData(obj_glut_arco, md_cur)
 
 table(FetchData(obj_glut_arco, c("position", out_cluster_cur)))
@@ -1184,19 +1167,6 @@ out_cluster_cur = str_interp("celltype_n_glut_nido")
 out_cluster_cur_sym = as.symbol(out_cluster_cur)
 obj_glut_nido@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut_nido@meta.data[,res_to_use_sub], from = names(idents_comb), to = idents_comb)
 
-## Combine with obj_glut
-# md_cur = FetchData(obj_glut_nido, out_cluster_cur) %>%
-#   rename(celltype_n_glut_new = celltype_n_glut_nido) %>%
-#   rownames_to_column()
-
-# md_glut = FetchData(obj_glut, "celltype_n_glut") %>%
-#   rownames_to_column() %>%
-#   left_join(md_unk) %>%
-#   mutate(celltype_n_glut_new = droplevels(if_else(is.na(celltype_n_glut_new), celltype_n_glut, celltype_n_glut_new))) %>%
-#   select(-celltype_n_glut) %>% 
-#   rename(celltype_n_glut = celltype_n_glut_new) %>% 
-#   column_to_rownames()
-# obj_glut = AddMetaData(obj_glut, md_glut)
 ```
 
 ```{r}

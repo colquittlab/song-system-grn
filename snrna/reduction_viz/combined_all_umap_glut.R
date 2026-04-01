@@ -95,11 +95,7 @@ iwalk(objs, function(obj_int_filt, region_cur) {
       ncat = length(unique(obj_int_filt@meta.data[,ca]))
       print(ncat)
       
-      # if (ncat < 10)  {
-      #   pal = "stepped"
-      # } else {
-        pal = "varibow"
-      #}
+      pal = "varibow"
       gg = DimPlot_scCustom(obj_int_filt, 
                             reduction=reduction.name, group.by=ca, label=T, repel = T, pt.size = 2,
                             raster = T, raster.dpi = c(1024,1024),

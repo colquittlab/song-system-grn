@@ -48,7 +48,6 @@ params_list = split(params_table, seq(nrow(params_table)))
 ```
 
 ```{r}
-# data_dir = file.path("~/nest/multiome", map(params_list, "data_subdir"), map(params_list, "sample_to_process"), "outs" )
 setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
 analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr"
 out_name = "motor-pathway_archr_processing_cluster-snrna-cr"
@@ -81,21 +80,6 @@ chrM = "chrM"
 ```{r}
 redo = F
 if (redo) {
-  # ArrowFiles <- createArrowFiles(
-  #   inputFiles = atac_frags,
-  #   sampleNames = sample_names,
-  #   threads = 8,
-  #   subThreading = F,
-  #   minTSS = 1, #Dont set this too high because you can always increase later
-  #   minFrags = 1000, 
-  #   addTileMat = TRUE,
-  #   addGeneScoreMat = TRUE, 
-  #   excludeChr = chrM,
-  #   geneAnnotation = geneAnnotation, 
-  #   genomeAnnotation = genomeAnnotation,
-  #   force = F
-  # )
-  
   proj <- ArchRProject(
     ArrowFiles = ArrowFiles,
     geneAnnotation = geneAnnotation, 
@@ -117,11 +101,6 @@ if (redo) {
   proj$replicate = replicate
   
 
-  # cells = intersect(proj$cellNames, colnames(scRNA))
-  # proj = proj[cells,]
-  # scRNA = scRNA[,cells]
-  # proj <- addGeneExpressionMatrix(input = proj, seRNA = scRNA, force = TRUE, strictMatch = T)
-  # 
   saveArchRProject(proj)
 
 } else {
@@ -600,11 +579,6 @@ p <- plotBrowserTrack(
     downstream = 50000,
     loops = getCoAccessibility(proj_sub, resolution = 1000, corCutOff = .7 )
 )
-
-# plotPDF(plotList = p, 
-#         name = sprintf("Tracks-Marker-Genes-with-CoAccessibility.pdf"), 
-#         ArchRProj = proj_sub, 
-#         addDOC = FALSE, width = 5, height = 5)
 
 ```
 

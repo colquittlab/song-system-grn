@@ -18,10 +18,6 @@ library(Nebulosa)
 library(RRHO2)
 library(extrafont)
 
-# font_import(prompt = FALSE, pattern="Arial")
-# loadfonts()
-# loadfonts(device = "postscript")
-
 source("../scripts/scRNA.R")
 source(here::here("config/paths.R"))
 source("../scripts/gene_lists.R")
@@ -190,40 +186,6 @@ if (redo) {
 ```
 
 ## Load souporcell
-
-```{r}
-# soc_dirs = list.dirs(base_dir, recursive = F, full.names= T)
-# soc_dirs = grep("run", soc_dirs, value=T)
-# soc_dirs = list.dirs(soc_dirs, recursive = F, full.names = T)
-# soc_dirs = grep("ucsc", soc_dirs, value=T )
-# sample_to_process = map(soc_dirs, function(x) {
-#   xs = unlist(str_split(x, "/"))
-#   paste(xs[(length(xs)-1):length(xs)], collapse="/")
-# }) %>% unlist()
-# names(soc_dirs) = sample_to_process
-# 
-# soc_dirs = soc_dirs[aggr_params$dir_sample]
-# soc_cluster_fnames = map(data_dirs, ~file.path(.x, "souporcell", "clusters.tsv"))
-# soc_clusters = map(soc_cluster_fnames, read_delim)
-# soc_clusters = imap(soc_clusters, function(soc_cur, i) {
-#   soc_cur = soc_cur %>% mutate(barcode = paste(i, barcode, sep="_"))
-#   soc_cur
-# }) %>% bind_rows()
-# soc_clusters = soc_clusters %>% column_to_rownames("barcode")
-# soc_clusters = soc_clusters %>%
-#   dplyr::select(status, assignment) %>%
-#   dplyr::rename(doublet_status = status)
-# soc_clusters = soc_clusters[Cells(obj),]
-```
-
-```{r}
-#table(soc_clusters$assignment)
-```
-
-```{r}
-# obj = AddMetaData(obj, soc_clusters)
-# obj = subset(obj, subset= doublet_status=="singlet")
-```
 
 ## Visualization
 
@@ -467,31 +429,6 @@ saveRDS(markers_pos, markers_pos_fname)
 #obj_agg = AggregateExpression(obj, group.by=c("cell_class_tg_pos", "assignment"), return.seurat = T)
 ```
 
-```{r agg-DEG}
-# cell_classes = c("Glut")
-# 
-# tg_genes = c("MAFB", "EMX2")
-# 
-# markers_pos_agg = map(cell_classes, function(cc_cur) {
-#   print(cc_cur)
-#   map(tg_genes, function(tg_gene) {
-#     print(tg_gene)
-#     i1 = sprintf("%s-%s", cc_cur, tg_gene)
-#     i2 = sprintf("%s-none", cc_cur)
-#     print(i1)
-#     print(i2)
-#     markers_cur = FindMarkers(obj_agg,
-#                               ident.1 = i1,
-#                               ident.2 = i2,
-#                               group.by = "cell_class_tg_pos", 
-#                               test.use="DESeq2",
-#                               min.cells.group = 2)
-#     markers_cur$gene = rownames(markers_cur)
-#     markers_cur
-#   }) %>% set_names(tg_genes) %>% bind_rows(.id="tg")
-# }) %>% set_names(cell_classes) %>% bind_rows(.id="cell_class")
-
-```
 
 ## Load scenicplus results
 

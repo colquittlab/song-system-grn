@@ -147,10 +147,6 @@ scale_factor_x = .2
 height = length(markers_agg_select) * scale_factor_y
 width = length(ct_order) * scale_factor_x
 
-# hc = hclust(dist(markers_agg_mat, method="correlation"), method = "ward.D")
-# 
-# markers_agg_select = hc$labels[hc$order]
-
 gg = DotPlot_scCustom(obj, features = markers_agg_select, group.by = "cluster", flip_axes = F, dot.scale=2, dot.min = 0)
 gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
@@ -184,17 +180,10 @@ markers_agg_select = c("SLC17A6", "SYT1", "DACH2", "SATB2", "LHX9", "CACNA1H",
                        "NECTIN3", "DCX", "SOX4", "NR2E1",
                        "GAD1", "FOXP2", "NPY", "CEMIP", "NXPH1", "TTLL5", "PENK", "CRH", "LAMP5", "CALB2", "LHX8",
                        "SLC1A3", "SPEF2", "PLP1", "PDGFRA", "CSF1R", "FLI1")
-#names(markers_agg_select) = NULL
-#markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
-#markers_agg_mat = markers_agg_mat[markers_agg_select,]
 
 scale_factor = .08
 height = length(ct_order) * scale_factor
 width = length(markers_agg_select) * scale_factor
-
-# hc = hclust(dist(markers_agg_mat, method="correlation"), method = "ward.D")
-# 
-# markers_agg_select = hc$labels[hc$order]
 
 gg = DotPlot_scCustom(obj, features = markers_agg_select, group.by = "cluster", flip_axes = F, dot.scale=2, dot.min = .05, col.min=0)
 gg = gg +

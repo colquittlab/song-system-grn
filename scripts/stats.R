@@ -159,10 +159,6 @@ calc_gene_specificity = function(x, scale=F) {
   x_norm * log(x_norm / mean(x_norm) + .01)
 }
 
-# calc_tau = function(x) {
-#   x_hat = x / max(x)
-#   tau = 
-# }
 
 
 

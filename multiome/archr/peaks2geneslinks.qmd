@@ -65,9 +65,6 @@ redo = T
 if (redo) {
   
 cell_names = getCellNames(proj)
-# proj_split = map(pair_list, function(pl) {
-#   cell_names[proj$cluster %in% unlist(pl)]
-# })
 
 cells_list = map(pair_list, function(pl) {
   cell_names[proj$cluster %in% unlist(pl)]
@@ -89,9 +86,6 @@ names(proj_split) = names(pair_list)
 
 if (redo) {
 regions = unique(proj$region)
-# proj_regions= map(regions, function(reg) {
-#   proj[proj$region == reg]
-# })
 
 cell_regions = map(regions, function(reg) {
   cell_names[proj$region == reg]

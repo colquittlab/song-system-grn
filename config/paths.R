@@ -32,6 +32,10 @@ GTF_LONSTR_SLIM    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_
 # GTF — full form (used for DREME/DREME-TFBS)
 GTF_LONSTR_FULL    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc.gtf"
 
+# GTF — NCBI chromosome names (no UCSC renaming; used for CellRanger preprocessing
+# where mitochondrial transcripts are identified by the NCBI contig name NC_029475.1)
+GTF_LONSTR_NCBI    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5.gtf"
+
 # GTF — with gene_biotype field (used for Seurat/SnapATAC2 annotation import)
 GTF_LONSTR_BIOTYPE <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc_gene-biotype.gtf"
 

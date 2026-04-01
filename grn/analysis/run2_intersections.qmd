@@ -104,11 +104,6 @@ extract_matrix = function(ereg_file, obs_name) {
 ```
 
 ```{r}
-# ereg_files = list(glut=ereg_glut_file, 
-#                   glut_ra=ereg_glut_ra_file,  
-#                   gaba=ereg_gaba_file,  
-#                   nn = ereg_nn_file,
-#                   all = ereg_all_file)
 cis_types = c("direct", "extended")
 
 ereg = map(ereg_files, function(ereg_file) {
@@ -130,11 +125,6 @@ ereg = ereg %>%
   mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
          importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
          importance_log_TF2G = log(importance_TF2G))
-
-# expr_mats = map(ereg_files, function(ereg_file) {
-#   expr = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts"))
-#   expr[["X"]]
-# })
 
 gene_aucs =  map(ereg_files, function(ereg_file) {
   map(ereg_file, function(ereg_file_config) {
@@ -169,13 +159,6 @@ mds = map(ereg_files, function(ereg_file) {
     group_df
   })
 })
-# labels_order = levels(group_df$cluster)
-# labels_order = c(grep("HVC", labels_order, value=T),
-#                  grep("NC", labels_order, value=T),
-#                  grep("RA", labels_order, value=T),
-#                  grep("Arco", labels_order, value=T))
-# group_df = group_df %>%
-#   mutate(cluster = factor(cluster, levels=labels_order))
 
 gene_aucs = imap(gene_aucs, function(gene_auc, i) imap(gene_auc, function(gene_auc_config, j) gene_auc_config %>% left_join(mds[[i]][[j]], by="_index")))
 region_aucs = imap(region_aucs, function(region_auc, i) imap(region_auc, function(region_auc_config, j) region_auc_config %>% left_join(mds[[i]][[j]], by="_index")))

@@ -1,10 +1,5 @@
-#library(furrr)
 library(future)
-#library(geiger)
 library(qs)
-
-#exc_levels = c("Exc_NECTIN3", "Exc_BDNF", "Exc_C1QTNF4", "Exc_GRIA4", "Exc_IEG", "Exc_TAC1", "Exc_CDH9", "Exc_PLCB1", "Exc_CALM2", "Exc_NR4A2", "Exc_NPTXR", "Exc_NDNF")
-#exc_levels = c("Exc_CDH9", "Exc_PLCB1", "Exc_MAT2B", "Exc_NECTIN3", "Exc_BDNF", "Exc_KCNK1", "Exc_IEG", "Exc_TAC1", "Exc_NPTN", "Exc_NEUROD6", "Exc_CALM2",  "Exc_PVALB", "Exc_VAMP2",  "Exc_NR4A2", "Exc_NPTXR", "Exc_ITM2B", "Exc_REST")
 
 RunUMAP_naive = function(object, reduction.use="pca", dims.use=NULL, reduction.key="UMAP", reduction.name="umap",
                          n_neighbors = 30, n_components = 2, min_dist = 0.3, metric = "pearson") {

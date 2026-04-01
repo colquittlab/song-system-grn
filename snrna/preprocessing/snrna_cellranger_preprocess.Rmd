@@ -15,20 +15,19 @@ library(qs)
 library(furrr)
 theme_set(theme_bw())
 
-source("~/ssd/rstudio/utils/scRNA.R")
+source(here::here("scripts/scRNA.R"))
+source(here::here("config/paths.R"))
 ```
 ## Directory setup
 ```{r}
-prefix = "~/hdd/rstudio/snRNA/snrna_cellranger/preprocessing/"
-script_name = "snrna_cellranger_preprocess"
-out_dir = file.path(prefix, script_name)
+out_dir = "~/hdd/rstudio/snRNA/snrna_cellranger/preprocessing/snrna_cellranger_preprocess"
 #prefix
 dir.create(out_dir, recursive = T)
 ```
 
 ```{r}
 samples_to_process = c("ra_run1", "arco_run1", "hvc_run1", "nc_run1", "nc_run2", "lman", "nr")
-ds = map_chr(samples_to_process, ~ sprintf("~/ssd/snRNA/210607_snrna/%s/outs/filtered_feature_bc_matrix", .x))
+ds = map_chr(samples_to_process, ~ sprintf("~/ssd/snRNA/210607_snrna/%s/outs/filtered_feature_bc_matrix", .x))  # edit path to match local CellRanger output
 names(ds) = samples_to_process
 out_dirs = map(samples_to_process, function(samp) file.path(out_dir, samp))
 walk(out_dirs, dir.create)
@@ -40,7 +39,7 @@ out_fnames = map(samples_to_process, function(samp) file.path(out_dir, samp, "ob
 
 Load MT data
 ```{r}
-tx = import("~/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5.gtf")
+tx = import(GTF_LONSTR_NCBI)
   tx_trans = tx[tx$type=="transcript"]
   tx_rrna = tx_trans[grep("ribosomal RNA", tx_trans$product)]
   tx_mt = tx_trans[seqnames(tx_trans)=="NC_029475.1"]
@@ -80,7 +79,6 @@ objs = map(seq_along(ds), function(i) {
   }
   return(obj)
 })
-#obj$position2 = "ra"
 ```
 ## QC
 ```{r}
@@ -132,11 +130,7 @@ objs_filt = map(objs_filt, function(obj) {
 })
 ```
 
-```{r}
-
-```
-
-## Cluster 
+## Cluster
 ```{r}
 ress = seq(.1, .6, .1)
 objs_filt = map(objs_filt, function(obj) {

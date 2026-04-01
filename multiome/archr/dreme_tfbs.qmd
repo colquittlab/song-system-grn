@@ -166,12 +166,6 @@ peaks_list_sub =  map(peaks_list, function(x) {
     x[x$region %in% p2g_gr_sel$region]
   })
 
-# peaks_list_sub = map(peaks_list, function(x) {
-#   x %>%
-#     filter_by_overlaps(gtf_gene_ex_cur) %>%
-#     filter_by_non_overlaps(gtf_gene_cur)
-# })
-
 peaks_list_sub_fa = map(peaks_list_sub, function(peak) peak %>% get_sequence(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc))
 ```
 

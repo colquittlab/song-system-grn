@@ -69,17 +69,7 @@ if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
 
 ```
 
-## DARs 
-```{r}
-# pair_list = list(ra= list("Glut-RA"),
-#                  hvc_1 = list("Glut-HVC-1"),
-#                  hvc_2 = list("Glut-HVC-2"),
-#                  gaba4 = list("GABA-4-1"),
-#                  gaba2= list("GABA-2-1"),
-#                  astro = list("Astro-1")
-#                  )
-```
-
+## DARs
 ```{r}
 markers_peaks_se_fname = file.path(out_dir, "dars_se.rds")
 
@@ -100,11 +90,6 @@ if (redo) {
 }
 
 marker_peaks_gr = getMarkers(marker_peaks, cutOff = "FDR < 0.1 & Log2FC >= 1", returnGR=T)
-
-# marker_peaks_df = map(marker_peaks_gr, as.data.frame) %>%
-#   bind_rows( .id="comparison")
-
-
 ```
 
 ## HOMER motif enrichment (DARs by comparison)

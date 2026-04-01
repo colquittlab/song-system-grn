@@ -55,19 +55,6 @@ proj_split = map(seq_along(pair_list), function(i) {
 }) %>% set_names(names(pair_list))
 ```
 ```{r}
-# proj_split = map(proj_split, function(proj_sub) {
-#   proj_sub <- addBgdPeaks(proj_sub, force=T)
-#   
-#   proj_sub <- addDeviationsMatrix(
-#     ArchRProj = proj_sub,
-#     peakAnnotation = "MotifHS",
-#     force = TRUE
-#   )
-#   proj_sub  
-# })
-```
-
-```{r}
 seZ_list = map(seq_along(proj_split), function(i) {
   
   proj_cur = proj_split[[i]]
@@ -94,35 +81,8 @@ plotEmbedding(proj, embedding = "UMAP_Harmony_RNA_30_0.5", colorBy = "GeneExpres
 ```
 
 ```{r}
-# compute_corGEM_MM = function(proj, seZ) {
-#   corGEM_MM <- correlateMatrices(
-#     ArchRProj = proj,
-#     useMatrix1 = "GeneExpressionMatrix",
-#     useMatrix2 = "MotifHSMatrix",
-#     reducedDims = "Harmony_RNA"
-#   )
-#   corGEM_MM$maxDelta <- rowData(seZ)[match(corGEM_MM$MotifHSMatrix_name, rowData(seZ)$name), "maxDelta"]
-#   return(corGEM_MM)
-# }
-```
-
-
-```{r}
 
 corGEM_MM_list = list()
-
-#corGEM_MM_list["ra"] = compute_corGEM_MM(proj_split[[1]], seZ_list[[1]])
-# for (i in seq_along(proj_split)) {
-#   seZ = seZ_list[[i]]
-#   corGEM_MM <- correlateMatrices(
-#     ArchRProj = proj_split[[i]],
-#     useMatrix1 = "GeneExpressionMatrix",
-#     useMatrix2 = "MotifHSMatrix",
-#     reducedDims = "Harmony_RNA"
-#   )
-#   corGEM_MM$maxDelta <- rowData(seZ)[match(corGEM_MM$MotifHSMatrix_name, rowData(seZ)$name), "maxDelta"]
-#   corGEM_MM_list[names(proj_split)[i]] = corGEM_MM
-# }
 
 corGEM_fname = file.path(out_dir, "corEM_MM_list.rds")
 

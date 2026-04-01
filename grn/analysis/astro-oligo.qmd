@@ -356,25 +356,10 @@ for (config_dir in config_dirs) {
   
   umap_dir = file.path(out_dir, "umaps")
   dir.create(umap_dir, showWarnings = FALSE)
-  # ## ---- UMAPs ----
-
-  # 
   to_plot = unique(ereg_sane$TF)
   to_plot = intersect(Features(obj), to_plot)
   DefaultAssay(obj) = "SCT"
   reduction_cur = "dims30nn30mindist0.3"
-  # 
-  # for (tp in to_plot) {
-  #   gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
-  #                             aspect_ratio = 1, reduction = reduction_cur,
-  #                             raster = T, raster.dpi=c(1024,1024),
-  #                             pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
-  #   save_plot(file.path(umap_dir, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
-  # 
-  #   gg = Nebulosa::plot_density(obj, features = tp, size = .1,
-  #                               reduction = reduction_cur) + coord_equal()
-  #   save_plot (file.path(umap_dir, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
-  # }
 
   ## Selected eRegulons UMAPs
   ereg_select = c("EMX2_direct_+/+")
@@ -426,34 +411,6 @@ for (config_dir in config_dirs) {
     save_plot(file.path(dot_dir, str_interp("${ereg_select_cur_form}.pdf")), gg,
               base_height = 3 * nplot/10, base_width = 10)
   }
-
-  ## ---- GO analysis ----
-  # all_genes = rownames(obj)
-  # all_genes_id = bitr(all_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
-  # tfs_cur = unique(ereg_sane$TF)
-  # 
-  # go_fname = file.path(out_dir, "gos.rds")
-  # gos = map(tfs_cur, function(tf) {
-  #   message("GO: ", tf)
-  #   ereg_sane_cur = ereg_sane %>% filter(TF == tf)
-  #   regs = unique(ereg_sane_cur$regulation)
-  #   map(regs, function(reg) {
-  #     ereg_sane_cur1 = ereg_sane_cur %>% filter(regulation==reg)
-  #     sel_genes = unique(ereg_sane_cur1$Gene)
-  #     sel_genes_id = bitr(sel_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
-  #     enrichGO(gene     = sel_genes_id$ENTREZID,
-  #              universe = all_genes_id$ENTREZID,
-  #              OrgDb    = org.Hs.eg.db,
-  #              ont      = "ALL",
-  #              maxGSSize = 200,
-  #              readable = TRUE)
-  #   }) %>% set_names(regs)
-  # }) %>% set_names(tfs_cur)
-  # saveRDS(gos, go_fname)
-  # 
-  # go_df = map(gos, function(go1) {
-  #   map(go1, as.data.frame) %>% bind_rows(.id = "sign")
-  # }) %>% bind_rows(.id="pair")
 
   ## ---- TF networks ----
   ereg_sane_out = ereg_sane %>%
