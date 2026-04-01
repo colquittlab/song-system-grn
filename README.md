@@ -76,6 +76,57 @@ Python and shell scripts for HOMER motif annotation and MEME format conversion.
 
 ---
 
+## Reproducing the environment
+
+### Python
+
+Three conda environments are used, with exported specs in `envs/`. Requires [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html), [mamba](https://mamba.readthedocs.io/), or [conda](https://docs.conda.io/).
+
+```bash
+micromamba env create -f envs/scenicplus.yaml   # GRN notebooks (pycisTopic, SCENIC+)
+micromamba env create -f envs/snapatac.yaml     # SnapATAC2 preprocessing
+micromamba env create -f envs/scanorama.yaml    # Scanorama integration (via reticulate)
+```
+
+The Jupyter kernel display names used in the notebooks map to these environments:
+
+| Kernel (`display_name`) | Conda environment |
+|------------------------|-------------------|
+| `scenicplus3` | `scenicplus` |
+| `snapatac` | `snapatac` |
+
+After creating the environments, register the kernels with Jupyter if needed:
+
+```bash
+micromamba run -n scenicplus python -m ipykernel install --user --name scenicplus --display-name "scenicplus3"
+micromamba run -n snapatac   python -m ipykernel install --user --name snapatac   --display-name "snapatac"
+```
+
+### R
+
+R package versions are captured in `renv.lock` (R 4.4.2, 563 packages). To restore:
+
+```r
+install.packages("renv")
+renv::restore()
+```
+
+Some packages require additional setup before `renv::restore()`:
+
+- **Bioconductor packages** (e.g., BiocGenerics, GenomicRanges): configure the Bioconductor repository first:
+  ```r
+  install.packages("BiocManager")
+  BiocManager::install()  # sets up repos
+  ```
+- **ArchR**: installed from GitHub (`GreenleafLab/ArchR`); renv will handle this automatically but requires `remotes`.
+- **Custom packages** (e.g., `TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled`): contact the Colquitt lab for access.
+
+### Reference data
+
+Edit `config/paths.R` (R/Quarto scripts) and `config/paths.sh` (shell scripts) to point to your local copies of the reference files. See `data/README.md` for a full list with download sources.
+
+---
+
 ## Software
 
 | Tool | Version | Reference |
