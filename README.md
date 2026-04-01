@@ -21,7 +21,7 @@ Raw sequencing data are available at GEO:
 ## Repository structure
 
 ### `snrna/` — snRNA-seq processing
-Single-nucleus RNA-seq (CellRanger + CellBender) clustering and downstream analysis of songbird brain regions (RA, ARCO, HVC, NC, LMAN).
+Single-nucleus RNA-seq (CellRanger + CellBender) clustering and downstream analysis of songbird brain regions (RA, ARCO, HVC, NC, LMAN, NR).
 
 | Directory/File | Description |
 |----------------|-------------|
