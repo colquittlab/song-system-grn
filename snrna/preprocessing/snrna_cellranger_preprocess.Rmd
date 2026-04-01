@@ -6,21 +6,10 @@ output: html_notebook
 ```{r}
 library(Seurat)
 library(SeuratWrappers)
-#library(BSgenome.Mmusculus.UCSC.mm10)
-#library(AnnotationHub)
-#library(zeallot) # For %<-% that unpacks lists in the Python manner
-#library(DropletUtils)
 library(tidyverse)
-#library(GGally) # For ggpairs
-#library(velocyto.R)
-#library(SingleR)
-#library(scales)
-#library(plotly)
 library(rtracklayer)
 library(SeuratDisk)
-#library(zellkonverter)
 library(BiocParallel)
-#library(scater)
 library(cowplot)
 library(qs)
 library(furrr)

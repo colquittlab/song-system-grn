@@ -484,7 +484,6 @@ obj = AddMetaData(obj, soc_clusters)
 ```{r fig.width=10}
 # redo = F
 # if (redo) {
-#   library(DoubletFinder)
 #   obj_list = SplitObject(obj, split.by="sample_short")
 #   
 #   obj_cur = obj_list[[1]]
