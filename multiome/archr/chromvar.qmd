@@ -20,6 +20,7 @@ library(patchwork)
 library(ggdensity)
 library(ggrastr)
 source("../../scripts/common_aesthetics.R")
+source(here::here("config/paths.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",

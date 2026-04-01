@@ -1,0 +1,9 @@
+process,sample_to_process,sample_short,data_subdir,analysis_subdir 
+T,nc_lonStrDom2_3p_merge_ucsc,nc_run1,210830_hvc-nc_run1,hvc-nc_multiome_run1
+T,hvc_lonStrDom2_3p_merge_ucsc,hvc_run1,210830_hvc-nc_run1,hvc-nc_multiome_run1
+T,nc_lonStrDom2_3p_merge_ucsc,nc_run2,220105_motor-pathway_run2,motor-pathway_multiome_run2
+T,hvc_lonStrDom2_3p_merge_ucsc,hvc_run2,220105_motor-pathway_run2,motor-pathway_multiome_run2
+T,ra_lonStrDom2_3p_merge_ucsc,ra_run2,220105_motor-pathway_run2,motor-pathway_multiome_run2
+T,arco_lonStrDom2_3p_merge_ucsc,arco_run2,220105_motor-pathway_run2,motor-pathway_multiome_run2
+T,ra_lonStrDom2_3p_merge_ucsc,ra_run3,220708_ra-arco_multiome_run3,ra-arco_multiome_run3
+T,arco_lonStrDom2_3p_merge_ucsc,arco_run3,220708_ra-arco_multiome_run3,ra-arco_multiome_run3

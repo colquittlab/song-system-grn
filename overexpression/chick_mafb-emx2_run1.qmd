@@ -23,6 +23,7 @@ library(extrafont)
 # loadfonts(device = "postscript")
 
 source("../scripts/scRNA.R")
+source(here::here("config/paths.R"))
 source("../scripts/gene_lists.R")
 source("../scripts/scenicplus.R")
 
@@ -95,7 +96,7 @@ load_gene_annotation <- function(gtf_path) {
 }
 
 annot_data <- load_gene_annotation(
-  "/mnt/nest/assembly/bGalGal1.mat/addons/Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.112.chr.ucsc_ppidnb2-mafb_v2_emx2.gtf"
+  GTF_CHICKEN_MAFB_EMX2
 )
 
 # Check for transgenes

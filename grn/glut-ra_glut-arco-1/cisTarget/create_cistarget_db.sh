@@ -1,14 +1,16 @@
 
 
+source "$(dirname "$0")/../../../config/paths.sh"  # load shared reference paths
+
 BASE_DIR="/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/ra-arco-hvc-nc_seurat-clustering_241123/"
 REGION_BED=$BASE_DIR/"pycisTopic/scATAC/consensus_peak_calling/consensus_regions.bed"
-GENOME_FASTA="/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
-CHROMSIZES="/mnt/nest/assembly/lonStrDom2/ucsc/chrom.sizes.ucsc"
-SCRIPT_DIR="/home/brad/repos/create_cisTarget_databases"
+GENOME_FASTA="${GENOME_FA_LONSTR}"
+CHROMSIZES="${CHROM_SIZES_LONSTR}"
+SCRIPT_DIR="${CREATE_CISTARGET_SCRIPT_DIR}"
 
 DATABASE_PREFIX="ra-arco-hvc-nc_seurat-clustering"
 OUT_DIR=$DATABASE_PREFIX
-CBDIR="/home/brad/nest/cistarget/v10nr_clust_public/singletons"
+CBDIR="${CISTARGET_SINGLETONS_DIR}"
 FASTA_FILE="${OUT_DIR}/lonStrDom2_1kb_bg_padding.fa"
 MOTIF_LIST="${OUT_DIR}/motifs.txt"
 

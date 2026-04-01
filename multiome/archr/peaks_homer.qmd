@@ -19,6 +19,7 @@ library(ggrepel)
 library(scCustomize)
 
 source("../../scripts/common_aesthetics.R")
+source(here::here("config/paths.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -130,7 +131,7 @@ marker_peaks_df = map(marker_peaks_gr, as.data.frame) %>%
 ```{r}
 dar_homer_dir = file.path(out_dir, "homer_dars")
 dir.create(dar_homer_dir, recursive = TRUE)
-genome_fa = "/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
+genome_fa = GENOME_FA_LONSTR
 
 write_bed = function(gr_sub, path) {
   df = data.frame(

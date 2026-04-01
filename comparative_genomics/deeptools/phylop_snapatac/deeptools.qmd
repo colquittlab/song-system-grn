@@ -144,7 +144,8 @@ message("p2g  ra: ", nrow(p2g$ra), "  gaba: ", nrow(p2g$gaba))
 ## Load GTF
 
 ```{r load-gtf}
-gtf_fname <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc.gtf"
+source(here::here("config/paths.R"))
+gtf_fname <- GTF_LONSTR_FULL
 gtf   <- rtracklayer::import(gtf_fname)
 exons <- gtf[!is.na(gtf$type) & gtf$type == "exon"]
 message("Exons loaded: ", length(exons))

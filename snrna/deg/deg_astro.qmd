@@ -19,6 +19,7 @@ library(proxy)
 select = dplyr::select
 
 source("../../scripts/gene_lists.R")
+source(here::here("config/paths.R"))
 ```
 
 ```{r}
@@ -474,9 +475,7 @@ if (redo) {
 
 ```{r}
 library(fgsea)
-gmt_dir = "/home/brad/nest/gene_lists/gmt/"
-gmt_files = list.files(gmt_dir, full.names = T)
-gmt_files = gmt_files[grep("c5.all.v7", gmt_files)]
+gmt_files = GMT_C5_V7  # bundled in data/gene_lists/
 
 gmt_pathway = gmtPathways(gmt_files)
 ```
