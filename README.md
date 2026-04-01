@@ -2,7 +2,7 @@
 
 Code accompanying the manuscript:
 
-> **Co-option of gene regulatory networks underlies the evolution of birdsong**
+> **Gene regulatory co-option drives birdsong neural circuit specialization**
 > *(Colquitt lab — manuscript in preparation)*
 
 ---
