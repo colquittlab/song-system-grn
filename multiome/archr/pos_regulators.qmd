@@ -19,9 +19,8 @@ library(scCustomize)
 
 ```{r}
 proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr"
-out_name = "pos_regulators"
-out_dir = file.path(analysis_prefix, out_name)
+script_name = "pos_regulators"
+out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 ```
 

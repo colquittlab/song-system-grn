@@ -15,16 +15,15 @@ library(org.Hs.eg.db)
 library(ComplexHeatmap)
 library(cowplot)
 library(ggpubr)
+library(here)
 select = dplyr::select
 ```
 
 ```{r}
-prefix_dir = "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/"
-data_obj = file.path(prefix_dir, "obj_clustered.qs")
-out_dir = file.path(prefix_dir, "deg")
-script_name = "song-surround_deg_glut_v2"
-out_dir = file.path(out_dir, script_name)
-dir.create(out_dir)
+script_name = "song-surround_deg_glut"
+data_obj = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
+out_dir = here::here("snrna/deg", script_name)
+dir.create(out_dir, recursive = T)
 res_to_use = "cluster"
 ```
 
@@ -177,7 +176,6 @@ cols_cur = circlize::colorRamp2(breaks=c(-1*max_val, 0, max_val), colors = c(sca
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 hm = Heatmap(markers_agg_mat, col = cols_cur,
              cluster_rows = hc,
-             #clustering_method_rows = "ward.D",
              show_column_dend = F,
              height = unit(height, "inch"),
              width = unit(width, "inch"))
@@ -190,7 +188,6 @@ width = 0.5
 
 hm = Heatmap(markers_agg_mat, col = cols_cur,
              cluster_rows = hc,
-             #clustering_method_rows = "ward.D",
              show_column_dend = F,
              show_row_names = F,
              height = unit(height, "inch"),
@@ -229,7 +226,6 @@ hc = hclust(dist(markers_agg_mat), method = "ward.D")
 hm = Heatmap(markers_agg_mat, col = cols_cur,
              cluster_rows = hc,
              cluster_columns = F,
-             #clustering_method_rows = "ward.D",
              show_column_dend = F,
              height = unit(height, "inch"),
              width = unit(width, "inch"))
@@ -245,7 +241,6 @@ width = 0.5
 hm = Heatmap(markers_agg_mat, col = cols_cur,
              cluster_rows = hc,
              cluster_columns = F,
-             #clustering_method_rows = "ward.D",
              show_column_dend = F,
              show_row_names = F,
              height = unit(height, "inch"),
@@ -285,9 +280,6 @@ markers_agg_mat = markers_agg %>%
   as.matrix()
 
 markers_agg_mat = markers_agg_mat[,c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")]
-#markers_agg_mat[marke]
-
-
 
 hc = hclust(dist(markers_agg_mat), method = "ward.D2")
 
@@ -394,16 +386,6 @@ walk(names(obj_umap), function(region_cur) {
   walk(assays_to_use, function(assay_to_use) {
     DefaultAssay(obj_cur) = assay_to_use
     walk(genes_to_plot, function(gene_to_plot) {
-      # gg = Nebulosa::plot_density(obj_cur, 
-      #                             features=gene_to_plot, 
-      #                             size = .5 * point_size_factor,
-      #                             reduction = reduction_to_use, raster = T) + 
-      #   coord_equal() + 
-      #   theme_void()
-      # save_plot(file.path(umap_dir, 
-      #                     str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}_density.pdf")), 
-      #           gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
-      
       gg = FeaturePlot_scCustom(obj_cur,
                                 features=gene_to_plot,
                                 reduction=reduction_to_use,
@@ -464,7 +446,6 @@ obj_sub = subset(obj, subset=cluster %in% cts)
 obj_sub$cluster = factor(obj_sub$cluster, levels = c("Glut-HVC-1","Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-LMAN-1", "Glut-NR-1", "Glut-LMAN-2", "Glut-NR-4", "Glut-RA", "Glut-Arco-1"))
 
 obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
-#Idents(obj_agg_cluster) = obj_agg$cluster
 
 ```
 
@@ -498,8 +479,6 @@ gg = gg +
 gg
 
 
-#gg_leg = get_legend(gg, position = "right")
-#as_ggplot(gg_leg)
 save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}_legend.pdf")), gg, base_height=height, base_width=width)
 gg = gg + theme(legend.position="none")
 save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}.pdf")), gg, base_height=height, base_width=width)
@@ -593,12 +572,10 @@ markers_agg_split = split(markers_agg, markers_agg$compare)
 markers_agg_sig = map(markers_agg_split, function(x) {
   x %>% 
     dplyr::filter(p_val_adj < 0.1) %>%
-    #dplyr::filter(abs(avg_log2FC) >= 1) %>%
     dplyr::select(gene) %>%
     unlist()
 })
 set_order = rev(c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA", "Glut-LMAN-1", "Glut-LMAN-2"))
-#markers_agg_sig = markers_agg_sig[]
 markers_agg_sig_upset = fromList(markers_agg_sig)
 gg = upset(fromList(markers_agg_sig), group.by = "sets", order.by="freq", keep.order = T, sets = set_order, empty.intersections = "on", nintersects = 100) 
 gg
@@ -666,7 +643,6 @@ gse_res_list = map(markers_agg_split, function(compare) {
     arrange(-avg_log2FC)
   gene_set = compare %>% select(avg_log2FC) %>% unlist()
   names(gene_set) = compare$gene
-  #names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
   gene_set = gene_set[!is.na(gene_set)]
   gene_set = gene_set[!is.na(names(gene_set))]
   gsea_res = fgseaMultilevel(pathways = gmt_pathway,
@@ -685,52 +661,15 @@ gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% b
 ```
 
 ```{r}
-# markers_agg = markers_agg %>% 
-#   mutate(p_val_adj_log10p1 = -1 * log10(p_val_adj + 1E-300))
-# markers_agg_split = split(markers_agg, markers_agg$compare)
-# 
-# gse_res = map(markers_agg_split, function(compare) {
-#   #compare = compare %>% arrange(-p_val_adj_log10p1)
-#   #gene_set = compare %>% select(p_val_adj_log10p1) %>% unlist()
-#   compare = compare %>% 
-#     arrange(-avg_log2FC)
-#   gene_set = compare %>% select(avg_log2FC) %>% unlist()
-#   names(gene_set) = compare$gene
-#   names(gene_set) = entrezid$ENTREZID[match(names(gene_set), entrezid$SYMBOL)]
-#   gene_set = gene_set[!is.na(gene_set)]
-#   gene_set = gene_set[!is.na(names(gene_set))]
-#   
-#   gse_res = gseGO(gene_set, 
-#                   OrgDb = org.Hs.eg.db,
-#                   ont = "ALL",
-#                   maxGSSize = 250,  
-#                   pvalueCutoff = .2,
-#                   keyType = "ENTREZID")
-#   gse_res_simp = simplify(gse_res)
-# 
-#   as.data.frame(gse_res_simp)
-# }) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
-# 
-# gse_res = gse_res %>% 
-#   mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>%
-#   mutate(core_enrichment_symbol = map(core_enrichment_split, function(x) entrezid$SYMBOL[match(x, entrezid$ENTREZID)])) %>%
-#   mutate(core_enrichment_symbol = map_chr(core_enrichment_symbol, paste, collapse=","))
-```
-
-```{r}
 set_order = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")
   gse_res_ind_select = gse_res_ind %>%
     mutate(p.adjust_sign = -1 * log10(padj)) %>%
     mutate(NES_sign = sign(NES)) %>%
-    filter(padj<.05) %>% 
+    filter(padj<.05) %>%
     select(pathway, compare) %>%
-    mutate(is_sig = TRUE) #%>% 
-    #group_by(compare, NES_sign) #%>%
-    #top_n(5, abs(NES))
-  
-  gse_res_ind_filt = gse_res %>% 
-    # mutate(core_enrichment_split = map(core_enrichment, function(x) unlist(str_split(x, "/")))) %>% 
-   # mutate(pathway = Description) %>% 
+    mutate(is_sig = TRUE)
+
+  gse_res_ind_filt = gse_res %>%
     filter(pathway %in% gse_res_ind_select$pathway) %>%
     distinct(compare, pathway, .keep_all=T) %>%
     left_join(gse_res_ind_select) %>%
@@ -764,7 +703,6 @@ set_order = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA
     mutate(compare = factor(compare, levels=set_order)) %>%
     complete(pathway, compare, fill=list(NES=NA, size=NA, leadingEdge_len = NA))
   
-  #size_limits = seq(round(min(gsea_res_ind_filt$size, na.rm=T), -1), round(max(gsea_res_ind_filt$size, na.rm=T), -1), by=50)
   size_limits = seq(round(min(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), round(max(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), by=20)
   gg = ggplot(gse_res_ind_filt, aes(compare, pathway)) + 
     geom_point(shape=21, aes(size=leadingEdge_len, fill=NES, color=is_sig)) + 
@@ -788,46 +726,4 @@ set_order = c("Glut-HVC-1", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA
   gg = egg::set_panel_size(gg, width = unit(width, "in"), height = unit(height, "in"))
   plot(gg)  
   save_plot(file.path(out_dir, sprintf("gse_terms_by_compare.pdf")), gg, base_height = height + 4, base_width = width + 4)
-```
-
-## Load SFARI genes
-
-```{r}
-sfari = read_csv(SFARI_CSV)
-colnames(sfari) = make.names(colnames(sfari))
-sfari = sfari %>% dplyr::rename(gene = gene.symbol)
-```
-
-```{r}
-markers_sfari = markers_agg %>% left_join(sfari)
-#markers_sfari = markers_sfari %>% filter(!is.na(gene.score))
-markers_sfari = markers_sfari %>% 
-  mutate(gene.score = as.factor(gene.score)) %>%
-  mutate(eagle = if_else(is.na(eagle), 0, eagle)) %>%
-  mutate(p_val_adj_log10 = -1 * log10(p_val_adj))
-```
-
-```{r}
-markers_cur = markers_sfari #%>% filter(compare=="HVC_3")
-gg = ggplot(markers_cur, aes(eagle, avg_log2FC)) + 
-  geom_point() + 
-  facet_wrap(~compare)
-gg
-```
-
-```{r}
-markers_sfari_cur = markers_sfari %>% filter(p_val_adj < .1)
-gg = ggplot(markers_sfari_cur, aes(gene.score, avg_log2FC)) + 
-  geom_violin() +
-  facet_wrap(~compare)
-gg
-```
-
-```{r}
-
-gg = ggplot(markers_sfari %>% filter(eagle>0), aes(avg_log2FC, p_val_adj_log10, color=log2(eagle))) + 
-  geom_point() +
-  scale_color_viridis_c() + 
-  facet_wrap(~compare)
-gg
 ```

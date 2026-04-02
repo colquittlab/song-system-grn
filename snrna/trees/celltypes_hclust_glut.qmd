@@ -11,11 +11,12 @@ library(circlize)
 library(scCustomize)
 library(ggtree)
 library(cowplot)
+library(here)
 plan(sequential)
 set.seed(10)
-source("../../scripts/scRNA.R")
-source("../../scripts/stats.R")
-source("../../scripts/common_aesthetics.R")
+source(here::here("scripts/scRNA.R"))
+source(here::here("scripts/stats.R"))
+source(here::here("scripts/common_aesthetics.R"))
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
@@ -31,27 +32,22 @@ dist_method = "correlation"
 
 # Directories 
 ```{r}
-dir_root = "~/hdd/rstudio/snRNA/snrna_cellranger/"
-scrna_dir =  file.path(dir_root, "snrna_seurat_cellbender.0.01_preprocess")
-obj_fname = file.path(scrna_dir, "obj_clustered.qs")
+script_name = "celltypes_hclust_glut"
+obj_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
 
-
-out_dir = file.path(scrna_dir, "trees")
-script_name = "celltypes_hclust_glut_pos-split_v2"
-out_dir = file.path(out_dir, script_name)
+out_dir = here::here("snrna/trees", script_name)
 out_sub_dir = file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
 dir.create(out_dir, recursive = T)
-dir.create(out_sub_dir) 
+dir.create(out_sub_dir)
 
 res_to_use = "cluster"
 
 obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs")
 
-
 data_out_avg_fname = file.path(out_dir, "data_avg.qs")
 data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs")
 
-tfs = read_delim("../../data/lambert_tfs/tfs.csv") %>%
+tfs = read_delim(here::here("data/lambert_tfs/tfs.csv")) %>%
   filter(DBD!="Unknown")
 ```
 # Load data
@@ -105,7 +101,6 @@ if (redo_markers) {
     obj_agg = AggregateExpression(obj_sub_cur, assay=assay_to_use, group.by=c(res_to_use, "assignment"), return.seurat = T)
     Idents(obj_agg) = obj_agg$cluster
     
-    #cells = Cells(obj_agg)[!(Cells(obj_agg) %in% c("Glut_Nido-1_1"))]
     FindAllMarkers(obj_agg, assay=assay_to_use, test.use="DESeq2", only.pos = F)
   })
   names(markers_agg) = regions
@@ -124,8 +119,6 @@ if (redo_markers) {
   obj_agg = AggregateExpression(obj_sub, assay=assay_to_use,
                                 group.by=c(res_to_use, "assignment"), return.seurat = T)
   Idents(obj_agg) = obj_agg$cluster
-  
-  #cells = Cells(obj_agg)[!(Cells(obj_agg) %in% c("Glut_Nido-1_1"))]
   markers_agg_combine = FindAllMarkers(obj_agg, assay=assay_to_use, test.use="DESeq2", only.pos = F)
   saveRDS(markers_agg_combine, markers_fname)
 } else {
@@ -138,7 +131,6 @@ if (redo_markers) {
 ```{r}
 Idents(obj_sub) = paste(obj_sub@meta.data[,res_to_use], obj_sub$assignment, sep="_")
 Idents(obj_sub) = obj_sub@meta.data[,res_to_use]
-#obj_int_avg = AverageExpression(obj_sub,assays = assay_to_use )
 obj_int_avg = AggregateExpression(obj_sub, assays=assay_to_use)
 obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
 colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
@@ -154,13 +146,10 @@ markers_int_top = map(markers_agg, function(markers_cur) {
   markers_cur %>% 
     mutate(sign = avg_log2FC>0) %>%
     filter(!grepl("RA|HVC|LMAN", cluster)) %>% 
-    filter(p_val_adj < .1) %>% 
-    #filter(avg_log2FC>0) %>% 
-    #group_by(cluster) %>% 
+    filter(p_val_adj < .1) %>%
     group_by(cluster, sign) %>%
     filter(abs(avg_log2FC) >= 1) %>%
-    #top_n(nsig, abs(avg_log2FC)) %>%
-    ungroup() %>% 
+    ungroup() %>%
     distinct(gene, .keep_all=T)
 }) %>% bind_rows()
 
@@ -181,11 +170,8 @@ nsig=100
 markers_int_top = markers_agg_combine %>% 
     mutate(sign = avg_log2FC>0) %>%
     filter(!grepl("RA|HVC|LMAN", cluster)) %>% 
-    filter(p_val_adj < 1E-1) %>% 
-    #filter(avg_log2FC>0) %>% 
-    #group_by(cluster) %>% 
+    filter(p_val_adj < 1E-1) %>%
     group_by(cluster, sign) %>%
-    #filter(abs(avg_log2FC) >= 1) %>%
     top_n(nsig, abs(avg_log2FC)) %>%
     ungroup() %>% 
     distinct(gene, .keep_all=T)
@@ -232,25 +218,16 @@ obj_sub$cluster_assignment = paste(obj_sub@meta.data[,res_to_use], obj_sub$assig
 nsig=100
 region_cur = "ARCO"
 
-markers_to_remove =  markers_agg[[region_cur]] %>% 
-  filter(cluster=="Glut-RA") %>% 
-    #mutate(sign = avg_log2FC>0) %>%
-    filter(p_val_adj < .1) %>% 
-    #filter(avg_log2FC>0) %>% 
-    #group_by(cluster) %>% 
-    #group_by(cluster, sign) %>%
-    #top_n(nsig, abs(avg_log2FC)) %>%
-    #ungroup() %>% 
+markers_to_remove =  markers_agg[[region_cur]] %>%
+  filter(cluster=="Glut-RA") %>%
+    filter(p_val_adj < .1) %>%
     distinct(gene, .keep_all=T)
 
 markers_int_top =
-  markers_agg[[region_cur]] %>% 
-  #filter(cluster!="Glut-RA") %>% 
-  filter(!(gene %in% markers_to_remove$gene)) %>% 
+  markers_agg[[region_cur]] %>%
+  filter(!(gene %in% markers_to_remove$gene)) %>%
     mutate(sign = avg_log2FC>0) %>%
-    filter(p_val_adj < .1) %>% 
-    #filter(avg_log2FC>0) %>% 
-    #group_by(cluster) %>% 
+    filter(p_val_adj < .1) %>%
     group_by(cluster, sign) %>%
     top_n(nsig, abs(avg_log2FC)) %>%
     ungroup() %>% 
@@ -272,8 +249,6 @@ qsave(pv, data_out_pv_fname2)
 ```{r fig.height=10}
 dat = as.matrix(obj_int_avg_filt_cur)
 dat = t(dat)
-#dat = apply(dat, 1, scale)
-#rownames(dat) = colnames(obj_int_avg_filt_cur)
 
 scale_factor = .1
 height = nrow(dat) * scale_factor
@@ -339,7 +314,6 @@ marker_genes_AMD = c("CYP19A1",
 ```
 
 ```{r fig.width=20}
-#DotPlot_scCustom(obj_sub_split[[1]], features=unique(marker_genes), flip_axes = T)
 VlnPlot_scCustom(obj_sub_split[[1]], features=unique(marker_genes)[1:10], colors_use=NULL)
 ```
 
@@ -358,11 +332,9 @@ nsig=100
 region_cur = "ARCO"
 markers_int_top =
   markers_agg[[region_cur]] %>% 
-  filter(cluster=="Glut-RA") %>% 
+  filter(cluster=="Glut-RA") %>%
     mutate(sign = avg_log2FC>0) %>%
-    filter(p_val_adj < .1) %>% 
-    #filter(avg_log2FC>0) %>% 
-    #group_by(cluster) %>% 
+    filter(p_val_adj < .1) %>%
     group_by(cluster, sign) %>%
     top_n(nsig, abs(avg_log2FC)) %>%
     ungroup() %>% 
@@ -399,23 +371,17 @@ save_plot(file.path(out_sub_dir, str_interp("umap_sub_markers_${region_cur}.pdf"
 nsig = 100
 region_cur = "NIDO"
 markers_to_remove =
-  markers_agg[[region_cur]] %>% 
-  filter(grepl("HVC|LMAN", cluster)) %>% 
-  #mutate(sign = avg_log2FC>0) %>%
-  filter(p_val_adj < .1) %>% 
-  #group_by(sign, cluster) %>% 
-  #filter(avg_log2FC>0) %>% 
-  #top_n(nsig, abs(avg_log2FC)) %>%
-  #ungroup() %>% 
+  markers_agg[[region_cur]] %>%
+  filter(grepl("HVC|LMAN", cluster)) %>%
+  filter(p_val_adj < .1) %>%
   distinct(gene, .keep_all=T)
 
 markers_int_top =
-  markers_agg[[region_cur]] %>% 
-  filter(!(gene %in% markers_to_remove$gene)) %>% 
+  markers_agg[[region_cur]] %>%
+  filter(!(gene %in% markers_to_remove$gene)) %>%
   mutate(sign = avg_log2FC>0) %>%
-  filter(p_val_adj < .1) %>% 
-  group_by(sign, cluster) %>% 
-  #filter(avg_log2FC>0) %>% 
+  filter(p_val_adj < .1) %>%
+  group_by(sign, cluster) %>%
   top_n(nsig, abs(avg_log2FC)) %>%
   ungroup() %>% 
   distinct(gene, .keep_all=T)
@@ -441,8 +407,6 @@ qsave(pv, data_out_pv_fname2)
 ```{r fig.height=10}
 dat = as.matrix(obj_int_avg_filt_cur)
 dat = t(dat)
-#dat = apply(dat, 1, scale)
-#dat = t(apply(dat, 1, scale))
 rownames(dat) = colnames(obj_int_avg_filt_cur)
 
 scale_factor = .1

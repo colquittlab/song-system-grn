@@ -5,10 +5,11 @@ library(seriation)
 library(cowplot)
 library(scCustomize)
 library(scales)
+library(here)
 theme_set(theme_cowplot())
 
-source("../../../scripts/scRNA.R")
-source("../../../scripts/common_aesthetics.R")
+source(here::here("scripts/scRNA.R"))
+source(here::here("scripts/common_aesthetics.R"))
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
@@ -17,13 +18,11 @@ names(position_colors) = case_when(pnames == "nido" ~ "nr",
 #names(position_colors) = toupper(names(position_colors))
 # Directories -------------------------------------------------------------
 
-dir_root = "/ssd/brad/rstudio/multiome/motor-pathway/seurat/"
-scrna_dir =  file.path(dir_root, "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/")
+scrna_dir = here::here("multiome/seurat/seurat_preprocess")
 
 data_fname = file.path(scrna_dir, "obj_clustered.qs")
-out_dir = file.path(scrna_dir, "reduction_viz")
 script_name = "combined_all_umap"
-out_dir = file.path(out_dir, script_name)
+out_dir = here::here("multiome/seurat/reduction_viz", script_name)
 dir.create(out_dir, recursive = T)
 
 data_out_obj_fname = file.path(out_dir, "obj_clustered.qs")

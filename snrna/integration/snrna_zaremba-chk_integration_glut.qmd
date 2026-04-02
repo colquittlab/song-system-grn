@@ -23,32 +23,29 @@ library(AnnotationHub)
 library(Matrix.utils)
 library(doParallel)
 library(foreach)
+library(here)
 
-
-
-source("../../scripts/stats.R")
-source("../../scripts/gene_lists.R")
-source("../../scripts/common_aesthetics.R")
+source(here::here("scripts/stats.R"))
+source(here::here("scripts/gene_lists.R"))
+source(here::here("scripts/common_aesthetics.R"))
+source(here::here("config/paths.R"))
 ```
 
 ```{r}
-## CellBender
-base_dir = "/hdd/brad/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess"
-script_name = "integration/snrna_zaremba-chk_integration_glut_cellbender"
-out_dir = file.path(base_dir, script_name)
-dir.create(out_dir)
+script_name = "snrna_zaremba-chk_integration_glut"
+out_dir = here::here("snrna/integration", script_name)
+dir.create(out_dir, recursive = T)
 
 obj_merged_fname = file.path(out_dir, "obj_merge.rds")
 obj_integrated_fname = file.path(out_dir, "obj_int.rds")
-obj_integrated_fname = file.path(out_dir, "obj_int.rds")
 obj_nido_integrated_fname = file.path(out_dir, "obj_nido_int.rds")
 
-bf_fname = file.path(base_dir, "obj_clustered.qs")
+bf_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
 bf_out_fname = file.path(out_dir, "obj_bf.qs")
 chk_fname = "/hdd/sc_datasets/zaremba_gg_dev_2024/Gg_adult_snRNA_seq_srt.rds"
 chk_out_fname = file.path(out_dir, "obj_chk.qs")
 
-ortho_fname = file.path(base_dir, "integration", "oma_orthologs_zf-ck.txt")
+ortho_fname = OMA_ORTHOLOGS_ZF_CK
 set.seed(10)
 
 options(future.globals.maxSize = 50 * 1E9)
@@ -178,8 +175,6 @@ if (redo) {
   
   nparams = nrow(transfer_params)
   pred_longs = lapply(1:nparams, function(i) {
-    #pred_longs = foreach(i = 1:nparams) %dofuture% {
-    
     k.anchor_cur <- transfer_params$k.anchor[i]
     k.filter_cur <- transfer_params$k.filter[i]
     k.score_cur <- transfer_params$k.score[i]
@@ -192,14 +187,12 @@ if (redo) {
                                   k.score = k.score_cur,
                                   max.features = max.features_cur,
                                   reduction = "rpca",
-                                  query = obj_chk_common, 
+                                  query = obj_chk_common,
                                   dims = dims_to_use
-                                  #reference.reduction = "pca"
     )
     
-    predictions_cluster = TransferData(anchorset = anchors, 
+    predictions_cluster = TransferData(anchorset = anchors,
                                        refdata = obj_bf_common$cluster,
-                                       #weight.reduction = "rpca",
                                        dims = dims_to_use) %>%
       mutate(predicted.id_cluster = predicted.id)
     
@@ -238,12 +231,6 @@ cluster_order = c(
 ```
 
 ```{r}
-# pred_long = predictions_cluster %>%
-#   dplyr::select(contains("prediction.score"), "anno_level_3") %>%
-#   dplyr::select(-prediction.score.max) %>%
-#   pivot_longer(-anno_level_3, names_to="col_tmp") %>%
-#   mutate(col1 = str_extract( col_tmp, "Glut.*$")) %>%
-#   mutate(cluster = gsub("\\.", "-", col1)) 
 pred_long_sum = pred_long %>%
   ungroup() %>% 
   group_by(anno_level_3, cluster, k.anchor, k.filter, k.score, max.features) %>%
@@ -323,15 +310,14 @@ walk(names(pred_long_mats), function(param_set_cur) {
   
   
   vals = pred_long_sum2_cur %>%
-    ungroup() %>% 
+    ungroup() %>%
     dplyr::select(value_mean_sum) %>% c() %>%  unlist()
   bar_cols =  pred_long_sum2_cur$col
   names(vals) = pred_long_sum2_cur$cluster
   names(bar_cols) = pred_long_sum2_cur$cluster
-  
+
   vals = vals[intersect(cluster_order, names(vals))]
   bar_cols = bar_cols[intersect(cluster_order, names(bar_cols))]
-  #df_cur = pred_long_sum2 %>% dplyr::select(value_mean_sum)
   ab = anno_barplot(vals, 0, which = "row", border=F, gp = gpar(fill=bar_cols))
   hm_row = HeatmapAnnotation(ab=ab, which="row")
   hm2 = hm + hm_row
@@ -372,15 +358,14 @@ walk(names(pred_long_mats), function(param_set_cur) {
                width = unit(width, "in"))
   hm
   
-  vals = pred_long_sum2_cur %>% ungroup()%>% 
+  vals = pred_long_sum2_cur %>% ungroup() %>%
     dplyr::select(value_mean_max) %>% c() %>%  unlist()
   bar_cols =  pred_long_sum2_cur$col
   names(vals) = pred_long_sum2_cur$cluster
   names(bar_cols) = pred_long_sum2_cur$cluster
-  
+
   vals = vals[intersect(cluster_order, names(vals))]
   bar_cols = bar_cols[intersect(cluster_order, names(bar_cols))]
-  #df_cur = pred_long_sum2 %>% dplyr::select(value_mean_max)
   ab = anno_barplot(vals, 0, which = "row", border=F, gp = gpar(fill=bar_cols))
   hm_row = HeatmapAnnotation(ab=ab, which="row")
   hm2 = hm + hm_row
@@ -405,9 +390,8 @@ walk(names(pred_long_mats), function(param_set_cur) {
     group_by(position2, col) %>%
     summarize(value_mean_max_mean = mean(value_mean_max))
   gg = ggplot(pred_long_sum3, aes(position2, value_mean_max)) +
-    geom_bar(aes(y=value_mean_max_mean, fill=col), data=pred_long_sum4, stat = "identity") + 
-    #geom_point(color="black", position=position_jitter(), size=.5) +
-    scale_fill_identity() + 
+    geom_bar(aes(y=value_mean_max_mean, fill=col), data=pred_long_sum4, stat = "identity") +
+    scale_fill_identity() +
     labs(x="", y="") + 
     theme_classic() + 
     
@@ -449,17 +433,6 @@ if (redo) {
     "rpca"
   )
   
-  # thetas = c(1, 10, 100)
-  # for (theta in thetas) {
-  #   print(str_interp("Harmony: theta ${theta}"))
-  #   obj = obj %>%
-  #     IntegrateLayers(method=HarmonyIntegration, 
-  #                     orig.reduction="pca", 
-  #                     new.reduction=str_interp("pca_harmony_theta${theta}"),
-  #                     theta=theta
-  #     )
-  # }
-  
   ks = c(5)
   for (k in ks) {
     print(str_interp("RPCA: k.anchor ${k}"))
@@ -473,7 +446,6 @@ if (redo) {
   
   for (int in ints) {
     DefaultAssay(obj) = assay_to_use
-    #res = mclapply(rna_dims_list, mc.cores=length(rna_dims_list), \(rna_dims) {
     res = lapply(rna_dims_list, \(rna_dims) {
       
       if (int %in% c("rpca", "mnn", "cca")) {
@@ -529,7 +501,6 @@ if (redo) {
           obj[[names(res_cur)[i]]] = res_cur[[i]]
         }
       } else {
-        #obj = AddMetaData(obj, res_cur$clusters)
         umap_name = names(res_cur)[1]
         obj[[umap_name]] = res_cur[[umap_name]]
       }
@@ -549,7 +520,6 @@ redo_plot = T
 if (redo_plot) {
   reductions = Reductions(obj)
   reductions = grep("umap", reductions, value=T)
-  #reductions = c("umap_weighted_rna40_atac20")
   cats = c("dataset", "cluster")
   
   walk(reductions, function(reduction) {
@@ -570,7 +540,6 @@ redo_plot = T
 if (redo_plot) {
   reductions = Reductions(obj)
   reductions = grep("umap", reductions, value=T)
-  #reductions = c("umap_weighted_rna40_atac20")
   cats = c("dataset", "cluster")
   
   walk(reductions, function(reduction) {

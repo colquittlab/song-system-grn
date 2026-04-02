@@ -14,7 +14,7 @@
 library(here)
 
 # ---------------------------------------------------------------------------
-# Zebra finch (lonStrDom2 / GCF_005870125.1) reference assembly
+# Bengalese finch (lonStrDom2 / GCF_005870125.1) reference assembly
 # Source: NCBI RefSeq — https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_005870125.1/
 # ---------------------------------------------------------------------------
 
@@ -89,8 +89,10 @@ SNRNA_SEURAT_DIR    <- "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbe
 SCENICPLUS_BASE_DIR <- "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
 
 # ---------------------------------------------------------------------------
-# Bundled gene lists (resolved relative to repository root via here::here())
+# Bundled gene lists and ortholog tables (resolved relative to repository root)
 # ---------------------------------------------------------------------------
 
 GMT_C5_V7 <- here::here("data/gene_lists/c5.all.v7.0.symbols.gmt")
-SFARI_CSV  <- here::here("data/gene_lists/SFARI-Gene_genes_03-28-2024release_07-17-2024export.csv")
+
+# OMA zebra finch ↔ chicken 1:1 orthologs (used by snrna/integration/)
+OMA_ORTHOLOGS_ZF_CK <- here::here("data/orthologs/oma_orthologs_zf-ck.txt")

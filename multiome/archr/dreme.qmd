@@ -50,10 +50,9 @@ check_meme_install()
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr//"
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-out_name = "dreme"
-out_dir = file.path(analysis_prefix, out_name)
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+script_name = "dreme"
+out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 ```
 

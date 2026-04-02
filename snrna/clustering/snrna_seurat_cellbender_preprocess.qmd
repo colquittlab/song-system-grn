@@ -1,7 +1,7 @@
 ---
 title: "Untitled"
 format: html
-editor: visual
+editor: source
 ---
 
 ```{r}
@@ -28,12 +28,11 @@ select = dplyr::select
 
 ```{r}
 samples_to_process = c("ra_run1", "arco_run1", "hvc_run1", "nc_run1",
-                       #"nc_run2", 
                        "lman_run1", "nr_run1")
 ```
 
 ```{r}
-base_dir = "/hdd1/brad/snRNA/210607_snrna/"
+base_dir = "~/nest/snRNA/210607_snrna/"
 
 ## Cellbender
 cb_dirs = file.path(base_dir, "cellbender", paste(samples_to_process, "lonStrDom2_3p_merge_ucsc", sep="_"))
@@ -42,28 +41,21 @@ names(cb_fnames) = samples_to_process
 
 ## Cellranger
 cr_dirs = file.path(base_dir, samples_to_process)
-#cr_fnames = list.files(cr_dir, pattern="sample.*_ucsc", full.names = T)
 feature_h5s = file.path(cr_dirs, "outs", "filtered_feature_bc_matrix.h5")
-#atac_frags = file.path(cr_dirs, "outs", "atac_fragments.tsv.gz")
 
 names(feature_h5s) = samples_to_process
-#names(atac_frags) = params_table$sample_name
 
 
 data_dir = file.path(base_dir, "aggr", "outs")
-#setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
-analysis_prefix = "~/hdd/rstudio/snRNA/snrna_cellranger/"
-out_name = "snrna_seurat_cellbender.0.01_preprocess"
-out_dir = file.path(analysis_prefix, out_name)
+script_name = "snrna_seurat_cellbender_preprocess"
+out_dir = here::here("snrna/clustering", script_name)
 dir.create(out_dir, recursive = T)
 
 feature_h5 = file.path(data_dir, "filtered_feature_bc_matrix.h5")
-#atac_frags = file.path(data_dir, "atac_fragments.tsv.gz")
 
 aggr_csv = read_csv(file.path(base_dir, "aggr.csv"))
 aggr_csv = aggr_csv[match(samples_to_process, aggr_csv$sample_id),]
 
-#out_split_fname = file.path(out_dir, "obj_position_split.qs")
 out_full_fname = file.path(out_dir, "obj.qs")
 out_processed_fname = file.path(out_dir, "obj_processed.qs")
 out_fname = file.path(out_dir, "obj_clustered.qs")
@@ -85,6 +77,7 @@ genes_mt = na.omit(annotation_mt$Name)
 ```
 
 ```{r}
+options(future.globals.maxSize = Inf)
 plan(sequential)
 ```
 
@@ -92,11 +85,8 @@ plan(sequential)
 
 ```{r}
 
-redo  = F
+redo = T
 if (redo) {
-  # objs = mclapply(sample_names, mc.set.seed=F,
-  #                 mc.cores=length(sample_names),
-  #                 function(sample_name) {
   objs = future_map(samples_to_process,
                     .options = furrr_options(seed=seed),
                     .f = function(sample_name) {
@@ -104,7 +94,6 @@ if (redo) {
     ## Load CellBender corrected
     cb_fname = cb_fnames[[sample_name]]
     cb_mat = scCustomize::Read_CellBender_h5_Mat(cb_fname)
-    #sample_index = str_extract(sample_name, "[0-9]+")
     sample_index = which(aggr_csv$sample_id == sample_name)
     ### Fix barcodes
     bcodes = colnames(cb_mat)
@@ -123,8 +112,7 @@ if (redo) {
     ## Load CellRanger raw
     feature_h5 = feature_h5s[sample_name]
     cn = Seurat::Read10X_h5(filename = feature_h5)
-    #cn_gex = cn$`Gene Expression`
-    
+
     ### Fix barcodes
     bcodes = colnames(cn)
     bcodes = sub("-1", str_interp("-${sample_index}"), bcodes)
@@ -214,7 +202,6 @@ soc_cluster_fnames = map(soc_dirs, ~file.path(.x, "souporcell", "clusters.tsv"))
 soc_clusters = map(soc_cluster_fnames, read_delim)
 soc_clusters = map(seq_along(soc_clusters), function(i) {
   soc_cur = soc_clusters[[i]]
-  #soc_cur = soc_cur %>% mutate(barcode = paste(barcode, i, sep="_"))
   soc_cur = soc_cur %>% mutate(barcode = sub("1", i, barcode))
   soc_cur
 }) %>% bind_rows()
@@ -239,7 +226,7 @@ obj = AddMetaData(obj, soc_clusters)
 
 ```{r}
 md_df_fname = file.path(out_dir, "md_doubletfinder.rds")
-redo  = F
+redo = T
 if (redo) {
   library(DoubletFinder)
   library(future)
@@ -248,8 +235,6 @@ if (redo) {
   obj_list = SplitObject(obj, split.by="sample_name")
 
   plan(sequential)
-  #cl <- makeCluster(length(obj_list))
-  #doParallel::registerDoParallel(cl)
   md_list = map(obj_list, function(obj_cur) {
     
     sample_name = obj_cur$sample_name[1]
@@ -268,7 +253,6 @@ if (redo) {
     gt.calls = str_to_title(gt.calls) 
     sweep.stats = map(seq_along(sweep.res.list), function(i) {
       tryCatch({
-        #sweep.stat <- summarizeSweep(sweep.res.list[i], GT = TRUE, GT.calls = gt.calls)
         sweep.stat <- summarizeSweep(sweep.res.list[i], GT = F)
         sweep.stat
       },
@@ -283,14 +267,7 @@ if (redo) {
     nExp <- round(ncol(obj_cur) * 0.04) 
     obj_cur = DoubletFinder::doubletFinder(obj_cur, pN = 0.25, pK = pK, nExp = nExp, PCs = 1:10, sct=F)
     DF.name = colnames(obj_cur@meta.data)[grepl("DF.classification", colnames(obj_cur@meta.data))]
-    
-    # cowplot::plot_grid(ncol = 2, 
-    #                    DimPlot(obj_cur, group.by = "position", reduction="umap_rna_int") + NoAxes(),
-    #                    DimPlot(obj_cur, group.by = DF.name, reduction="umap_rna_int") + NoAxes())
-    # 
-    # gg = VlnPlot(obj_cur, features = "nFeature_RNA", group.by = DF.name, pt.size = 0.1)
-    # print(gg)
-    
+
     return(obj_cur@meta.data[, c(DF.name, "sample_name")])
   })
   
@@ -314,10 +291,7 @@ obj = AddMetaData(obj, md)
 
 ```{r}
 table(obj$doublet_status, obj$DF_class)
-# DimPlot_scCustom(obj, group.by="DF_class", reduction="umap_rna_int")
 VlnPlot(obj, features = "nFeature_RNA", split.by = "sample_name", group.by = "DF_class", pt.size = 0.1)
-
-#DimPlot_scCustom(obj, group.by="doublet_status", reduction="umap_rna_int")
 VlnPlot(obj, features = "nFeature_RNA", group.by = "doublet_status", pt.size = 0.1)
 ```
 
@@ -332,7 +306,7 @@ obj = subset(obj, cells=cells)
 cluster_prefix = "cluster"
 
 rna_dims = 30
-redo  = F
+redo  = T
 if (redo) {
   
   ## GEX
@@ -343,9 +317,6 @@ if (redo) {
   
    obj <- obj %>%
      SCTransform() %>%
-   # NormalizeData(verbose = F) %>%
-    #FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
-    #ScaleData(verbose = T) %>%
     RunPCA(verbose = T) %>%
     RunUMAP(  
       reduction = "pca",
@@ -354,47 +325,14 @@ if (redo) {
       verbose = TRUE
     )
   
-  #DefaultAssay(obj) = "SCT"
-  obj = obj %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.2, 1, .2), 
+  obj = obj %>%
+    seurat_find_clusters(dims.use=1:rna_dims,
+                         ress = seq(.2, 1, .2),
                          reduction="pca",
                          algorithm = 2,
-                         #graph.name = NULL,
-                         cluster_prefix = cluster_prefix, 
+                         cluster_prefix = cluster_prefix,
                          assay="SCT")
-  
-  
-  # # Integrate PCA embeddings
-  # obj <- IntegrateLayers(object = obj, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca", 
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
-  
-  #obj = JoinLayers(obj)
-  
-  # obj = obj %>% 
-  #   seurat_find_clusters(dims.use=1:rna_dims, 
-  #                        ress = seq(.5, 2, .5), 
-  #                        reduction="pca_harmony",
-  #                        algorithm = 2,
-  #                        graph.name = NULL,
-  #                        cluster_prefix = paste(cluster_prefix, "pca_harmony", sep="_"), 
-  #                        assay="SCT")
-  # 
-  # 
-  # 
-  # obj =  RunUMAP(
-  #   object = obj,
-  #   reduction = "pca_harmony",
-  #   reduction.name = "umap_rna_int", 
-  #   assay = "RNA",
-  #   dims = 1:rna_dims,
-  #   verbose = TRUE
-  # )
-  
-  #rm(cn, counts, integration.anchors, obj_list, obj_lsi, obj_pca)
+
   qsave(obj, out_processed_fname)
 } else {
   obj = qread(out_processed_fname)
@@ -434,7 +372,6 @@ if (redo_plot) {
 if (redo_plot) {
   reduction = "umap_rna"
   ress = grep("cluster", unique(colnames(obj@meta.data)), value = T)
-  #ress = grep("harmony", ress, value=T)
   walk(ress, function(res) {
     gg = DimPlot(object = obj, group.by = res, label=T, reduction = reduction)
     gg = gg + labs(title=res)
@@ -533,7 +470,7 @@ rna_dims = 20
 names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("Glut", obj$celltype)]
   obj_glut = subset(obj, cells=cells)
@@ -547,12 +484,7 @@ if (redo) {
       reduction.name = "umap_rna",
       verbose = TRUE
     )
-  
-  # obj_glut <- IntegrateLayers(object = obj_glut, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca",
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
+
   obj_glut = obj_glut %>% 
     seurat_find_clusters(dims.use=1:rna_dims, 
                          ress = seq(.3, .8, .1), 
@@ -666,9 +598,8 @@ fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_arco")
 
-redo = F
+redo = T
 if (redo) {
-  #cells = Cells(obj_glut)[obj_glut$position %in% c("ra", "arco")]
   cells = Cells(obj_glut)[grepl("Arco", obj_glut$celltype_n_glut)]
   obj_glut_arco = subset(obj_glut, cells=cells)
 
@@ -711,7 +642,6 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_arco@meta.data)), value
 
 DimPlot(obj_glut_arco, group.by="assignment", reduction=reduction_cur)
 DimPlot(obj_glut_arco, group.by="position", reduction=reduction_cur)
-#DimPlot(obj_glut_arco, group.by="run", reduction=reduction_cur)
 
 
 ```
@@ -785,7 +715,7 @@ fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco_filt.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_arco")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut_arco)[!grepl("Exclude", obj_glut_arco$celltype_n_glut_arco)]
   obj_glut_arco_filt = subset(obj_glut_arco, cells=cells)
@@ -907,7 +837,7 @@ rna_dims = 10
 names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_nido")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut)[grepl("Nido", obj_glut$celltype_n_glut)]
   obj_glut_nido = subset(obj_glut, cells=cells)
@@ -1047,17 +977,15 @@ qsave(obj_glut_nido, fname_int_ex)
 ```{r}
 fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido_filt.qs")
 rna_dims = 20
-#snames(dims.use) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_nido")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut_nido)[!grepl("Exclude", obj_glut_nido$celltype_n_glut_nido)]
   obj_glut_nido_filt = subset(obj_glut_nido, cells=cells)
 
   obj_glut_nido_filt <- obj_glut_nido_filt %>%
-    SCTransform(vars.to.regress = "perc_mito") %>% 
-    #SCTransform() %>% 
+    SCTransform(vars.to.regress = "perc_mito") %>%
     RunPCA(verbose = T) %>%
     RunUMAP(  
       reduction = "pca",
@@ -1199,30 +1127,21 @@ dims.use = 10
 names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("GABA", obj$celltype) ]
   obj_gaba = subset(obj, cells=cells)
 
   obj_gaba <- obj_gaba %>%
-    SCTransform(vars.to.regress="perc_mito") %>% 
-    # NormalizeData(verbose = F) %>%
-    # FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
-    # ScaleData(verbose = T) %>%
+    SCTransform(vars.to.regress="perc_mito") %>%
     RunPCA(verbose = T) %>%
-    RunUMAP(  
+    RunUMAP(
       reduction = "pca",
       dims = 1:rna_dims,
       reduction.name = "umap_rna",
       verbose = TRUE
     )
-  
 
-  # obj_gaba <- IntegrateLayers(object = obj_gaba, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca", 
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
   obj_gaba = obj_gaba %>% 
     seurat_find_clusters(dims.use=1:rna_dims, 
                          ress = seq(.1, .8, .1), 
@@ -1312,7 +1231,7 @@ rna_dims = 10
 names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
 
    obj_gaba <- obj_gaba %>%
@@ -1368,7 +1287,6 @@ res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.7")
 
 ```{r}
 if (redo_plot) {
-  #obj_gaba = RunALRA(obj_gaba, assay="RNA")
   reduction = "umap_rna"
   features = c("nCount_RNA", "nFeature_RNA", "SPEF2", "SLC17A6", "SLC17A7", "SLC17A8", "GAD1", "SLC1A2",  "MBP", "PDGFRA", 
                "NECTIN3", "SOX4",
@@ -1438,7 +1356,7 @@ fname_int_ex = file.path(out_dir, "obj_nonneuronal.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[!grepl("GABA|Glut", obj$celltype)]
   obj_nn = subset(obj, cells=cells)
@@ -1528,7 +1446,7 @@ fname_int_ex = file.path(out_dir, "obj_nonneuronal_filt.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
   obj_nn_filt = obj_nn_filt %>%
     SCTransform(vars.to.regress = "perc_mito") %>%
@@ -1724,4 +1642,3 @@ SaveH5Seurat(obj_filt, out_h5_fname, overwrite = T)
 ```
 
 ## Write out cell barcodes
-

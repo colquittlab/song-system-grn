@@ -5,25 +5,24 @@ library(seriation)
 library(cowplot)
 library(scCustomize)
 library(scales)
+library(here)
 theme_set(theme_cowplot())
 
-source("../../scripts/scRNA.R")
-source("../../scripts/common_aesthetics.R")
+source(here::here("scripts/scRNA.R"))
+source(here::here("scripts/common_aesthetics.R"))
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
                                      TRUE ~ pnames)
-#names(position_colors) = toupper(names(position_colors))
+
 # Directories -------------------------------------------------------------
 
-dir_root = "/hdd/brad/rstudio/snRNA/snrna_cellranger/"
-scrna_dir =  file.path(dir_root, "snrna_seurat_cellbender.0.01_preprocess")
+scrna_dir = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess")
 
 data_fname = file.path(scrna_dir, "obj_clustered.qs")
-out_dir = file.path(scrna_dir, "reduction_viz")
 script_name = "combined_all_umap_glut"
-out_dir = file.path(out_dir, script_name)
+out_dir = here::here("snrna/reduction_viz", script_name)
 dir.create(out_dir, recursive = T)
 
 data_out_obj_fname = file.path(out_dir, "obj_clustered.qs")

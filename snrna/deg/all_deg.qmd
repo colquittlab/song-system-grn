@@ -16,18 +16,17 @@ library(org.Hs.eg.db)
 library(ComplexHeatmap)
 library(cowplot)
 library(proxy)
+library(here)
 select = dplyr::select
 
-source("../../scripts/gene_lists.R")
+source(here::here("scripts/gene_lists.R"))
 ```
 
 ```{r}
-prefix_dir = "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/"
-data_obj = file.path(prefix_dir, "obj_clustered.qs")
-out_dir = file.path(prefix_dir, "deg")
 script_name = "all_deg"
-out_dir = file.path(out_dir, script_name)
-dir.create(out_dir)
+data_obj = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
+out_dir = here::here("snrna/deg", script_name)
+dir.create(out_dir, recursive = T)
 res_to_use = "cluster"
 assay_to_use = "SCT"
 ```
@@ -70,15 +69,9 @@ pos_order = c("hvc", "nc", "lman", "nr", "ra", "arco")
 ## Markers - all
 
 ```{r}
-#clusters_to_test = unique(obj$cluster)
-#clusters_to_test = grep("Glut", clusters_to_test, value=T, invert=T)
 plan(sequential)
 obj_agg_pos = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use, "assignment"), return.seurat = T)
 Idents(obj_agg_pos) = obj_agg_pos@meta.data[,res_to_use]
-
-#clusters_to_test = unique(obj_agg_pos$cluster)
-#options(future.globals.maxSize = 50 * 1E9)
-#plan(multisession, workers = min(length(clusters_to_test), 20))
 
 position_pairs = list("ra" = c("ra", "arco"),
                       "hvc" = c("hvc", "nc"),
@@ -111,12 +104,6 @@ obj$cluster = factor(obj$cluster, levels=rev(ct_order))
 markers_agg = markers_agg %>%
   mutate(class1 = str_extract(cluster, "([A-Z-a-z]+)-*", group=T)) %>%
   mutate(class1 = sub("-$", "", class1))
-  # mutate(class1 = case_when(grepl("Glut", cluster) ~ "Glut",
-  #                           grepl("GABA", cluster) ~ "GABA",
-  #                           grepl("Pre", cluster) ~ "Neurogenic",
-  #                           grepl("Astro", cluster) ~ "Astro",
-  #                           grepl("Oligo", cluster) ~ ""
-  #                           TRUE ~ cluster))
 ```
 
 ```{r}
@@ -236,26 +223,19 @@ marker_peaks_glut_df1 = marker_peaks_glut_df1 %>%
                             grepl("NB|IP", ct2) ~ "Neurogenic",
                             grepl("OPC|Oligo|Astro|Epen", ct2) ~ "Glial"))
 
-marker_peaks_glut_n = marker_peaks_glut_df1 %>% 
+marker_peaks_glut_n = marker_peaks_glut_df1 %>%
   mutate(Log2FC_sign = sign(Log2FC)) %>%
-  #group_by(pair_name, ct1, ct2, class1, class2, Log2FC_sign) %>%
   group_by(pair_name, ct1, ct2, class1, class2) %>%
   summarize(n_peaks = n())
 
 marker_peaks_glut_n = marker_peaks_glut_n %>%
-  #filter(!(grepl("RA|Arco", pair_name) & grepl("NC|Nido|HVC", pair_name))) %>%
-  filter(!(class1 == "Neurogenic" | class2 == "Neurogenic")) %>% 
+  filter(!(class1 == "Neurogenic" | class2 == "Neurogenic")) %>%
   mutate(class_name = paste(class1, class2, sep="_")) %>%
   mutate(class_name2 = case_when(class_name == "Glial_Glut" ~ "Glut_Glial",
                                  class_name == "Glial_GABA" ~ "GABA_Glial",
-                                 class_name == "GABA_Glut" ~ "Glut_GABA", 
+                                 class_name == "GABA_Glut" ~ "Glut_GABA",
                                  TRUE ~ class_name)
-  ) %>% 
-  #mutate(n_peaks_sign = n_peaks * Log2FC_sign) %>%
-  # mutate(song = case_when(pair_name %in% c("Glut-RA_Glut-Arco-1", "Glut-Arco-1_Glut-RA") ~ "RA",
-  #                         pair_name %in% c("Glut-HVC-1_Glut-NC-1", "Glut-NC-1_Glut-HVC-1",
-  #                                        "Glut-HVC-3_Glut-Nido-3", "Glut-Nido-3_Glut-HVC-3") ~ "HVC",
-  #                         TRUE ~ "nonsong"))
+  ) %>%
   mutate(song = case_when(grepl("RA", pair_name) ~ "RA",
                           grepl("HVC", pair_name) ~ "HVC",
                           TRUE ~ "nonsong")) %>%

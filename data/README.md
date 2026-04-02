@@ -12,8 +12,8 @@ obtained separately and configured in `config/paths.R` (R scripts) and
 | File | Description | Source |
 |------|-------------|--------|
 | `gene_lists/c5.all.v7.0.symbols.gmt` | MSigDB C5 GO gene sets v7.0 | [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp) |
-| `gene_lists/SFARI-Gene_genes_03-28-2024release_07-17-2024export.csv` | SFARI autism gene scores (release 2024-03-28) | [SFARI Gene](https://gene.sfari.org/) |
 | `lambert_tfs/tfs.csv` | Human TF catalog (Lambert et al. 2018, *Cell*) | [Lambert et al. 2018](https://doi.org/10.1016/j.cell.2018.01.029) |
+| `orthologs/oma_orthologs_zf-ck.txt` | OMA 1:1 orthologs zebra finch ↔ chicken (used by `snrna/integration/`) | OMA browser export |
 
 ---
 

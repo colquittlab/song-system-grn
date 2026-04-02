@@ -9,41 +9,36 @@ library(furrr)
 library(ComplexHeatmap)
 library(circlize)
 library(scCustomize)
-plan(sequential)
-source("../../scripts/scRNA.R")
-source("../../scripts/stats.R")
+library(here)
+
+source(here::here("scripts/scRNA.R"))
+source(here::here("scripts/stats.R"))
 ```
 
-# Parameters 
+# Parameters
 ```{r}
-#hclust_method = "ward.D"
 hclust_method = "average"
 dist_method = "correlation"
 ```
 
 # Directories 
 ```{r}
-dir_root = "~/hdd/rstudio/snRNA/snrna_cellranger"
-scrna_dir =  file.path(dir_root, "snrna_seurat_cellbender.0.01_preprocess")
-obj_fname = file.path(scrna_dir, "obj_clustered.qs")
+script_name = "celltypes_hclust_all"
+obj_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
 
-
-out_dir = file.path(scrna_dir, "trees")
-script_name = "celltypes_hclust_all_new-clust"
-out_dir = file.path(out_dir, script_name)
+out_dir = here::here("snrna/trees", script_name)
 out_sub_dir = file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
 dir.create(out_dir, recursive = T)
-dir.create(out_sub_dir) 
+dir.create(out_sub_dir)
 
 res_to_use = "cluster"
 
 obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs")
 
-
 data_out_avg_fname = file.path(out_dir, "data_avg.qs")
 data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs")
 
-tfs = read_delim("../../data/lambert_tfs/tfs.csv") %>%
+tfs = read_delim(here::here("data/lambert_tfs/tfs.csv")) %>%
   filter(DBD!="Unknown")
 ```
 # Load data 
@@ -102,11 +97,9 @@ ct_order = c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2",
 assay_to_use = "SCT"
 Idents(obj_sub) = paste(obj_sub@meta.data[,res_to_use], obj_sub$assignment, sep="_")
 Idents(obj_sub) = obj_sub@meta.data[,res_to_use]
-#obj_int_avg = AverageExpression(obj_sub,assays = assay_to_use )
 obj_int_avg = AggregateExpression(obj_sub, assays=assay_to_use)
 obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
 colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
-#obj_int_avg1 = obj_int_avg1[, !(colnames(obj_int_avg1) %in% c("Glut-Nido-1-1"))]
 qsave(obj_int_avg1, data_out_avg_fname)
 ```
 

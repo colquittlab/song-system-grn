@@ -59,9 +59,8 @@ names(atac_frags) = params_table$sample_short
 
 data_dir = file.path(base_dir, "aggr", "outs")
 setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/seurat"
-out_name = "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr"
-out_dir = file.path(analysis_prefix, out_name)
+script_name = "seurat_preprocess"
+out_dir = here::here("multiome/seurat", script_name)
 bed_dir = file.path(out_dir, "bed")
 dir.create(out_dir, recursive = T)
 

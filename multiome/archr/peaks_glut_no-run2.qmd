@@ -35,9 +35,8 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 
 ```{r}
 proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-out_name = "peaks_glut_no-run2"
-out_dir = file.path(analysis_prefix, out_name)
+script_name = "peaks_glut_no-run2"
+out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
 addArchRThreads(threads = 36) 
