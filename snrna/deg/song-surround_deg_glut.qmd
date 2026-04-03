@@ -457,24 +457,24 @@ ngenes = 5
 
 scale_factor_y = .12
 scale_factor_x = .2
-height = nrow(markers_agg_mat) * scale_factor_y
 width = length(cts) * scale_factor_x
 
 markers_agg_select_up = markers_agg %>%
-  filter(!grepl("^LOC", gene)) %>% 
+  filter(!grepl("^LOC", gene)) %>%
   group_by(compare) %>%
   top_n(ngenes, avg_log2FC) %>%
-  ungroup() %>% 
+  ungroup() %>%
   select(gene) %>% unlist() %>% unique()
 
-markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data")
 markers_agg_mat = markers_agg_mat[markers_agg_select_up, cts]
+height = nrow(markers_agg_mat) * scale_factor_y
 
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
 markers_agg_select = hc$labels[hc$order]
 gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = "cluster", flip_axes = T, dot.scale=2, dot.min = .1)
-gg = gg + 
+gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
         axis.text.y = element_text(size=6),
         axis.line = element_line(linewidth=.5))
@@ -488,22 +488,22 @@ save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}.pdf")), gg, base_h
 
 
 markers_agg_select_down = markers_agg %>%
-  filter(!grepl("^LOC", gene)) %>% 
+  filter(!grepl("^LOC", gene)) %>%
   group_by(compare) %>%
   top_n(-1*ngenes, avg_log2FC) %>%
-  ungroup() %>% 
+  ungroup() %>%
   select(gene) %>% unlist() %>% unique()
 
-markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data") 
+markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data")
 markers_agg_mat = markers_agg_mat[markers_agg_select_down, cts]
-
+height = nrow(markers_agg_mat) * scale_factor_y
 
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
 markers_agg_select = hc$labels[hc$order]
 
 gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = "cluster", flip_axes = T, dot.scale=2, dot.min = .1)
-gg = gg + 
+gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
         axis.text.y = element_text(size=6),
         axis.line = element_line(linewidth=.5))
