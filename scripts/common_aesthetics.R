@@ -41,3 +41,26 @@ names(lesion_group_colors2) = c("hearing-contra", "hearing-ipsi", "deaf-contra",
 lesion_group_colors2_alt = pal_jama()(7)[c(1,2,3,4)]
 
 names(lesion_group_colors2_alt) = c("hearing-contra", "hearing-ipsi", "deaf-contra", "deaf-ipsi")
+
+plot_theme <- function() {
+  theme(
+    text             = element_text(family = "sans"),
+    axis.text        = element_text(size = 5),
+    axis.title       = element_text(size = 5),
+    legend.text      = element_text(size = 5),
+    legend.title     = element_text(size = 5),
+    legend.key.size  = unit(3, "pt"),
+    plot.title       = element_text(size = 6),
+    strip.text       = element_text(size = 5)
+  )
+}
+
+umap_theme <- function() {
+  plot_theme() +
+  theme(
+    axis.text        = element_blank(),
+    axis.ticks       = element_blank(),
+    axis.title       = element_blank(),
+    axis.line        = element_blank()
+  )
+}

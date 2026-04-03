@@ -7,6 +7,7 @@ library(scCustomize)
 library(scales)
 library(here)
 theme_set(theme_cowplot())
+options(future.globals.maxSize = Inf)
 
 source(here::here("scripts/scRNA.R"))
 source(here::here("scripts/common_aesthetics.R"))
@@ -40,7 +41,7 @@ params = expand_grid(dims_list, n.neighbors_list, min.dist_list)
 print(params)
 set.seed(10)
 
-redo = F
+redo = T
 if (redo) {
   obj_int_filt = qread(data_fname)
   obj_int_filt$region = case_when(obj_int_filt$position %in% c("arco", "ra") ~ "arco",

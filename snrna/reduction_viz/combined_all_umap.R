@@ -41,7 +41,7 @@ params = expand_grid(dims_list, n.neighbors_list, min.dist_list)
 print(params)
 set.seed(10)
 
-redo = F
+redo = T
 if (redo) {
   obj_int_filt = qread(data_fname)
   DefaultAssay(obj_int_filt) = "SCT"

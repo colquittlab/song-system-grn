@@ -346,7 +346,7 @@ obj$position = str_extract(obj$sample_name, "([a-z]+)_", group=1)
 ## Plots
 
 ```{r}
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
   reductions = c("umap_rna")
   cats = c("position")
@@ -423,7 +423,6 @@ DotPlot(obj, features = features, group.by = res_to_use) + coord_flip()
 
 ```{r}
 
-## FINISH
 idents_comb = c(`0`="Glut",
                 `1`="GABA",
                 `2`="Glut",
@@ -467,7 +466,7 @@ dir.create(glut_dir)
 fname_int_ex = file.path(out_dir, "obj_glutamatergic.qs")
 dims.use_list = list( 1:20)
 rna_dims = 20
-names(dims.use_list) = map_chr(dims.use_list, max)
+names(dims.use_list) = map(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut")
 
 redo = T

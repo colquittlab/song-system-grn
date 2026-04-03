@@ -364,7 +364,7 @@ dir.create(umap_dir)
 ```
 
 ```{r}
-obj_umap_fname =  file.path(prefix_dir, "reduction_viz", "combined_all_umap_glut", "obj_clustered.qs")
+obj_umap_fname = here::here("snrna/reduction_viz/combined_all_umap_glut", "obj_clustered.qs")
 obj_umap = qread(obj_umap_fname)
 ```
 
@@ -383,7 +383,7 @@ walk(names(obj_umap), function(region_cur) {
   plot_dim = plot_dims[[region_cur]]
   point_size_factor = point_size_factors[[region_cur]]
   
-  walk(assays_to_use, function(assay_to_use) {
+  walk(intersect(assays_to_use, Assays(obj_cur)), function(assay_to_use) {
     DefaultAssay(obj_cur) = assay_to_use
     walk(genes_to_plot, function(gene_to_plot) {
       gg = FeaturePlot_scCustom(obj_cur,
@@ -444,6 +444,7 @@ cts = unlist(pairs)
 Idents(obj) = obj$cluster
 obj_sub = subset(obj, subset=cluster %in% cts)
 obj_sub$cluster = factor(obj_sub$cluster, levels = c("Glut-HVC-1","Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-LMAN-1", "Glut-NR-1", "Glut-LMAN-2", "Glut-NR-4", "Glut-RA", "Glut-Arco-1"))
+DefaultAssay(obj_sub) = assay_to_use
 
 obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
 

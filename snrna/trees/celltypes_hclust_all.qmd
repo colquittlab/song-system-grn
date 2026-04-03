@@ -44,7 +44,7 @@ tfs = read_delim(here::here("data/lambert_tfs/tfs.csv")) %>%
 # Load data 
 
 ```{r}
-redo = F
+redo = T
 if (redo) {
   obj = qread(obj_fname)
   idents = FetchData(obj, res_to_use) %>%

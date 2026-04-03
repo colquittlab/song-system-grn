@@ -53,7 +53,7 @@ options(future.globals.maxSize = 50 * 1E9)
 
 ## Process
 ```{r}
-redo = F
+redo = T
 load_data = F
 if (redo) {
   ## Load orthologs 
@@ -70,13 +70,14 @@ if (redo) {
   }
 
   obj_bf[["SCT"]] = NULL
+  obj_bf[["RAW"]] = NULL
   filter1 = Cells(obj_bf)[grepl("Glut", obj_bf$cluster)]
   filter2 = Cells(obj_bf)[!grepl("Pre", obj_bf$cluster)]
   cells = Reduce(intersect, list(filter1, filter2))
   obj_bf = subset(obj_bf, cells=cells)
   qsave(obj_bf, bf_out_fname)
-  
-  
+
+
   ## Process chicken
   obj_chk = readRDS(chk_fname)
   ah = AnnotationHub()
@@ -106,10 +107,12 @@ if (redo) {
   cells = Reduce(intersect,list(filter1, filter2, filter3))
   obj_chk = subset(obj_chk, cells=cells)
   qsave(obj_chk, chk_out_fname)
-  
+
   common_features = intersect(Features(obj_chk), Features(obj_bf))
   obj_chk_common = obj_chk[common_features,]
-  obj_bf_common = obj_bf[common_features,]
+  counts_bf = as(GetAssayData(obj_bf, assay = "RNA", layer = "counts"), "dgCMatrix")
+  obj_bf_common = CreateSeuratObject(counts = counts_bf[common_features, ],
+                                     meta.data = obj_bf@meta.data)
   obj = merge(obj_bf_common, obj_chk_common)
   
   obj = obj %>%
@@ -143,7 +146,7 @@ cores_to_use = min(nrow(transfer_params), 20)
 
 pred_long_fname = file.path(out_dir, "pred_long.rds")
 
-redo = F
+redo = T
 if (redo) {
   
   
@@ -152,12 +155,12 @@ if (redo) {
   
   common_features = intersect(Features(obj_chk), Features(obj_bf))
   obj_chk_common = obj_chk[common_features,]
-  obj_bf_common = obj_bf[common_features,]
-  
+  counts_bf = as(GetAssayData(obj_bf, assay = "RNA", layer = "counts"), "dgCMatrix")
+  obj_bf_common = CreateSeuratObject(counts = counts_bf[common_features, ],
+                                     meta.data = obj_bf@meta.data)
+
   DefaultAssay(obj_bf_common) = "RNA"
   DefaultAssay(obj_chk_common) = "RNA"
-  
-  obj_bf_common[["RAW"]] = NULL
   
   obj_bf_common = obj_bf_common %>%
     NormalizeData() %>%
@@ -414,7 +417,7 @@ pred_long_sum2 = pred_long_sum %>%
 
 ## Integrate
 ```{r}
-redo = F
+redo = T
 
 assay_to_use = "RNA"
 if (redo) {
