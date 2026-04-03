@@ -444,6 +444,7 @@ cts = unlist(pairs)
 Idents(obj) = obj$cluster
 obj_sub = subset(obj, subset=cluster %in% cts)
 obj_sub$cluster = factor(obj_sub$cluster, levels = c("Glut-HVC-1","Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-LMAN-1", "Glut-NR-1", "Glut-LMAN-2", "Glut-NR-4", "Glut-RA", "Glut-Arco-1"))
+obj_sub = subset(obj_sub, cells = Cells(obj_sub)[!is.na(obj_sub$cluster)])
 DefaultAssay(obj_sub) = assay_to_use
 
 obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)

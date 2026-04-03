@@ -59,8 +59,7 @@ names(atac_frags) = params_table$sample_short
 
 data_dir = file.path(base_dir, "aggr", "outs")
 setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
-script_name = "seurat_preprocess"
-out_dir = here::here("multiome/seurat", script_name)
+out_dir = MULTIOME_SEURAT_DIR
 bed_dir = file.path(out_dir, "bed")
 dir.create(out_dir, recursive = T)
 
@@ -99,7 +98,7 @@ plan(sequential)
 
 ```{r}
 
-redo = F
+redo = T
 if (redo) {
 
   objs = future_map(sample_names,
@@ -304,7 +303,7 @@ cluster_prefix = "cluster"
 
 rna_dims = 30
 atac_dims = 40
-redo = F
+redo = T
 if (redo) {
   
   ## GEX
@@ -371,7 +370,7 @@ if (redo) {
 ## Plots
 
 ```{r}
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
 reductions = c("umap_rna", "umap_rna_int")
 cats = c( "position", "run", "replicate")
@@ -476,7 +475,7 @@ obj = AddMetaData(obj, soc_clusters)
 ## Doublet detection
 
 ```{r fig.width=10}
-# redo = F
+# redo = T
 # if (redo) {
 #   obj_list = SplitObject(obj, split.by="sample_short")
 #   
@@ -517,7 +516,7 @@ obj = AddMetaData(obj, soc_clusters)
 
 ```{r}
 md_df_fname = file.path(out_dir, "md_doubletfinder.rds")
-redo = F
+redo = T
 if (redo) {
   library(DoubletFinder)
   obj_list = SplitObject(obj, split.by="sample_short")
@@ -603,7 +602,7 @@ obj = subset(obj, cells=cells)
 cluster_prefix = "cluster"
 
 rna_dims = 30
-redo = F
+redo = T
 if (redo) {
   
   ## GEX
@@ -787,7 +786,7 @@ fname_int_ex = file.path(out_dir, "obj_glutamatergic.qs")
 rna_dims = 20
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("Glut", obj$celltype)]
   obj_glut = subset(obj, cells=cells)
@@ -915,7 +914,7 @@ fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_arco")
 
-redo = F
+redo = T
 if (redo) {
   #cells = Cells(obj_glut)[obj_glut$position %in% c("ra", "arco")]
   cells = Cells(obj_glut)[grepl("Arco", obj_glut$celltype_n_glut)]
@@ -1051,7 +1050,7 @@ fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_nido")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut)[grepl("Nido", obj_glut$celltype_n_glut)]
   obj_glut_nido = subset(obj_glut, cells=cells)
@@ -1184,7 +1183,7 @@ fname_int_ex = file.path(out_dir, "obj_gabaergic.qs")
 rna_dims = 20
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("GABA", obj$celltype) ]
   obj_gaba = subset(obj, cells=cells)
@@ -1310,7 +1309,7 @@ fname_int_ex = file.path(out_dir, "obj_gabaergic_filt.qs")
 rna_dims = 20
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
   #cells = Cells(obj)[grepl("GABA", obj$celltype) ]
   #obj_gaba = subset(obj, cells=cells)
@@ -1459,7 +1458,7 @@ fname_int_ex = file.path(out_dir, "obj_nonneuronal.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[!grepl("GABA|Glut", obj$celltype)]
   obj_nn = subset(obj, cells=cells)
@@ -1573,7 +1572,7 @@ fname_int_ex = file.path(out_dir, "obj_nonneuronal.qs")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
   obj_nn <- obj_nn %>%
     SCTransform() %>% 
@@ -1722,7 +1721,7 @@ table(FetchData(obj_filt, final_cluster))
 ## Import snRNA
 
 ```{r}
-snrna_fname = "/hdd/brad/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/obj_clustered.qs"
+snrna_fname = file.path(SNRNA_SEURAT_DIR, "obj_clustered.qs")
 snrna = qread(snrna_fname)
 #cells = Cells(snrna)[grepl("hvc|nc|arco|ra", snrna$position)]
 #snrna = subset(snrna, cells=cells)
