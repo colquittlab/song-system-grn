@@ -42,25 +42,21 @@ set.seed(10)
 ```
 
 ```{r}
-params_table = read_csv("~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.csv")
+params_table = read_csv(PREPROCESS_TABLE)
 params_table = params_table %>% filter(process)
 params_list = split(params_table, seq(nrow(params_table)))
 ```
 
 ```{r}
-setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/archr"
-out_name = "motor-pathway_archr_processing_cluster-snrna-cr"
-out_dir = file.path(analysis_prefix, out_name)
+out_dir = ARCHR_PROJ_DIR
 dir.create(out_dir, recursive = T)
 
-ArrowFiles = list.files("~/hdd/rstudio/archr/motor-pathway/archr_motor-pathway_multiome/ArrowFiles/", full.names = T)
-feature_h5 = file.path(data_dir, "filtered_feature_bc_matrix.h5")
-atac_frags = file.path(data_dir, "atac_fragments.tsv.gz")
+ArrowFiles = list.files(ARCHR_ARROW_DIR, full.names = T)
+feature_h5 = file.path(CELLRANGER_AGGR_DIR, "filtered_feature_bc_matrix.h5")
+atac_frags = file.path(CELLRANGER_AGGR_DIR, "atac_fragments.tsv.gz")
 sample_names = map_chr(params_list, "sample_short")
 
-seu_dir = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
-seu_fname = file.path(seu_dir, "obj_clustered.h5seurat")
+seu_fname = file.path(MULTIOME_SEURAT_DIR, "obj_clustered.h5seurat")
 ```
 
 ```{r}
@@ -70,8 +66,8 @@ addArchRThreads(threads = 1)
 ```
 
 ```{r}
-geneAnnotation = readRDS(file.path(setup_dir, "geneAnnotation_lonStrDom2_ucsc.rds"))
-genomeAnnotation = readRDS(file.path(setup_dir, "genomeAnnotation_lonStrDom2_ucsc.rds"))
+geneAnnotation = readRDS(file.path(ARCHR_SETUP_DIR, "geneAnnotation_lonStrDom2_ucsc.rds"))
+genomeAnnotation = readRDS(file.path(ARCHR_SETUP_DIR, "genomeAnnotation_lonStrDom2_ucsc.rds"))
 #chrM = "NC_029475.1"
 chrM = "chrM"
 ```

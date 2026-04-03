@@ -29,7 +29,7 @@ select = dplyr::select
 ```
 
 ```{r}
-params_table = read_csv("~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.csv")
+params_table = read_csv(PREPROCESS_TABLE)
 params_table = params_table %>% filter(process)
 params_table = params_table %>% filter(sample_short %in% c("hvc_run1", "nc_run1", "hvc_run2", "nc_run2",
                                                            "ra_run2", "arco_run2", "ra_run3", "arco_run3"))
@@ -37,34 +37,28 @@ params_list = split(params_table, seq(nrow(params_table)))
 ```
 
 ```{r}
-base_dir = "~/nest/multiome"
-
-aggr_csv = read_csv(file.path(base_dir, "motor-pathway_aggr.csv"))
+aggr_csv = read_csv(file.path(RAW_MULTIOME_DIR, "motor-pathway_aggr.csv"))
 sample_names = aggr_csv$library_id
 
 ## Cellbender
-cb_dirs = file.path(base_dir, params_table$data_subdir, "cellbender", paste(params_table$sample_to_process, "gex", sep="_"))
+cb_dirs = file.path(RAW_MULTIOME_DIR, params_table$data_subdir, "cellbender", paste(params_table$sample_to_process, "gex", sep="_"))
 cb_fnames = map(cb_dirs, list.files, full.names=T, pattern="FPR_0.05_filtered.h5")
 names(cb_fnames) = params_table$sample_short
 
 ## Cellranger
-cr_dirs = file.path(base_dir, params_table$data_subdir, params_table$sample_to_process)
+cr_dirs = file.path(RAW_MULTIOME_DIR, params_table$data_subdir, params_table$sample_to_process)
 #cr_fnames = list.files(cr_dir, pattern="sample.*_ucsc", full.names = T)
 feature_h5s = file.path(cr_dirs, "outs", "filtered_feature_bc_matrix.h5")
 atac_frags = file.path(cr_dirs, "outs", "atac_fragments.tsv.gz")
 
 names(feature_h5s) = params_table$sample_short
 names(atac_frags) = params_table$sample_short
-
-
-data_dir = file.path(base_dir, "aggr", "outs")
-setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
 out_dir = MULTIOME_SEURAT_DIR
 bed_dir = file.path(out_dir, "bed")
 dir.create(out_dir, recursive = T)
 
-feature_h5 = file.path(data_dir, "filtered_feature_bc_matrix.h5")
-atac_frags = file.path(data_dir, "atac_fragments.tsv.gz")
+feature_h5 = file.path(CELLRANGER_AGGR_DIR, "filtered_feature_bc_matrix.h5")
+atac_frags = file.path(CELLRANGER_AGGR_DIR, "atac_fragments.tsv.gz")
 
 
 
@@ -438,7 +432,7 @@ VlnPlot_scCustom(obj, features= "perc_mito", group.by=res_to_use, pt.size = 0)
 ## Load souporcell
 
 ```{r}
-soc_dirs = list.dirs(base_dir, recursive = F, full.names= T)
+soc_dirs = list.dirs(RAW_MULTIOME_DIR, recursive = F, full.names= T)
 soc_dirs = grep("run", soc_dirs, value=T)
 soc_dirs = list.dirs(soc_dirs, recursive = F, full.names = T)
 soc_dirs = grep("ucsc", soc_dirs, value=T )
@@ -676,7 +670,7 @@ if (redo) {
 ## Plots
 
 ```{r}
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
   reductions = c("umap_rna", "umap_rna_int")
   cats = c( "position", "run", "replicate")
@@ -862,7 +856,7 @@ features = c("SOX4", "EOMES", "SPEF2", "SCUBE1", "GFRA1", "CRHR2", "GAD1",
              "SLC1A2", "SOX2", "SOX4",
              "SATB1", "FEZF2", "BCL11B", "ZBTB20")
 features = unique(features)
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
   reduction = "umap_rna_int"
   
@@ -1721,7 +1715,7 @@ table(FetchData(obj_filt, final_cluster))
 ## Import snRNA
 
 ```{r}
-snrna_fname = file.path(SNRNA_SEURAT_DIR, "obj_clustered.qs")
+snrna_fname = "/hdd/brad/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/obj_clustered.qs"
 snrna = qread(snrna_fname)
 #cells = Cells(snrna)[grepl("hvc|nc|arco|ra", snrna$position)]
 #snrna = subset(snrna, cells=cells)

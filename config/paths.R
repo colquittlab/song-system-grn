@@ -88,6 +88,18 @@ SNRNA_SEURAT_DIR    <- "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbe
 # SCENIC+ output base directory (output of grn/*/scenicplus/ Snakemake workflows)
 SCENICPLUS_BASE_DIR <- "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
 
+# Raw multiome data root (per-sample CellRanger-ARC outputs + aggr)
+RAW_MULTIOME_DIR <- "~/hdd1/multiome"
+
+# CellRanger-ARC aggr output directory (filtered_feature_bc_matrix.h5 + atac_fragments.tsv.gz)
+CELLRANGER_AGGR_DIR <- file.path(RAW_MULTIOME_DIR, "aggr", "outs")
+
+# Sample metadata table (used by multiome/seurat/seurat_preprocess.qmd and multiome/archr/archr_processing.qmd)
+PREPROCESS_TABLE <- "~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.csv"
+
+# ArchR ArrowFiles from the motor-pathway multiome run
+ARCHR_ARROW_DIR <- "~/hdd/rstudio/archr/motor-pathway/archr_motor-pathway_multiome/ArrowFiles/"
+
 # ---------------------------------------------------------------------------
 # Bundled gene lists and ortholog tables (resolved relative to repository root)
 # ---------------------------------------------------------------------------
