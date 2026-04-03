@@ -1,0 +1,26 @@
+```{r}
+library(here)
+library(ArchR)
+library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
+library(TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled)
+library(org.Lstriata.eg.db)
+
+source(here::here("config/paths.R"))
+```
+
+```{r}
+seqinfo_obj = readRDS(SEQINFO_RDS_LONSTR)
+seqinfo_gr = GRanges(seqinfo_obj)
+
+lonstrdom2_seq = seqlevels(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
+seq_to_remove = c(grep("chrUn", lonstrdom2_seq, value=T), "chrM")
+
+genomeAnnotation <- createGenomeAnnotation(genome = BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc, chromSizes=seqinfo_gr, filterChr = seq_to_remove)
+saveRDS(genomeAnnotation, file.path(ARCHR_SETUP_DIR, "genomeAnnotation_lonStrDom2_ucsc.rds"))
+```
+
+```{r}
+# annoStyle use described here : https://github.com/GreenleafLab/ArchR/issues/318
+geneAnnotation <- createGeneAnnotation(TxDb = TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled, OrgDb = org.Lstriata.eg.db, annoStyle = "SYMBOL")
+saveRDS(geneAnnotation, file.path(ARCHR_SETUP_DIR, "geneAnnotation_lonStrDom2_ucsc.rds"))
+```

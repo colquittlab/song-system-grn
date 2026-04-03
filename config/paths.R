@@ -24,6 +24,9 @@ GENOME_FA_LONSTR   <- "/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStr
 # Chromosome sizes (generate: samtools faidx <genome.fna>; cut -f1,2 <fai> > chrom.sizes)
 CHROM_SIZES_LONSTR <- "/mnt/nest/assembly/lonStrDom2/ucsc/chrom.sizes.ucsc"
 
+# SeqInfo object for assembled chromosomes (UCSC names; used by ArchR setup)
+SEQINFO_RDS_LONSTR <- "~/nest/assembly/lonStrDom2/ncbi/seqinfo_object_assembled_ucsc.rds"
+
 # GTF — merged StringTie + RefSeq annotation (slim form, UCSC chromosome names)
 # Custom GTF combining RefSeq with StringTie-assembled transcripts; contact the
 # Colquitt lab or regenerate from the raw StringTie outputs.
