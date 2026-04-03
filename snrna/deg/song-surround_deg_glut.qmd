@@ -17,6 +17,8 @@ library(cowplot)
 library(ggpubr)
 library(here)
 select = dplyr::select
+
+source(here::here("config/paths.R"))
 ```
 
 ```{r}
