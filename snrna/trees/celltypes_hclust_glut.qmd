@@ -59,7 +59,7 @@ if (redo) {
   idents = FetchData(obj, res_to_use) %>%
     mutate_all(as.factor)
   Idents(obj) = idents[,1]
-  cells = Cells(obj)[grepl("Glut", Idents(obj)) & !(grepl("Pre", Idents(obj)))]
+  cells = Cells(obj)[grepl("Glut", Idents(obj)) & !(grepl("Pre", Idents(obj))) & !(grepl("1a", Idents(obj)))]
   obj_sub = subset(obj, cells=cells)
   
   cells = Cells(obj_sub)[!grepl("/", obj_sub$assignment)]
@@ -135,78 +135,6 @@ obj_int_avg = AggregateExpression(obj_sub, assays=assay_to_use)
 obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
 colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
 qsave(obj_int_avg1, data_out_avg_fname)
-```
-
-
-# Cluster
-## Markers separate
-```{r}
-nsig=100
-markers_int_top = map(markers_agg, function(markers_cur) {
-  markers_cur %>% 
-    mutate(sign = avg_log2FC>0) %>%
-    filter(!grepl("RA|HVC|LMAN", cluster)) %>% 
-    filter(p_val_adj < .1) %>%
-    group_by(cluster, sign) %>%
-    filter(abs(avg_log2FC) >= 1) %>%
-    ungroup() %>%
-    distinct(gene, .keep_all=T)
-}) %>% bind_rows()
-
-obj_int_avg_filt = obj_int_avg1[markers_int_top$gene,]
-obj_int_avg_filt = t(apply(obj_int_avg_filt, 1, calc_gene_specificity, scale=T))
-
-pv = pvclust(as.matrix(obj_int_avg_filt), method.dist = dist_method, method.hclust=hclust_method, nboot = 1000, parallel=4L)
-plot(pv)
-
-
-data_out_pv_fname2 = sub("pvclust", sprintf("pvclust_%s", nsig), data_out_pv_fname)
-qsave(pv, data_out_pv_fname2)
-```
-
-## Markers combined
-```{r}
-nsig=100
-markers_int_top = markers_agg_combine %>% 
-    mutate(sign = avg_log2FC>0) %>%
-    filter(!grepl("RA|HVC|LMAN", cluster)) %>% 
-    filter(p_val_adj < 1E-1) %>%
-    group_by(cluster, sign) %>%
-    top_n(nsig, abs(avg_log2FC)) %>%
-    ungroup() %>% 
-    distinct(gene, .keep_all=T)
-
-obj_int_avg_filt = obj_int_avg1[markers_int_top$gene,]
-obj_int_avg_filt = t(apply(obj_int_avg_filt, 1, calc_gene_specificity, scale=T))
-
-pv = pvclust(as.matrix(obj_int_avg_filt), method.dist = dist_method, method.hclust=hclust_method, nboot = 100, parallel=4L)
-plot(pv)
-
-
-data_out_pv_fname2 = sub("pvclust", sprintf("pvclust_%s", nsig), data_out_pv_fname)
-qsave(pv, data_out_pv_fname2)
-```
-### Plot tree
-```{r}
-library(ggtree)
-
-hc = pv$hclust
-
-hc_df = data.frame(labels = hc$labels)
-  
-hc_df = hc_df |> 
-  mutate(position = str_extract(labels, "Glut-([A-aZa-z]+)", group = 1)) |>
-  mutate(position = if_else(position == "Nido", "NC", position),
-         position = tolower(position)) |>
-  mutate(col = position_colors[match(position, names(position_colors))])
-ggt = ggtree(hc, branch.length="none") %<+% hc_df + 
-  geom_tiplab(aes(color=col), angle=0, hjust=0, offset=0, show.legend=FALSE) + 
-  theme_dendrogram(plot.margin=margin(20,20,20,20)) + 
-  scale_color_identity() + 
-  hexpand(5)
-ggt
-
-save_plot(file.path(out_sub_dir, "tree.pdf"), ggt, base_height=4, base_width=4)
 ```
 
 # Cluster, Arco 
@@ -290,82 +218,6 @@ plot(ggt)
 
 save_plot(file.path(out_sub_dir, "tree_arco.pdf"), ggt, base_height=4, base_width=4)
 ```
-
-### Plot expression
-```{r}
-marker_genes = c("SIX2", "NR4A2", "PCP4",  
-                  "CYP19A1",    # AMD
-                 "NECAB2", "AQP1", ## AV
-                 "CDH4", "ZEB2", "SV2B", "PLD1", # AP
-                 "CABP1", "ADAM23", "CAMTA1", "SYNGR3", "HTR2A", "RCAN2",  # AId
-                "CBLN2",   "CCK", "CRHR1", "CBLN2", "ATP2A3", "QSOX1", # AD
-                "ESR2",  "VIP", "FAM163B", "SLC6A6", "ID2",  "ZBTB20", "DAPK1", "FABP7", "KCND2", "MAOA", "MGAT4C", # AMV
-                "KCTD20", "ID2", "CRHR2", "GLRA4", "KCTD12", "SCUBE1" # AA
-                )
-marker_genes_AV = c("NECAB2", "AQP1", "SV2B")
-marker_genes_AP = c("NECAB2", "C1QL3",
-                    "SV2B" # moderate
-                    )
-marker_genes_AId = c("HTR2A", "KCNS1", "PVALB", "CNTN4")
-marker_genes_AMV = c("ESR2", "ZBTB20", "KCNQ5")
-marker_genes_AMD = c("CYP19A1",
-                     "ZBTB20", #negative,
-                     "AQP1", "NECAB2")
-```
-
-```{r fig.width=20}
-VlnPlot_scCustom(obj_sub_split[[1]], features=unique(marker_genes)[1:10], colors_use=NULL)
-```
-
-```{r fig.height=10}
-marker_genes_cur = intersect(unique(marker_genes), rownames(obj_int_avg1))
-dat = as.matrix(obj_int_avg1[marker_genes_cur,grepl("RA|Arco", colnames(obj_int_avg1))])
-dat_s = scale(t(dat))
-colnames(dat_s) = rownames(dat)
-hm = Heatmap(dat_s, clustering_method_columns = "ward.D")
-
-```
-
-## Plot UMAP
-```{r}
-nsig=100
-region_cur = "ARCO"
-markers_int_top =
-  markers_agg[[region_cur]] %>% 
-  filter(cluster=="Glut-RA") %>%
-    mutate(sign = avg_log2FC>0) %>%
-    filter(p_val_adj < .1) %>%
-    group_by(cluster, sign) %>%
-    top_n(nsig, abs(avg_log2FC)) %>%
-    ungroup() %>% 
-    distinct(gene, .keep_all=T)
-
-obj_sub_cur = obj_sub_split[[region_cur]]
-obj_sub_cur = obj_sub_cur %>% 
-  FindVariableFeatures()
-
-var_genes = VariableFeatures(obj_sub_cur)
-var_genes = var_genes[!(var_genes %in% markers_int_top)]
-
-VariableFeatures(obj_sub_cur) = var_genes
-
-obj_sub_cur = obj_sub_cur %>% 
-  ScaleData() %>%
-  RunPCA() %>%
-  RunUMAP()
-  
-```
-
-```{r}
-gg = DimPlot_scCustom(obj_sub_cur, reduction="umap", group.by="cluster") + 
-  coord_equal()
-gg
-
-save_plot(file.path(out_sub_dir, str_interp("umap_sub_markers_${region_cur}.pdf")), gg, base_height=5, base_width=5)
-```
-
-
-
 # Cluster, Nido
 ```{r}
 nsig = 100
