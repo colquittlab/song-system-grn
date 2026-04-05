@@ -52,8 +52,8 @@ set.seed(10)
 ```{r setup-paths}
 # Define input/output paths
 
-data_dirs <- map(c("/hdd/brad/pipseq/260312_chicken_mafb_emx2/bGalGal1.mat.mafb_v2",
-                   "/hdd/brad/pipseq/260312_chicken_mafb_emx2/bGalGal1.mat.emx2"), function(x) list.files(x, full.names = TRUE)) %>% flatten()
+data_dirs <- map(c(file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.mafb_v2"),
+                   file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.emx2")), function(x) list.files(x, full.names = TRUE)) %>% flatten()
 
 in_files <- map(data_dirs, function(x) {
   files = list.files(x, pattern = "scRNA\\.filtered", full.names = TRUE)
@@ -63,7 +63,7 @@ samples = map_chr(data_dirs, basename)
 names(in_files) <- samples
 names(data_dirs) = samples
 
-out_dir <- file.path("/ssd/brad/rstudio/multiome/motor-pathway/overexpression/", "chick_mafb-emx2_run1")
+out_dir <- here::here("overexpression/chick_mafb-emx2_run1")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 obj_fname <- file.path(out_dir, "obj.qs")
@@ -425,8 +425,7 @@ saveRDS(markers_pos, markers_pos_fname)
 ## Load scenicplus results
 
 ```{r}
-
-config_dir = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
+config_dir = SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR
 ```
 
 <!-- convert_category_to_factor and extract_matrix are defined in scenicplus.R -->
@@ -504,6 +503,7 @@ ereg_un = ereg %>% distinct(Gene, importance_TF2G, importance_x_rho_TF2G, rho_TF
 
 eregulon_n = 5
 mafb_pattern <- "MAFB_.*_\\+\\/\\+"
+emx2_pattern = "EMX2_.*_\\+\\/\\+"
 
 top_ereg_tfs <- ereg_sizes %>%
   filter(grepl("\\+/\\+", eRegulon_name), !TF %in% c("MAFB", "EMX2")) %>%
@@ -513,7 +513,7 @@ top_ereg_tfs <- ereg_sizes %>%
   slice_head(n = eregulon_n) %>%
   pull(TF)
 
-to_select_list <- c(mafb_pattern, "EMX2_.*_\\+\\/\\+",
+to_select_list <- c(mafb_pattern, emx2_pattern,
                     map_chr(top_ereg_tfs, ~sprintf("%s_.*_\\+\\/\\+", str_escape(.x))))
 
 walk(tg_genes, function(tg_cur) {
@@ -593,7 +593,7 @@ walk(tg_genes, function(tg_cur) {
 ## Load DEG
 
 ```{r}
-markers_sns = readRDS("/hdd/brad/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/deg/song-surround_deg_glut_v2/marker_genes_cluster_SCT.rds")
+markers_sns = readRDS(file.path(SNRNA_SEURAT_DIR, "deg/song-surround_deg_glut_v2/marker_genes_cluster_SCT.rds"))
 
 markers_sns = markers_sns %>%
   dplyr::rename(p_val_sns = p_val,
@@ -771,7 +771,7 @@ markers_sns_ereg = markers_sns_ereg %>%
 ## Load mutliome-seq object
 
 ```{r}
-multi_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/combined_all_umap_cluster-snrna-cr/obj_clustered.qs"
+multi_fname = file.path(MULTIOME_SEURAT_DIR, "reduction_viz/combined_all_umap_cluster-snrna-cr/obj_clustered.qs")
 multi_obj = qread(multi_fname)
 ```
 
@@ -837,7 +837,7 @@ walk(tg_genes, function(tg_cur) {
 ## Load snRNA-seq object
 
 ```{r}
-sn_fname = "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/reduction_viz/combined_all_umap/obj_clustered.qs"
+sn_fname = file.path(SNRNA_SEURAT_DIR, "reduction_viz/combined_all_umap/obj_clustered.qs")
 sn_obj = qread(sn_fname)
 sn_glut = subset(sn_obj, cells = Cells(sn_obj)[grepl("Glut", sn_obj$cluster)])
 ```

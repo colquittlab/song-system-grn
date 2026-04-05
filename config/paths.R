@@ -91,6 +91,13 @@ SNRNA_SEURAT_DIR    <- "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbe
 # SCENIC+ output base directory (output of grn/*/scenicplus/ Snakemake workflows)
 SCENICPLUS_BASE_DIR <- "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
 
+# SCENIC+ config directory for the Glut-RA / Glut-Arco-1 run (config14)
+#SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
+SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco_glut_seurat-snrna-clustering/scenicplus/config13/"
+
+# -------------------------------------------------------------------------
+
+
 # Raw multiome data root (per-sample CellRanger-ARC outputs + aggr)
 RAW_MULTIOME_DIR <- "~/hdd1/multiome"
 
@@ -102,6 +109,9 @@ PREPROCESS_TABLE <- "~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.
 
 # ArchR ArrowFiles from the motor-pathway multiome run
 ARCHR_ARROW_DIR <- "~/hdd/rstudio/archr/motor-pathway/archr_motor-pathway_multiome/ArrowFiles/"
+
+# Raw PIPseq data for the MAFB + EMX2 overexpression chicken experiment
+PIPSEQ_MAFB_EMX2_DIR <- "/hdd/brad/pipseq/260312_chicken_mafb_emx2"
 
 # ---------------------------------------------------------------------------
 # Bundled gene lists and ortholog tables (resolved relative to repository root)
