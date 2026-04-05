@@ -1,5 +1,5 @@
 ---
-title: "MAFB EMX2 OE Chicken Analysis - Run 1"
+title: "MAFB EMX2 OE Chicken Analysis"
 format: html
 editor: source
 ---
@@ -58,8 +58,6 @@ data_dirs <- map(c("/hdd/brad/pipseq/260312_chicken_mafb_emx2/bGalGal1.mat.mafb_
 in_files <- map(data_dirs, function(x) {
   files = list.files(x, pattern = "scRNA\\.filtered", full.names = TRUE)
   files
-  #files = grep("filtered", files, value = T, invert=T)
-  #grep("genes", files, value = T, invert=T)
 })
 samples = map_chr(data_dirs, basename)
 names(in_files) <- samples
@@ -423,17 +421,10 @@ saveRDS(markers_pos, markers_pos_fname)
 }
 ```
 
-## DEG, pseudo
-
-```{r}
-#obj_agg = AggregateExpression(obj, group.by=c("cell_class_tg_pos", "assignment"), return.seurat = T)
-```
-
 
 ## Load scenicplus results
 
 ```{r}
-#config_dir = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_glut_seurat-snrna-clustering/scenicplus/config13/"
 
 config_dir = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
 ```
@@ -559,7 +550,7 @@ walk(tg_genes, function(tg_cur) {
     dplyr::rename(gene = Gene)
 
   marker_sets = list(markers = markers_tg, markers_pos = markers_pos %>% filter(tg == tg_cur))
-  iwalk(marker_sets, function(mset, mset_name) {
+  ks_df = imap_dfr(marker_sets, function(mset, mset_name) {
     ereg_un_sel = ereg_un_sel_base %>% left_join(mset) %>%
       filter(!is.na(p_val))
 
@@ -567,12 +558,18 @@ walk(tg_genes, function(tg_cur) {
       filter(!TF %in% tg_genes) %>%
       group_by(gene) %>%
       summarise(avg_log2FC = mean(avg_log2FC, na.rm = TRUE), .groups = "drop")
-    focal_df = ereg_un_sel %>% filter(TF == tg_cur)
+    focal_df = ereg_un_sel %>% filter(TF == tg_cur) %>% distinct(gene, .keep_all = TRUE)
+
+    focal_fc = focal_df$avg_log2FC
+    other_fc = baseline_df$avg_log2FC
+    ks_res = ks.test(focal_fc, other_fc)
 
     gg = ggplot() +
       geom_density(data = baseline_df, aes(avg_log2FC),
                    fill = "gray70", color = "gray70", alpha = 0.5) +
       geom_density(data = focal_df, aes(avg_log2FC, color = TF)) +
+      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
+               label = sprintf("KS D=%.3f, p=%.3g", ks_res$statistic, ks_res$p.value)) +
       theme_bw() + plot_theme()
     print(gg)
     save_plot(file.path(out_dir_tg, sprintf("ereg_density_avg_log2FC_%s.pdf", mset_name)), gg,
@@ -583,7 +580,13 @@ walk(tg_genes, function(tg_cur) {
     print(gg)
     save_plot(file.path(out_dir_tg, sprintf("ereg_boxplot_TF_avg_log2FC_%s.pdf", mset_name)), gg,
               base_height = 1.5, base_width = 1.5)
+
+    tibble(tg = tg_cur, marker_set = mset_name,
+           ks_D = ks_res$statistic, ks_p = ks_res$p.value,
+           n_focal = length(focal_fc), n_other = length(other_fc))
   })
+  write_csv(ks_df, file.path(out_dir_tg, "ereg_ks_test_avg_log2FC.csv"))
+  print(ks_df)
 })
 ```
 
@@ -730,9 +733,6 @@ to_select_list = c("MAFB_.*_\\+\\/\\+", "ZBTB18_.*_\\+\\/\\+", "EMX2_.*_\\+\\/\\
 
 ereg_un_sel = ereg_un %>% dplyr::filter(grepl(paste(to_select_list, collapse="|"), eRegulon_name)) %>%
   dplyr::rename(gene = Gene)
-
-#ereg_un_sel = ereg_un_sel %>% left_join(markers) %>%
-  #filter(!is.na(p_val))
 
 markers_sns_ereg = markers_sns %>% left_join(ereg_un_sel) %>%
   filter(!is.na(p_val))
