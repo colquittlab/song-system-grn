@@ -1,9 +1,7 @@
 {
     "bigwigs": [
 "/hdd1/brad/assembly/cactus/lonStrDom2/comparative/phyloP_mamAvi605_3model_all.bw",
-"/hdd1/brad/assembly/cactus/lonStrDom2/comparative/phyloP_mamAvi605_CONACC_LRT_birdAnc218.bw",
 "/hdd1/brad/assembly/cactus/lonStrDom2/comparative/phyloP_avian363_3model_all.bw",
-"/hdd1/brad/assembly/cactus/lonStrDom2/comparative/phyloP_avian363_3model_birdAnc218.bw",
 "/mnt/nest/assembly/lonStrDom2/comparative/phastCons_mamAvi605_tc0.25_el20.bw",
 "/mnt/trackhub/lonStrDom2/GCF_005870125.1/scATAC/motor-pathway/wigs/GABA-4-1-fragment-bin1-smoothNone.bw",
 "/mnt/trackhub/lonStrDom2/GCF_005870125.1/scATAC/motor-pathway/wigs/GABA-1-1-fragment-bin1-smoothNone.bw",

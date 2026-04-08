@@ -82,6 +82,9 @@ ARCHR_SETUP_DIR <- "~/ssd/rstudio/multiome/archr/setup/"
 # ArchR project (output of multiome/archr/archr_processing.qmd)
 ARCHR_PROJ_DIR      <- "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
 
+# DeepTools phyloP × SnapATAC output directory
+DEEPTOOLS_DIR <- "~/ssd/rstudio/multiome/motor-pathway/deeptools"
+
 # Multiome Seurat project (output of multiome/seurat/seurat_preprocess.qmd)
 MULTIOME_SEURAT_DIR <- "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
 
@@ -92,8 +95,14 @@ SNRNA_SEURAT_DIR    <- "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbe
 SCENICPLUS_BASE_DIR <- "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
 
 # SCENIC+ config directory for the Glut-RA / Glut-Arco-1 run (config14)
-#SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
-SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco_glut_seurat-snrna-clustering/scenicplus/config13/"
+SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
+
+# SCENIC+ config for MAFB eRegulon analysis (ra-arco_glut config13)
+SCENICPLUS_MAFB_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco_glut_seurat-snrna-clustering/scenicplus/config13/"
+
+# SCENIC+ config for EMX2 eRegulon analysis (ra-arco-hvc-nc config11)
+SCENICPLUS_EMX2_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_seurat-snrna-clustering/scenicplus/config11/"
+
 
 # -------------------------------------------------------------------------
 

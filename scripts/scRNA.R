@@ -662,3 +662,457 @@ StackedVlnPlot<- function(obj, features,
   p<- patchwork::wrap_plots(plotlist = plot_list, ncol = 1)
   return(p)
 }
+
+process_rna <- function(obj, 
+                        cluster_prefix, 
+                        rna_dims_list, 
+                        min.dist_list = 0.3, 
+                        n.neighbors_list = 30L, 
+                        run_sct = FALSE, 
+                        umap_prefix = "umap",
+                        run_parallel = TRUE,
+                        use_harmony = FALSE) {
+  assay_to_use <- if (run_sct) "SCT" else "RNA"
+  needs_normalization <- check_normalization_needed(obj, run_sct)
+  if (needs_normalization) {
+    message("Running normalization and scaling...")
+    obj <- normalize_and_scale(obj, run_sct)
+  } else {
+    message("Using existing normalization")
+  }
+  DefaultAssay(obj) <- assay_to_use
+  obj <- RunPCA(obj, verbose = FALSE)
+  if (use_harmony) {
+    needs_harmony <- check_harmony_needed(obj)
+    if (needs_harmony) {
+      message("Running Harmony integration...")
+      obj <- integrate_harmony(obj)
+    } else {
+      message("Using existing Harmony integration")
+    }
+  }
+  reduction_name <- if (use_harmony) "pca_harmony" else "pca"
+  results <- compute_reductions_and_clusters(
+    obj, rna_dims_list, min.dist_list, n.neighbors_list,
+    cluster_prefix, umap_prefix, run_parallel, reduction_name, use_harmony
+  )
+  obj <- integrate_results(obj, results, rna_dims_list)
+  return(obj)
+}
+
+check_normalization_needed <- function(obj, run_sct) {
+  if (run_sct) {
+    if (!"SCT" %in% names(obj@assays)) return(TRUE)
+    sct_assay <- obj@assays$SCT
+    if (!has_layer(sct_assay, "scale.data")) return(TRUE)
+    return(FALSE)
+  } else {
+    if (!"RNA" %in% names(obj@assays)) stop("RNA assay not found in object")
+    rna_assay <- obj@assays$RNA
+    if (!has_layer(rna_assay, "data")) return(TRUE)
+    if (length(VariableFeatures(obj)) == 0) return(TRUE)
+    if (!has_layer(rna_assay, "scale.data")) return(TRUE)
+    return(FALSE)
+  }
+}
+
+has_layer <- function(assay, layer_name) {
+  if (inherits(assay, "Assay5")) return(layer_name %in% Layers(assay))
+  slot_data <- tryCatch(slot(assay, layer_name), error = function(e) NULL)
+  !is.null(slot_data) && length(slot_data) > 0
+}
+
+check_pca_needed <- function(obj) {
+  if (!"pca" %in% Reductions(obj)) return(TRUE)
+  if (length(Embeddings(obj, "pca")) == 0) return(TRUE)
+  return(FALSE)
+}
+
+check_harmony_needed <- function(obj) {
+  if (!"pca_harmony" %in% Reductions(obj)) return(TRUE)
+  if (length(Embeddings(obj, "pca_harmony")) == 0) return(TRUE)
+  return(FALSE)
+}
+
+normalize_and_scale <- function(obj, run_sct) {
+  if (run_sct) {
+    obj <- SCTransform(obj)
+  } else {
+    obj <- obj %>%
+      NormalizeData(verbose = FALSE) %>%
+      FindVariableFeatures(selection.method = "vst", nfeatures = 3000) %>%
+      ScaleData(verbose = TRUE)
+  }
+  return(obj)
+}
+
+integrate_harmony <- function(obj) {
+  obj <- IntegrateLayers(
+    object = obj, method = HarmonyIntegration,
+    orig.reduction = "pca", new.reduction = "pca_harmony", verbose = FALSE
+  )
+  return(obj)
+}
+
+compute_reductions_and_clusters <- function(obj, rna_dims_list, min.dist_list,
+                                            n.neighbors_list, cluster_prefix,
+                                            umap_prefix, run_parallel,
+                                            reduction_name, use_harmony) {
+  compute_fn <- function(rna_dims) {
+    run_umap_and_cluster(obj, rna_dims, min.dist_list, n.neighbors_list,
+                         cluster_prefix, umap_prefix, reduction_name, use_harmony)
+  }
+  if (run_parallel) {
+    results <- mclapply(rna_dims_list, compute_fn,
+                        mc.cores = length(rna_dims_list), mc.set.seed = FALSE)
+  } else {
+    results <- lapply(rna_dims_list, compute_fn)
+  }
+  names(results) <- rna_dims_list
+  return(results)
+}
+
+run_umap_and_cluster <- function(obj, rna_dims, min.dist_list, n.neighbors_list,
+                                 cluster_prefix, umap_prefix, reduction_name,
+                                 use_harmony) {
+  cluster_results <- generate_clusters(obj, rna_dims, cluster_prefix,
+                                       reduction_name, use_harmony)
+  umap_results <- generate_umaps(obj, rna_dims, min.dist_list, n.neighbors_list,
+                                 umap_prefix, reduction_name, use_harmony)
+  return(list(umap = umap_results$reductions, clusters = cluster_results))
+}
+
+generate_umaps <- function(obj, rna_dims, min.dist_list, n.neighbors_list,
+                           umap_prefix, reduction_name, use_harmony) {
+  umap_names <- character()
+  integration_suffix <- if (use_harmony) "_int" else ""
+  for (min.dist in min.dist_list) {
+    for (nn in n.neighbors_list) {
+      umap_name <- sprintf("%s_rna_%d%s_mindist%snn%d",
+                           umap_prefix, rna_dims, integration_suffix, min.dist, nn)
+      umap_names <- c(umap_names, umap_name)
+      obj <- RunUMAP(obj, reduction = reduction_name, dims = 1:rna_dims,
+                     min.dist = min.dist, n.neighbors = nn,
+                     reduction.name = umap_name, verbose = FALSE)
+    }
+  }
+  return(list(object = obj, reductions = obj@reductions[umap_names]))
+}
+
+generate_clusters <- function(obj, rna_dims, cluster_prefix, reduction_name,
+                              use_harmony) {
+  graph_base <- if (use_harmony) sprintf("pca_harmony_%d", rna_dims) else
+    sprintf("pca_%d", rna_dims)
+  graph_nn_name  <- paste0(graph_base, "_nn")
+  graph_snn_name <- paste0(graph_base, "_snn")
+  obj <- FindNeighbors(obj, dims = 1:rna_dims, reduction = reduction_name,
+                       graph.name = c(graph_nn_name, graph_snn_name))
+  resolutions  <- if (use_harmony) seq(0.3, 1.0, 0.1) else seq(0.3, 0.8, 0.1)
+  cluster_names <- sprintf("%s_%s_%s", cluster_prefix, graph_base, resolutions)
+  for (i in seq_along(resolutions)) {
+    obj <- FindClusters(obj, graph.name = graph_snn_name,
+                        resolution = resolutions[i], algorithm = 2,
+                        leiden_method = "igraph", cluster.name = cluster_names[i])
+  }
+  return(FetchData(obj, cluster_names))
+}
+
+integrate_results <- function(obj, results, rna_dims_list) {
+  for (rna_dims in as.character(rna_dims_list)) {
+    result <- results[[rna_dims]]
+    obj <- AddMetaData(obj, result$clusters)
+    for (umap_name in names(result$umap)) {
+      obj[[umap_name]] <- result$umap[[umap_name]]
+    }
+  }
+  return(obj)
+}
+
+process_atac = function(obj, min.cutoff="q5", cluster_prefix,
+                        atac_dims_list, min.dist_list=0.3, n.neighbors_list=30L,
+                        umap_prefix="umap", run_parallel = TRUE) {
+  require(Signac)
+  DefaultAssay(obj) = "ATAC"
+  obj = obj %>%
+    RunTFIDF() %>%
+    FindTopFeatures(min.cutoff=min.cutoff) %>%
+    RunSVD()
+
+  run_umap_and_cluster_atac = function(obj, atac_dims, min.dist_list,
+                                       n.neighbors_list, umap_prefix) {
+    umap_names = c()
+    for (min.dist in min.dist_list) {
+      for (nn in n.neighbors_list) {
+        umap_name = str_interp("${umap_prefix}_atac_${atac_dims}_mindist${min.dist}nn${nn}")
+        umap_names = c(umap_names, umap_name)
+        obj = obj %>% RunUMAP(
+          reduction = "lsi", dims = 2:atac_dims,
+          min.dist = min.dist, n.neighbors = nn,
+          reduction.name = umap_name, assay="ATAC", verbose = FALSE
+        )
+      }
+    }
+    ress = seq(.3, 1, .1)
+    cluster_names = paste(str_interp("${cluster_prefix}_atac_${atac_dims}"), ress, sep="_")
+    obj = obj %>% FindNeighbors(
+      dims = 2:atac_dims, reduction = "lsi",
+      graph.name = c(str_interp("lsi_${atac_dims}_nn"), str_interp("lsi_${atac_dims}_snn"))
+    )
+    for (i in seq_along(ress)) {
+      obj <- FindClusters(obj, graph.name = str_interp("lsi_${atac_dims}_snn"),
+                          resolution = ress[i], algorithm = 2,
+                          leiden_method = "igraph", cluster.name = cluster_names[i])
+    }
+    list(umap = obj@reductions[umap_names], clusters = FetchData(obj, cluster_names))
+  }
+
+  if (run_parallel) {
+    res = mclapply(atac_dims_list, mc.cores=length(atac_dims_list), mc.set.seed=F,
+                   \(atac_dims) run_umap_and_cluster_atac(obj, atac_dims, min.dist_list,
+                                                          n.neighbors_list, umap_prefix)
+    ) %>% set_names(atac_dims_list)
+  } else {
+    res = lapply(atac_dims_list, \(atac_dims) run_umap_and_cluster_atac(
+      obj, atac_dims, min.dist_list, n.neighbors_list, umap_prefix)
+    ) %>% set_names(atac_dims_list)
+  }
+
+  for (atac_dims in as.character(atac_dims_list)) {
+    res_cur = res[[atac_dims]]
+    obj = AddMetaData(obj, res_cur$clusters)
+    for (umap_name in names(res_cur$umap)) obj[[umap_name]] = res_cur$umap[[umap_name]]
+  }
+  return(obj)
+}
+
+process_rna_harmony = function(obj, cluster_prefix, rna_dims_list,
+                               min.dist_list=0.3, n.neighbors_list=30L,
+                               run_sct=FALSE, umap_prefix="umap") {
+  assay_to_use = if (run_sct) "SCT" else "RNA"
+  DefaultAssay(obj) = assay_to_use
+  obj = harmony::RunHarmony(obj, group.by.vars = "well",
+                            reduction.use = "pca",
+                            reduction.save = "pca_harmony",
+                            project.dim = F)
+  res = mclapply(rna_dims_list, mc.cores=length(rna_dims_list), mc.set.seed=F,
+                 \(rna_dims) {
+                   umap_names = c()
+                   for (min.dist in min.dist_list) {
+                     for (nn in n.neighbors_list) {
+                       umap_name = str_interp("${umap_prefix}_rna_${rna_dims}_int_mindist${min.dist}nn${nn}")
+                       umap_names = c(umap_names, umap_name)
+                       obj = obj %>% RunUMAP(reduction="pca_harmony", dims=1:rna_dims,
+                                             min.dist=min.dist, n.neighbors=nn,
+                                             reduction.name=umap_name, verbose=FALSE)
+                     }
+                   }
+                   ress = seq(.3, 1, .1)
+                   cluster_names = paste(str_interp("${cluster_prefix}_rna_harmony_${rna_dims}"), ress, sep="_")
+                   obj = obj %>% FindNeighbors(dims=1:rna_dims, reduction="pca_harmony",
+                     graph.name=c(str_interp("pca_harmony_${rna_dims}_nn"),
+                                  str_interp("pca_harmony_${rna_dims}_snn")))
+                   for (i in seq_along(ress)) {
+                     obj <- FindClusters(obj, graph.name=str_interp("pca_harmony_${rna_dims}_snn"),
+                                         resolution=ress[i], algorithm=2,
+                                         leiden_method="igraph", cluster.name=cluster_names[i])
+                   }
+                   list(umap=obj@reductions[umap_names], clusters=FetchData(obj, cluster_names))
+                 }) %>% set_names(rna_dims_list)
+  for (rna_dims in as.character(rna_dims_list)) {
+    res_cur = res[[rna_dims]]
+    obj = AddMetaData(obj, res_cur$clusters)
+    for (umap_name in names(res_cur$umap)) obj[[umap_name]] = res_cur$umap[[umap_name]]
+  }
+  return(obj)
+}
+
+process_atac_harmony = function(obj, cluster_prefix, atac_dims_list,
+                                min.dist_list=0.3, n.neighbors_list=30L,
+                                umap_prefix="umap") {
+  obj = harmony::RunHarmony(obj, group.by.vars="well",
+                            reduction.use="lsi", reduction.save="lsi_harmony",
+                            project.dim=F)
+  res = mclapply(atac_dims_list, mc.cores=length(atac_dims_list), mc.set.seed=F,
+                 \(atac_dims) {
+                   umap_names = c()
+                   for (min.dist in min.dist_list) {
+                     for (nn in n.neighbors_list) {
+                       umap_name = str_interp("${umap_prefix}_atac_${atac_dims}_int_mindist${min.dist}nn${nn}")
+                       umap_names = c(umap_names, umap_name)
+                       obj = obj %>% RunUMAP(reduction="lsi_harmony", dims=2:atac_dims,
+                                             min.dist=min.dist, n.neighbors=nn,
+                                             reduction.name=umap_name, assay="ATAC", verbose=FALSE)
+                     }
+                   }
+                   ress = seq(.3, 1, .1)
+                   cluster_names = paste(str_interp("${cluster_prefix}_atac_harmony_${atac_dims}"), ress, sep="_")
+                   obj = obj %>% FindNeighbors(dims=2:atac_dims, reduction="lsi_harmony",
+                     graph.name=c(str_interp("lsi_harmony_${atac_dims}_nn"),
+                                  str_interp("lsi_harmony_${atac_dims}_snn")))
+                   for (i in seq_along(ress)) {
+                     obj <- FindClusters(obj, graph.name=str_interp("lsi_harmony_${atac_dims}_snn"),
+                                         resolution=ress[i], algorithm=2,
+                                         leiden_method="igraph", cluster.name=cluster_names[i])
+                   }
+                   list(umap=obj@reductions[umap_names], clusters=FetchData(obj, cluster_names))
+                 }) %>% set_names(atac_dims_list)
+  for (atac_dims in as.character(atac_dims_list)) {
+    res_cur = res[[atac_dims]]
+    obj = AddMetaData(obj, res_cur$clusters)
+    for (umap_name in names(res_cur$umap)) obj[[umap_name]] = res_cur$umap[[umap_name]]
+  }
+  return(obj)
+}
+
+process_multimodal = function(obj, cluster_prefix, rna_dims_list, atac_dims_list,
+                              min.dist_list=0.3, n.neighbors_list=30L,
+                              resolutions=seq(.3, 1, .1),
+                              umap_prefix="umap", run_parallel=TRUE) {
+  run_umap_and_cluster_mm = function(obj, rna_dims, atac_dims,
+                                     min.dist_list, n.neighbors_list, umap_prefix) {
+    obj <- FindMultiModalNeighbors(
+      object=obj, reduction.list=list("pca","lsi"),
+      dims.list=list(1:rna_dims, 2:atac_dims),
+      knn.graph.name=str_interp("wknn_rna${rna_dims}_atac${atac_dims}"),
+      snn.graph.name=str_interp("wsnn_rna${rna_dims}_atac${atac_dims}"),
+      weighted.nn.name=str_interp("weighted_nn_rna${rna_dims}_atac${atac_dims}"),
+      modality.weight.name=c("RNA.weight","ATAC.weight"), verbose=FALSE
+    )
+    umap_names = c()
+    for (min.dist in min.dist_list) {
+      for (nn in n.neighbors_list) {
+        umap_name = str_interp("${umap_prefix}_weighted_rna${rna_dims}_atac${atac_dims}_mindist${min.dist}nn${nn}")
+        umap_names = c(umap_names, umap_name)
+        obj = obj %>% RunUMAP(nn.name=str_interp("weighted_nn_rna${rna_dims}_atac${atac_dims}"),
+                              min.dist=min.dist, n.neighbors=nn,
+                              reduction.name=umap_name, verbose=FALSE)
+      }
+    }
+    cluster_names = paste(str_interp("${cluster_prefix}_wknn_rna${rna_dims}_atac${atac_dims}"), resolutions, sep="_")
+    for (i in seq_along(resolutions)) {
+      obj <- FindClusters(obj, graph.name=str_interp("wknn_rna${rna_dims}_atac${atac_dims}"),
+                          resolution=resolutions[i], algorithm=2,
+                          leiden_method="igraph", cluster.name=cluster_names[i])
+    }
+    list(umap=obj@reductions[umap_names], clusters=FetchData(obj, cluster_names))
+  }
+  if (run_parallel) {
+    res = mclapply(rna_dims_list, mc.cores=length(rna_dims_list), mc.set.seed=F,
+      \(rna_dims) mclapply(atac_dims_list, mc.cores=length(atac_dims_list), mc.set.seed=F,
+        \(atac_dims) run_umap_and_cluster_mm(obj, rna_dims, atac_dims, min.dist_list,
+                                             n.neighbors_list, umap_prefix)
+      ) %>% set_names(atac_dims_list)
+    ) %>% set_names(rna_dims_list)
+  } else {
+    res = lapply(rna_dims_list, \(rna_dims) lapply(atac_dims_list, \(atac_dims)
+      run_umap_and_cluster_mm(obj, rna_dims, atac_dims, min.dist_list,
+                              n.neighbors_list, umap_prefix)
+    ) %>% set_names(atac_dims_list)) %>% set_names(rna_dims_list)
+  }
+  for (rna_dims in as.character(rna_dims_list)) {
+    for (atac_dims in as.character(atac_dims_list)) {
+      res_cur = res[[rna_dims]][[atac_dims]]
+      obj = AddMetaData(obj, res_cur$clusters)
+      for (umap_name in names(res_cur$umap)) obj[[umap_name]] = res_cur$umap[[umap_name]]
+    }
+  }
+  return(obj)
+}
+
+process_multimodal_harmony = function(obj, cluster_prefix, rna_dims_list, atac_dims_list,
+                                      min.dist_list=0.3, n.neighbors_list=30L,
+                                      umap_prefix="umap") {
+  res = mclapply(rna_dims_list, mc.cores=length(rna_dims_list), mc.set.seed=F,
+    \(rna_dims) mclapply(atac_dims_list, mc.cores=length(atac_dims_list), mc.set.seed=F,
+      \(atac_dims) {
+        obj <- FindMultiModalNeighbors(
+          object=obj, reduction.list=list("pca_harmony","lsi_harmony"),
+          dims.list=list(1:rna_dims, 2:atac_dims),
+          knn.graph.name=str_interp("harmony_wknn_rna${rna_dims}_atac${atac_dims}"),
+          snn.graph.name=str_interp("harmony_wsnn_rna${rna_dims}_atac${atac_dims}"),
+          weighted.nn.name=str_interp("harmony_weighted_nn_rna${rna_dims}_atac${atac_dims}"),
+          modality.weight.name=c("RNA.weight","ATAC.weight"), verbose=TRUE
+        )
+        umap_names = c()
+        for (min.dist in min.dist_list) {
+          for (nn in n.neighbors_list) {
+            umap_name = str_interp("${umap_prefix}_harmony_weighted_rna${rna_dims}_atac${atac_dims}_mindist${min.dist}nn${nn}")
+            umap_names = c(umap_names, umap_name)
+            obj = obj %>% RunUMAP(nn.name=str_interp("harmony_weighted_nn_rna${rna_dims}_atac${atac_dims}"),
+                                  min.dist=min.dist, n.neighbors=nn,
+                                  reduction.name=umap_name, verbose=FALSE)
+          }
+        }
+        ress = seq(.7, 1.2, .1)
+        cluster_names = paste(str_interp("${cluster_prefix}_harmony_wknn_rna${rna_dims}_atac${atac_dims}"), ress, sep="_")
+        for (i in seq_along(ress)) {
+          obj <- FindClusters(obj, graph.name=str_interp("harmony_wknn_rna${rna_dims}_atac${atac_dims}"),
+                              resolution=ress[i], algorithm=2,
+                              leiden_method="igraph", cluster.name=cluster_names[i])
+        }
+        list(umap=obj@reductions[umap_names], clusters=FetchData(obj, cluster_names))
+      }) %>% set_names(atac_dims_list)
+  ) %>% set_names(rna_dims_list)
+  for (rna_dims in as.character(rna_dims_list)) {
+    for (atac_dims in as.character(atac_dims_list)) {
+      res_cur = res[[rna_dims]][[atac_dims]]
+      obj = AddMetaData(obj, res_cur$clusters)
+      for (umap_name in names(res_cur$umap)) obj[[umap_name]] = res_cur$umap[[umap_name]]
+    }
+  }
+  return(obj)
+}
+
+process_multimodal_pipeline = function(obj,
+                                       batch_var="well",
+                                       cluster_prefix,
+                                       rna_dims_list,
+                                       atac_dims_list,
+                                       min.dist_list=0.3,
+                                       n.neighbors_list=30L,
+                                       run_harmony=TRUE,
+                                       run_sct=FALSE,
+                                       umap_prefix="umap",
+                                       run_parallel=TRUE) {
+  DefaultAssay(obj) = "RNA"
+  if (!is.null(batch_var)) {
+    if (!(any(grepl("\\.[0-9]", Layers(obj)))))
+      obj[["RNA"]] <- split(obj[["RNA"]], f = obj@meta.data[,batch_var])
+  }
+  message("Process RNA")
+  obj = process_rna(obj, cluster_prefix=cluster_prefix, rna_dims_list=rna_dims_list,
+                    min.dist_list=min.dist_list, n.neighbors_list=n.neighbors_list,
+                    run_sct=run_sct, umap_prefix=umap_prefix, run_parallel=run_parallel)
+  if (run_harmony) {
+    message("Process RNA, Harmony")
+    obj = process_rna_harmony(obj, cluster_prefix=cluster_prefix, rna_dims_list=rna_dims_list,
+                              min.dist_list=min.dist_list, n.neighbors_list=n.neighbors_list,
+                              run_sct=run_sct, umap_prefix=umap_prefix)
+  }
+  message("Process ATAC")
+  obj = process_atac(obj, min.cutoff="q5", cluster_prefix=cluster_prefix,
+                     atac_dims_list=atac_dims_list, min.dist_list=min.dist_list,
+                     n.neighbors_list=n.neighbors_list, umap_prefix=umap_prefix,
+                     run_parallel=run_parallel)
+  if (run_harmony) {
+    message("Process ATAC, Harmony")
+    obj = process_atac_harmony(obj, cluster_prefix=cluster_prefix, atac_dims_list=atac_dims_list,
+                               min.dist_list=min.dist_list, n.neighbors_list=n.neighbors_list,
+                               umap_prefix=umap_prefix)
+  }
+  gc()
+  message("Process multimodal")
+  obj = process_multimodal(obj, cluster_prefix=cluster_prefix, rna_dims_list=rna_dims_list,
+                           atac_dims_list=atac_dims_list, min.dist_list=min.dist_list,
+                           n.neighbors_list=n.neighbors_list, umap_prefix=umap_prefix,
+                           run_parallel=run_parallel)
+  gc()
+  if (run_harmony) {
+    message("Process multimodal harmony")
+    obj = process_multimodal_harmony(obj, cluster_prefix=cluster_prefix,
+                                     rna_dims_list=rna_dims_list, atac_dims_list=atac_dims_list,
+                                     min.dist_list=min.dist_list, n.neighbors_list=n.neighbors_list,
+                                     umap_prefix=umap_prefix)
+  }
+  return(obj)
+}

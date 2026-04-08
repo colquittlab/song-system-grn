@@ -1,5 +1,5 @@
 ---
-title: "MAFB EMX2 OE Chicken Analysis"
+title: "MAFB EMX2 OE Chicken Analysis - Run 1"
 format: html
 editor: source
 ---
@@ -16,8 +16,11 @@ library(ComplexHeatmap)
 library(qs)
 library(Nebulosa)
 library(RRHO2)
-library(extrafont)
+library(parallel)
+# library(extrafont)
 
+options(future.globals.maxSize = Inf)
+ 
 source("../scripts/scRNA.R")
 source(here::here("config/paths.R"))
 source("../scripts/gene_lists.R")
@@ -183,8 +186,6 @@ if (redo) {
 }
 ```
 
-## Load souporcell
-
 ## Visualization
 
 ```{r plot-functions}
@@ -255,7 +256,7 @@ plot_density_features <- function(obj, features, reduction, out_dir) {
 ```
 
 ```{r generate-plots}
-redo_plot <- TRUE
+redo_plot <- FALSE
 reduction <- "umap_rna_30_mindist0.3nn30"
 
 if (redo_plot) {
@@ -304,12 +305,12 @@ save_plot(file.path(out_dir, "umap_MAFB-tg_split-sample.pdf"), gg,
 ```
 
 ```{r}
-  # Plot features
-  features <- c(
-    "RCAN2", "M1AP", "MAFB-tg", "DOLK", "GSDMA", "SLC13A1","FKBP9", "CDHR2", "MGAT4C", "CACNA1C"
-  )
-  plot_features(obj, features, reduction, out_dir)
-  
+# Plot features
+features <- c(
+  "RCAN2", "M1AP", "MAFB-tg", "DOLK", "GSDMA", "SLC13A1","FKBP9", "CDHR2", "MGAT4C", "CACNA1C"
+)
+plot_features(obj, features, reduction, out_dir)
+
 walk(features, function(feat) {
   gg = FeaturePlot_scCustom(obj, feat, split.by="sample") + umap_theme()
   print(gg)
@@ -377,192 +378,168 @@ obj$cell_class_sample_tg_pos = paste(obj$cell_class, obj$sample, obj$tg_pos, sep
 ## DEG
 
 ```{r}
+ortho_fname = OMA_ORTHOLOGS_ZF_CK
+oma = read_delim(ortho_fname)
+```
 
-markers_fname = file.path(out_dir, "markers.rds")
+
+```{r}
 markers_pos_fname = file.path(out_dir, "markers_pos.rds")
 
 tg_genes = c("MAFB", "EMX2")
-
+cell_classes = c("Glut", "GABA", "PC")
 redo = F
 if (redo) {
 obj = PrepSCTFindMarkers(obj, assay = "SCT", verbose = TRUE)
 
-cell_classes = c("Glut", "GABA", "PC")
-
-
-markers = map(cell_classes, function(cc_cur) {
-  map(tg_genes, function(tg_gene) {
-    markers_cur = FindMarkers(obj, 
-                              ident.1 = sprintf("%s_%sp_%s", cc_cur, tg_gene, tg_gene), 
-                              ident.2 = sprintf("%s_MAFBn_none", cc_cur), 
-                              group.by = "cell_class_sample_tg_pos")
-    markers_cur$gene = rownames(markers_cur)
-    markers_cur
-  }) %>% set_names(tg_genes) %>% bind_rows(.id="tg")
-}) %>% set_names(cell_classes) %>% bind_rows(.id="cell_class")
+features_to_test = grep("^ENS", Features(obj), invert = T, value=T )
+features_to_test = intersect(features_to_test, oma$gene_name_ck)
 
 markers_pos = map(cell_classes, function(cc_cur) {
   map(tg_genes, function(tg_gene) {
-    markers_cur = FindMarkers(obj, 
-                              ident.1 = sprintf("%s_%s", cc_cur, tg_gene), 
-                              ident.2 = sprintf("%s_none", cc_cur), 
+    markers_cur = FindMarkers(obj, features = features_to_test,  logfc.threshold = 0,
+                              ident.1 = sprintf("%s_%s", cc_cur, tg_gene),
+                              ident.2 = sprintf("%s_none", cc_cur),
                               group.by = "cell_class_tg_pos")
     markers_cur$gene = rownames(markers_cur)
     markers_cur
   }) %>% set_names(tg_genes) %>% bind_rows(.id="tg")
 }) %>% set_names(cell_classes) %>% bind_rows(.id="cell_class")
 
-saveRDS(markers, markers_fname)
 saveRDS(markers_pos, markers_pos_fname)
 } else {
-  markers = readRDS(markers_fname)
   markers_pos = readRDS(markers_pos_fname)
-  
 }
 ```
 
 
 ## Load scenicplus results
 
-```{r}
-config_dir = SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR
-```
-
 <!-- convert_category_to_factor and extract_matrix are defined in scenicplus.R -->
 
 ```{r}
-ereg_file = file.path(config_dir, "outs", "scplusmdata.h5mu")
+# Helper: load eRegulon data from a SCENIC+ config directory
+load_ereg_data <- function(config_dir) {
+  ereg_file = file.path(config_dir, "outs", "scplusmdata.h5mu")
+  cis_types = c("direct", "extended")
 
-cis_types = c("direct", "extended")
+  ereg = map(cis_types, \(cis_type) {
+    rhdf5::h5read(ereg_file, name = str_interp("/uns/${cis_type}_e_regulon_metadata")) %>%
+      do.call(cbind.data.frame, .)
+  }) %>% bind_rows() %>% mutate(class = "Glut")
 
-## Extract eRegulon metadata
-ereg = map(cis_types, \(cis_type) {
-  rhdf5::h5read(ereg_file, name = str_interp("/uns/${cis_type}_e_regulon_metadata")) %>%
-    do.call(cbind.data.frame, .)
-}) %>% bind_rows() %>% mutate(class = "Glut")
+  gene_auc = map(cis_types, \(cis_type) {
+    extract_matrix(str_interp("/mod/${cis_type}_gene_based_AUC"), ereg_file)
+  }) %>% bind_cols() %>% rownames_to_column("_index")
 
-2## Gene and region AUC
-gene_auc = map(cis_types, \(cis_type) {
-  extract_matrix(str_interp("/mod/${cis_type}_gene_based_AUC"), ereg_file)
-}) %>% bind_cols() %>% rownames_to_column("_index")
+  region_auc = map(cis_types, \(cis_type) {
+    extract_matrix(str_interp("/mod/${cis_type}_region_based_AUC"), ereg_file)
+  }) %>% bind_cols() %>% rownames_to_column("_index")
 
-region_auc = map(cis_types, \(cis_type) {
-  extract_matrix(str_interp("/mod/${cis_type}_region_based_AUC"), ereg_file)
-}) %>% bind_cols() %>% rownames_to_column("_index")
+  group_set = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts/obs"))
+  group_set = group_set[c("_index", "cluster")]
+  factor_ind = which(map_lgl(group_set, ~length(.x)==2))
+  for (fi in factor_ind) {
+    group_set[[fi]] = convert_category_to_factor(group_set[[fi]])
+  }
+  group_df = cbind.data.frame(group_set)
 
-## Group labels
-group_set = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts/obs"))
-group_set = group_set[c("_index", "cluster")]
-factor_ind = which(map_lgl(group_set, ~length(.x)==2))
-for (fi in factor_ind) {
-  group_set[[fi]] = convert_category_to_factor(group_set[[fi]])
+  labels_order = levels(group_df$cluster)
+  labels_order = c(sort(grep("HVC", labels_order, value=T)),
+                   sort(grep("NC", labels_order, value=T)),
+                   sort(grep("Nido", labels_order, value=T)),
+                   sort(grep("RA", labels_order, value=T)),
+                   sort(grep("Arco", labels_order, value=T)),
+                   sort(grep("Glut-Pre", labels_order, value=T), decreasing = T),
+                   sort(grep("GABA", labels_order, value=T)),
+                   sort(grep("GABA-Pre", labels_order, value=T)),
+                   sort(grep("Astro", labels_order, value=T)),
+                   sort(grep("Epen", labels_order, value=T)),
+                   sort(grep("Oligo", labels_order, value=T)),
+                   sort(grep("OPC", labels_order, value=T)),
+                   sort(grep("Micro", labels_order, value=T)),
+                   sort(grep("Endo", labels_order, value=T)))
+  labels_order = unique(labels_order)
+
+  group_df = group_df %>% mutate(cluster = factor(cluster, levels=labels_order))
+  gene_auc   = gene_auc   %>% left_join(group_df) %>% filter(!is.na(cluster))
+  region_auc = region_auc %>% left_join(group_df) %>% filter(!is.na(cluster))
+
+  ereg = ereg %>%
+    mutate(importance_x_abs_rho_TF2G = importance_TF2G * abs(rho_TF2G),
+           importance_x_rho_TF2G = importance_TF2G * rho_TF2G) %>%
+    mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
+           importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
+           importance_log_TF2G = log(importance_TF2G))
+
+  ereg_sizes = ereg %>%
+    mutate(size_genes = as.integer(str_extract(Gene_signature_name, "\\(([0-9]+)g\\)", group=T))) %>%
+    distinct(size_genes, TF, eRegulon_name)
+
+  ereg_un = ereg %>% distinct(Gene, importance_TF2G, importance_x_rho_TF2G, rho_TF2G, TF, eRegulon_name)
+
+  list(ereg = ereg, ereg_sizes = ereg_sizes, ereg_un = ereg_un,
+       gene_auc = gene_auc, region_auc = region_auc, group_df = group_df)
 }
-group_df = cbind.data.frame(group_set)
 
-labels_order = levels(group_df$cluster)
-labels_order = c(sort(grep("HVC", labels_order, value=T)),
-                 sort(grep("NC", labels_order, value=T)),
-                 sort(grep("Nido", labels_order, value=T)),
-                 sort(grep("RA", labels_order, value=T)),
-                 sort(grep("Arco", labels_order, value=T)),
-                 sort(grep("Glut-Pre", labels_order, value=T), decreasing = T),
-                 sort(grep("GABA", labels_order, value=T)),
-                 sort(grep("GABA-Pre", labels_order, value=T)),
-                 sort(grep("Astro", labels_order, value=T)),
-                 sort(grep("Epen", labels_order, value=T)),
-                 sort(grep("Oligo", labels_order, value=T)),
-                 sort(grep("OPC", labels_order, value=T)),
-                 sort(grep("Micro", labels_order, value=T)),
-                 sort(grep("Endo", labels_order, value=T)))
-labels_order = unique(labels_order)
-
-group_df = group_df %>%
-  mutate(cluster = factor(cluster, levels=labels_order))
-
-gene_auc = gene_auc %>% left_join(group_df)
-region_auc = region_auc %>% left_join(group_df)
-
-gene_auc = gene_auc %>% filter(!is.na(cluster))
-region_auc = region_auc %>% filter(!is.na(cluster))
-
-## Compute derived columns
-ereg = ereg %>%
-  mutate(importance_x_abs_rho_TF2G = importance_TF2G * abs(rho_TF2G),
-         importance_x_rho_TF2G = importance_TF2G * rho_TF2G) %>%
-  mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
-         importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
-         importance_log_TF2G = log(importance_TF2G))
-
-ereg_sizes = ereg %>%
-  mutate(size_genes = as.integer(str_extract(Gene_signature_name, "\\(([0-9]+)g\\)", group=T))) %>%
-  distinct(size_genes, TF, eRegulon_name)
+# Load separate configs for MAFB and EMX2
+ereg_mafb = load_ereg_data(SCENICPLUS_MAFB_CONFIG_DIR)
+ereg_emx2 = load_ereg_data(SCENICPLUS_EMX2_CONFIG_DIR)
 ```
 
 ```{r}
-ereg_un = ereg %>% distinct(Gene, importance_TF2G, importance_x_rho_TF2G, rho_TF2G, TF, eRegulon_name)
-
-eregulon_n = 5
+eregulon_n = 20
 mafb_pattern <- "MAFB_.*_\\+\\/\\+"
 emx2_pattern = "EMX2_.*_\\+\\/\\+"
-
-top_ereg_tfs <- ereg_sizes %>%
-  filter(grepl("\\+/\\+", eRegulon_name), !TF %in% c("MAFB", "EMX2")) %>%
-  group_by(TF) %>%
-  summarise(size_genes = max(size_genes, na.rm = TRUE)) %>%
-  arrange(desc(size_genes)) %>%
-  slice_head(n = eregulon_n) %>%
-  pull(TF)
-
-to_select_list <- c(mafb_pattern, emx2_pattern,
-                    map_chr(top_ereg_tfs, ~sprintf("%s_.*_\\+\\/\\+", str_escape(.x))))
 
 walk(tg_genes, function(tg_cur) {
   out_dir_tg = file.path(out_dir, tg_cur)
   dir.create(out_dir_tg, showWarnings = FALSE)
-  markers_tg = markers %>% filter(tg == tg_cur)
 
-  walk(to_select_list, function(to_select) {
-    ereg_un_sel = ereg_un %>% dplyr::filter(grepl(to_select, eRegulon_name)) %>%
-      dplyr::rename(gene = Gene)
-    ereg_un_sel = ereg_un_sel %>% left_join(markers_tg) %>%
-      filter(!is.na(p_val))
-    fname_stem = gsub("[^A-Za-z0-9_-]", "", to_select)
+  # Select config data for this TG
+  ereg_data   = if (tg_cur == "MAFB") ereg_mafb else ereg_emx2
+  ereg_un     = ereg_data$ereg_un
+  ereg_sizes  = ereg_data$ereg_sizes
 
-    gg = ggplot(ereg_un_sel, aes(rho_TF2G, avg_log2FC)) +
-      geom_point(size = 0.5) +
-      geom_hline(yintercept = 0, linetype = 2) +
-      geom_vline(xintercept = 0, linetype = 2) +
-      labs(title=to_select) + theme_bw() + plot_theme()
-    print(gg)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_rho_%s.pdf", fname_stem)), gg,
-              base_height = 1.5, base_width = 1.5)
+  markers_pos_tg = markers_pos %>% filter(tg == tg_cur) %>%
+    filter(cell_class == "Glut")
 
-    gg = ggplot(ereg_un_sel, aes(importance_TF2G, avg_log2FC)) +
-      geom_point(size = 0.5) +
-      geom_hline(yintercept = 0, linetype = 2) +
-      labs(title=to_select) + theme_bw() + plot_theme()
-    print(gg)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_importance_%s.pdf", fname_stem)), gg,
-              base_height = 1.5, base_width = 1.5)
-  })
+  top_ereg_tfs <- ereg_sizes %>%
+    filter(grepl("\\+/\\+", eRegulon_name), !TF %in% c("MAFB", "EMX2")) %>%
+    group_by(TF) %>%
+    summarise(size_genes = max(size_genes, na.rm = TRUE)) %>%
+    arrange(desc(size_genes)) %>%
+    slice_head(n = eregulon_n) %>%
+    pull(TF)
 
-  ereg_un_sel_base = ereg_un %>% dplyr::filter(grepl(paste(to_select_list, collapse="|"), eRegulon_name)) %>%
-    dplyr::rename(gene = Gene)
+  to_select_list <- c(mafb_pattern, emx2_pattern,
+                      map_chr(top_ereg_tfs, ~sprintf("%s_.*_\\+\\/\\+", str_escape(.x))))
 
-  marker_sets = list(markers = markers_tg, markers_pos = markers_pos %>% filter(tg == tg_cur))
+  ereg_un_sel_base = ereg_un %>%
+    dplyr::filter(grepl(paste(to_select_list, collapse="|"), eRegulon_name)) %>%
+    dplyr::rename(gene = Gene) %>%
+    distinct(gene, TF, .keep_all=T)
+
+  marker_sets = list(markers_pos = markers_pos_tg)
   ks_df = imap_dfr(marker_sets, function(mset, mset_name) {
-    ereg_un_sel = ereg_un_sel_base %>% left_join(mset) %>%
-      filter(!is.na(p_val))
+    ereg_un_sel = ereg_un_sel_base %>%
+      left_join(mset) %>%
+      filter(!is.na(p_val)) %>%
+      distinct(TF, gene, .keep_all=T) %>%
+      group_by(TF) %>%
+      arrange(desc(importance_TF2G)) %>%
+      slice_head(n = 50) %>%
+      ungroup()
 
     baseline_df = ereg_un_sel %>%
       filter(!TF %in% tg_genes) %>%
       group_by(gene) %>%
       summarise(avg_log2FC = mean(avg_log2FC, na.rm = TRUE), .groups = "drop")
-    focal_df = ereg_un_sel %>% filter(TF == tg_cur) %>% distinct(gene, .keep_all = TRUE)
+    focal_df = ereg_un_sel %>% filter(TF == tg_cur)
 
     focal_fc = focal_df$avg_log2FC
     other_fc = baseline_df$avg_log2FC
-    ks_res = ks.test(focal_fc, other_fc)
+    ks_res = ks.test(focal_fc, other_fc, alternative = "two.sided")
 
     gg = ggplot() +
       geom_density(data = baseline_df, aes(avg_log2FC),
@@ -575,22 +552,72 @@ walk(tg_genes, function(tg_cur) {
     save_plot(file.path(out_dir_tg, sprintf("ereg_density_avg_log2FC_%s.pdf", mset_name)), gg,
               base_height = 1.5, base_width = 3)
 
-    gg = ggplot(ereg_un_sel, aes(TF, avg_log2FC)) +
-      geom_boxplot() + theme_bw() + plot_theme()
-    print(gg)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_boxplot_TF_avg_log2FC_%s.pdf", mset_name)), gg,
-              base_height = 1.5, base_width = 1.5)
+    # Permutation test: sample n_focal genes from the full eRegulon pool 1000×
+    # and compare observed median/mean to the random null distribution.
+    n_focal_perm = nrow(focal_df)
+    pool_fc      = ereg_un_sel$avg_log2FC
+    obs_median   = median(focal_fc, na.rm = TRUE)
+    obs_mean     = mean(focal_fc,   na.rm = TRUE)
+
+    set.seed(10)
+    perm_stats = map_dfr(seq_len(1000), function(i) {
+      s = sample(pool_fc, n_focal_perm, replace = n_focal_perm > length(pool_fc))
+      tibble(perm_median = median(s), perm_mean = mean(s))
+    })
+
+    p_median = mean(perm_stats$perm_median >= obs_median)
+    p_mean   = mean(perm_stats$perm_mean   >= obs_mean)
+
+    # Density: focal FC vs all genes not in the selected eRegulon
+    all_genes_df = mset %>% filter(!gene %in% focal_df$gene)
+    gg_perm_density = ggplot() +
+      geom_density(data = all_genes_df, aes(avg_log2FC),
+                   fill = "gray70", color = "gray70", alpha = 0.5) +
+      geom_density(data = focal_df, aes(avg_log2FC), color = "firebrick") +
+      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
+               label = sprintf("perm p(med)=%.3g\nperm p(mean)=%.3g", p_median, p_mean)) +
+      labs(x = "avg_log2FC", title = sprintf("%s vs background (n=%d)", tg_cur, n_focal_perm)) +
+      theme_bw() + plot_theme()
+    print(gg_perm_density)
+    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_density_%s.pdf", mset_name)),
+              gg_perm_density, base_height = 1.5, base_width = 2.5)
+
+    # Permutation distribution of median
+    gg_perm_med = ggplot(perm_stats, aes(perm_median)) +
+      geom_density(fill = "gray70", color = "gray70", alpha = 0.5) +
+      geom_vline(xintercept = obs_median, color = "firebrick", linetype = 2) +
+      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
+               label = sprintf("p=%.3g\nobs=%.3f", p_median, obs_median)) +
+      labs(x = "median avg_log2FC", title = sprintf("%s perm. median", tg_cur)) +
+      theme_bw() + plot_theme()
+    print(gg_perm_med)
+    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_median_%s.pdf", mset_name)),
+              gg_perm_med, base_height = 1.5, base_width = 2)
+
+    # Permutation distribution of mean
+    gg_perm_mean = ggplot(perm_stats, aes(perm_mean)) +
+      geom_density(fill = "gray70", color = "gray70", alpha = 0.5) +
+      geom_vline(xintercept = obs_mean, color = "firebrick", linetype = 2) +
+      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
+               label = sprintf("p=%.3g\nobs=%.3f", p_mean, obs_mean)) +
+      labs(x = "mean avg_log2FC", title = sprintf("%s perm. mean", tg_cur)) +
+      theme_bw() + plot_theme()
+    print(gg_perm_mean)
+    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_mean_%s.pdf", mset_name)),
+              gg_perm_mean, base_height = 1.5, base_width = 2)
 
     tibble(tg = tg_cur, marker_set = mset_name,
            ks_D = ks_res$statistic, ks_p = ks_res$p.value,
-           n_focal = length(focal_fc), n_other = length(other_fc))
+           n_focal = length(focal_fc), n_other = length(other_fc),
+           perm_p_median = p_median, perm_p_mean = p_mean,
+           obs_median = obs_median, obs_mean = obs_mean)
   })
   write_csv(ks_df, file.path(out_dir_tg, "ereg_ks_test_avg_log2FC.csv"))
   print(ks_df)
 })
 ```
 
-## Load DEG
+## Load songbird DEG
 
 ```{r}
 markers_sns = readRDS(file.path(SNRNA_SEURAT_DIR, "deg/song-surround_deg_glut_v2/marker_genes_cluster_SCT.rds"))
@@ -603,7 +630,7 @@ markers_sns = markers_sns %>%
          p_val_adj_sns = p_val_adj)
 markers_sns_base = markers_sns  # save before join, used for RRHO
 markers_sns = markers_sns %>%
-  left_join(markers)
+  left_join(markers_pos)
 ```
 
 ## RRHO Analysis
@@ -634,203 +661,106 @@ make_rrho_list_sns <- function(df, rank_var) {
 ```
 
 ```{r rrho-run}
-oe_marker_sets  <- list(markers = markers, markers_pos = markers_pos)
+oe_marker_sets  <- list(markers_pos = markers_pos)
 sns_comparisons <- unique(markers_sns_base$compare)
 rank_vars       <- c("avg_log2FC", "p_val_adj")
 
 rrho_dir <- file.path(out_dir, "rrho")
 dir.create(rrho_dir, showWarnings = FALSE, recursive = TRUE)
 
-rrho_summary <- imap_dfr(oe_marker_sets, function(oe_df, oe_name) {
-  map_dfr(tg_genes, function(tg_cur) {
-    rrho_dir_tg <- file.path(rrho_dir, tg_cur)
-    dir.create(rrho_dir_tg, showWarnings = FALSE)
+# Build flat list of (oe_name, tg_cur, cc_cur) combinations to parallelise over
+rrho_jobs <- cross_df(list(
+  oe_name  = names(oe_marker_sets),
+  tg_cur   = tg_genes,
+  cc_cur   = cell_classes
+))
 
-    map_dfr(cell_classes, function(cc_cur) {
-      map_dfr(sns_comparisons, function(cmp_cur) {
-        map_dfr(rank_vars, function(rv) {
+rrho_results <- mclapply(seq_len(nrow(rrho_jobs)), function(i) {
+  oe_name <- rrho_jobs$oe_name[i]
+  tg_cur  <- rrho_jobs$tg_cur[i]
+  cc_cur  <- rrho_jobs$cc_cur[i]
+  oe_df   <- oe_marker_sets[[oe_name]]
 
-          oe_cur  <- oe_df %>% filter(tg == tg_cur, cell_class == cc_cur) %>%
-            filter(!duplicated(gene), !is.na(avg_log2FC), !is.na(p_val_adj))
-          sns_cur <- markers_sns_base %>% filter(compare == cmp_cur) %>%
-            filter(!duplicated(gene), !is.na(avg_log2FC_sns), !is.na(p_val_adj_sns))
+  rrho_dir_tg <- file.path(rrho_dir, tg_cur)
+  dir.create(rrho_dir_tg, showWarnings = FALSE, recursive = TRUE)
 
-          common_genes <- intersect(oe_cur$gene, sns_cur$gene)
-          if (length(common_genes) < 10)
-            return(tibble(tg = tg_cur, oe_set = oe_name, cell_class = cc_cur,
-                          compare = cmp_cur, rank_var = rv,
-                          n_common = length(common_genes), max_log_pval = NA_real_))
+  map_dfr(sns_comparisons, function(cmp_cur) {
+    map_dfr(rank_vars, function(rv) {
 
-          l1 <- make_rrho_list(oe_cur %>% filter(gene %in% common_genes), rv) %>%
-            arrange(desc(value)) %>% as.data.frame()
-          l2 <- make_rrho_list_sns(sns_cur %>% filter(gene %in% common_genes), rv) %>%
-            arrange(desc(value)) %>% as.data.frame()
+      oe_cur  <- oe_df %>% filter(tg == tg_cur, cell_class == cc_cur) %>%
+        filter(!duplicated(gene), !is.na(avg_log2FC), !is.na(p_val_adj),
+               abs(avg_log2FC) > 0.1)
+      sns_cur <- markers_sns_base %>% filter(compare == cmp_cur) %>%
+        filter(!duplicated(gene), !is.na(avg_log2FC_sns), !is.na(p_val_adj_sns))
 
-          rrho_obj <- RRHO2_initialize(l1, l2,
-            labels = c(sprintf("%s_%s_%s", oe_name, tg_cur, cc_cur),
-                       sprintf("sns_%s", cmp_cur)), method = "hyper", log10.ind = TRUE)
+      common_genes <- intersect(oe_cur$gene, sns_cur$gene)
+      if (length(common_genes) < 10)
+        return(tibble(tg = tg_cur, oe_set = oe_name, cell_class = cc_cur,
+                      compare = cmp_cur, rank_var = rv,
+                      n_common = length(common_genes), max_log_pval = NA_real_))
 
-          fname_stem <- gsub("[^A-Za-z0-9_-]", "_",
-            sprintf("rrho_%s_%s_%s_%s_%s", oe_name, tg_cur, cc_cur, cmp_cur, rv))
-          pdf(file.path(rrho_dir_tg, sprintf("%s.pdf", fname_stem)),
-              width = 7, height = 7)
-          RRHO2_heatmap(rrho_obj)
-          dev.off()
+      l1 <- make_rrho_list(oe_cur %>% filter(gene %in% common_genes), rv) %>%
+        arrange(desc(value)) %>% as.data.frame()
+      l2 <- make_rrho_list_sns(sns_cur %>% filter(gene %in% common_genes), rv) %>%
+        arrange(desc(value)) %>% as.data.frame()
 
-          nr      <- nrow(rrho_obj$hypermat)
-          nc      <- ncol(rrho_obj$hypermat)
-          split_r <- round(nr * mean(l1[, 2] > 0))
-          split_c <- round(nc * mean(l2[, 2] > 0))
-          quad_idx <- list(
-            uu = list(r = seq_len(split_r),            c = seq_len(split_c)),
-            ud = list(r = seq_len(split_r),            c = (split_c+1):nc),
-            du = list(r = (split_r+1):nr,              c = seq_len(split_c)),
-            dd = list(r = (split_r+1):nr,              c = (split_c+1):nc)
-          )
-          for (quad in names(quad_idx)) {
-            idx      <- quad_idx[[quad]]
-            masked   <- matrix(NA_real_, nrow = nr, ncol = nc)
-            masked[idx$r, idx$c] <- rrho_obj$hypermat[idx$r, idx$c]
-            vals <- masked[!is.na(masked)]
-            if (length(vals) == 0 || diff(range(vals)) == 0) next
-            rrho_quad           <- rrho_obj
-            rrho_quad$hypermat  <- masked
-            pdf(file.path(rrho_dir_tg, sprintf("%s_%s.pdf", fname_stem, quad)),
-                width = 7, height = 7)
-            tryCatch(RRHO2_heatmap(rrho_quad), error = function(e) NULL)
-            dev.off()
-          }
+      rrho_obj <- RRHO2_initialize(l1, l2,
+        labels = c(sprintf("%s_%s_%s", oe_name, tg_cur, cc_cur),
+                   sprintf("sns_%s", cmp_cur)), method = "hyper", log10.ind = TRUE)
 
-          for (quad in c("uu", "dd", "ud", "du")) {
-            gl <- rrho_obj[[paste0("genelist_", quad)]]
-            if (length(gl) > 0)
-              write_lines(gl, file.path(rrho_dir_tg,
-                sprintf("%s_%s_genes.txt", fname_stem, quad)))
-          }
+      fname_stem <- gsub("[^A-Za-z0-9_-]", "_",
+        sprintf("rrho_%s_%s_%s_%s_%s", oe_name, tg_cur, cc_cur, cmp_cur, rv))
+      pdf(file.path(rrho_dir_tg, sprintf("%s.pdf", fname_stem)),
+          width = 7, height = 7)
+      RRHO2_heatmap(rrho_obj)
+      dev.off()
 
-          max_lp <- max(abs(as.numeric(rrho_obj$hypermat)), na.rm = TRUE)
+      nr      <- nrow(rrho_obj$hypermat)
+      nc      <- ncol(rrho_obj$hypermat)
+      split_r <- round(nr * mean(l1[, 2] > 0))
+      split_c <- round(nc * mean(l2[, 2] > 0))
+      quad_idx <- list(
+        uu = list(r = seq_len(split_r),            c = seq_len(split_c)),
+        ud = list(r = seq_len(split_r),            c = (split_c+1):nc),
+        du = list(r = (split_r+1):nr,              c = seq_len(split_c)),
+        dd = list(r = (split_r+1):nr,              c = (split_c+1):nc)
+      )
+      for (quad in names(quad_idx)) {
+        idx      <- quad_idx[[quad]]
+        masked   <- matrix(NA_real_, nrow = nr, ncol = nc)
+        masked[idx$r, idx$c] <- rrho_obj$hypermat[idx$r, idx$c]
+        vals <- masked[!is.na(masked)]
+        if (length(vals) == 0 || diff(range(vals)) == 0) next
+        rrho_quad           <- rrho_obj
+        rrho_quad$hypermat  <- masked
+        pdf(file.path(rrho_dir_tg, sprintf("%s_%s.pdf", fname_stem, quad)),
+            width = 7, height = 7)
+        tryCatch(RRHO2_heatmap(rrho_quad), error = function(e) NULL)
+        dev.off()
+      }
 
-          tibble(tg = tg_cur, oe_set = oe_name, cell_class = cc_cur,
-                 compare = cmp_cur, rank_var = rv,
-                 n_common = length(common_genes), max_log_pval = max_lp)
-        })
-      })
+      for (quad in c("uu", "dd", "ud", "du")) {
+        gl <- rrho_obj[[paste0("genelist_", quad)]]
+        if (length(gl) > 0)
+          write_lines(gl, file.path(rrho_dir_tg,
+            sprintf("%s_%s_genes.txt", fname_stem, quad)))
+      }
+
+      max_lp <- max(abs(as.numeric(rrho_obj$hypermat)), na.rm = TRUE)
+
+      tibble(tg = tg_cur, oe_set = oe_name, cell_class = cc_cur,
+             compare = cmp_cur, rank_var = rv,
+             n_common = length(common_genes), max_log_pval = max_lp)
     })
   })
-})
+}, mc.cores = length(rrho_jobs), mc.set.seed = FALSE)
+
+rrho_summary <- bind_rows(rrho_results)
 
 walk(tg_genes, function(tg_cur) {
   rrho_summary_tg <- rrho_summary %>% filter(tg == tg_cur)
   write_csv(rrho_summary_tg, file.path(rrho_dir, tg_cur, sprintf("rrho_summary_%s.csv", tg_cur)))
   print(rrho_summary_tg)
-})
-```
-
-```{r}
-
-to_select_list = c("MAFB_.*_\\+\\/\\+", "ZBTB18_.*_\\+\\/\\+", "EMX2_.*_\\+\\/\\+", "SOX5_extended_\\+\\/\\+", "POU3F4_extended_\\+\\/\\+", 	"NFIA_direct_+/+", 
-                   "MEIS1_.*_\\+\\/\\+", "AR_direct_\\+\\/\\+")
-
-ereg_un_sel = ereg_un %>% dplyr::filter(grepl(paste(to_select_list, collapse="|"), eRegulon_name)) %>%
-  dplyr::rename(gene = Gene)
-
-markers_sns_ereg = markers_sns %>% left_join(ereg_un_sel) %>%
-  filter(!is.na(p_val))
-```
-
-```{r}
-walk(tg_genes, function(tg_cur) {
-  out_dir_tg = file.path(out_dir, tg_cur)
-  dir.create(out_dir_tg, showWarnings = FALSE)
-  markers_sns_ereg_tg = markers_sns_ereg %>% filter(tg == tg_cur)
-  tfs = na.omit(unique(markers_sns_ereg_tg$TF))
-
-  walk(tfs, function(tf_cur) {
-    markers_sns_cur = markers_sns_ereg_tg %>%
-      filter(TF == tf_cur, cell_class == "Glut")
-    if (nrow(markers_sns_cur) <= 1) return()
-
-    gg = ggplot(markers_sns_cur, aes(avg_log2FC_sns, avg_log2FC)) +
-      geom_point() +
-      geom_hline(yintercept = 0, linetype=2) +
-      geom_vline(xintercept = 0, linetype=2) +
-      facet_wrap(~compare) +
-      labs(title = tf_cur) + plot_theme()
-    print(gg)
-    save_plot(file.path(out_dir_tg, sprintf("deg_ereg_%s.pdf", tf_cur)), gg,
-              base_height = 1.5, base_width = 1.5)
-  })
-})
-```
-
-```{r}
-markers_sns_ereg = markers_sns_ereg %>%
-  mutate(avg_log2FC_tg_sns = avg_log2FC * avg_log2FC_sns)
-```
-
-## Load mutliome-seq object
-
-```{r}
-multi_fname = file.path(MULTIOME_SEURAT_DIR, "reduction_viz/combined_all_umap_cluster-snrna-cr/obj_clustered.qs")
-multi_obj = qread(multi_fname)
-```
-
-### Plot DEG expression in songbird
-
-```{r plot-deg-songbird-multi}
-multi_reduction = "dims30nn30mindist0.3"
-n_top = 10
-
-walk(tg_genes, function(tg_cur) {
-  out_dir_tg = file.path(out_dir, tg_cur)
-  dir.create(out_dir_tg, showWarnings = FALSE)
-
-  top_markers = markers %>%
-    filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(multi_obj)) %>%
-    slice_min(p_val_adj, n = n_top) %>%
-    pull(gene) %>% unique()
-
-  top_markers_pos = markers_pos %>%
-    filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(multi_obj)) %>%
-    slice_min(p_val_adj, n = n_top) %>%
-    pull(gene) %>% unique()
-
-  plot_features(multi_obj, top_markers, multi_reduction,
-                file.path(out_dir_tg, "multi_top_markers"))
-  plot_density_features(multi_obj, top_markers, multi_reduction,
-                        file.path(out_dir_tg, "multi_top_markers", "density"))
-
-  plot_features(multi_obj, top_markers_pos, multi_reduction,
-                file.path(out_dir_tg, "multi_top_markers_pos"))
-  plot_density_features(multi_obj, top_markers_pos, multi_reduction,
-                        file.path(out_dir_tg, "multi_top_markers_pos", "density"))
-
-  multi_glut = subset(multi_obj, cells = Cells(multi_obj)[grepl("Glut", multi_obj$cluster)])
-
-  for (gene_set in list(list(genes = top_markers,     stem = "multi_top_markers"),
-                        list(genes = top_markers_pos, stem = "multi_top_markers_pos"))) {
-    feats = intersect(gene_set$genes, Features(multi_glut))
-    if (length(feats) == 0) next
-    avg_mat    = AverageExpression(multi_glut, features = feats, group.by = "cluster", assay = "SCT")$SCT
-    avg_scaled = t(scale(t(avg_mat)))
-    avg_scaled = avg_scaled[complete.cases(avg_scaled), , drop = FALSE]
-    if (nrow(avg_scaled) == 0) next
-    ht = Heatmap(avg_scaled, name = "z-score",
-                 cluster_rows = TRUE, cluster_columns = FALSE,
-                 row_names_gp    = gpar(fontsize = 5, fontfamily = "sans"),
-                 column_names_gp = gpar(fontsize = 5, fontfamily = "sans"),
-                 heatmap_legend_param = list(labels_gp     = gpar(fontsize = 5),
-                                            title_gp      = gpar(fontsize = 5),
-                                            direction     = "horizontal",
-                                            legend_width  = unit(20, "mm"),
-                                            grid_height   = unit(2.5, "mm")))
-    pdf(file.path(out_dir_tg, gene_set$stem, "heatmap_glut.pdf"),
-        width = ncol(avg_scaled) * 0.25 + 1.5, height = nrow(avg_scaled) * 0.2 + 1)
-    draw(ht)
-    dev.off()
-  }
 })
 ```
 
@@ -848,31 +778,17 @@ sn_glut = subset(sn_obj, cells = Cells(sn_obj)[grepl("Glut", sn_obj$cluster)])
 sn_reduction = "dims40nn30mindist0.3"
 n_top = 20
  
-
-
 walk(tg_genes, function(tg_cur) {
   out_dir_tg = file.path(out_dir, tg_cur)
   dir.create(out_dir_tg, showWarnings = FALSE)
-
-  top_markers = markers %>%
-    filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(sn_obj)) %>%
-    slice_min(p_val_adj, n = n_top) %>%
-    pull(gene) %>% unique()
 
   top_markers_pos = markers_pos %>%
     filter(tg == tg_cur, cell_class == "Glut") %>%
     filter(gene %in% Features(sn_obj)) %>%
     slice_min(p_val_adj, n = n_top) %>%
+    slice_max(avg_log2FC, n = n_top) %>%
     pull(gene) %>% unique()
 
-  plot_features(sn_obj, top_markers, sn_reduction,
-                file.path(out_dir_tg, "sn_top_markers"))
-  plot_density_features(sn_obj, top_markers, sn_reduction,
-                        file.path(out_dir_tg, "sn_top_markers", "density"))
-
-  plot_features(sn_obj, top_markers_pos, sn_reduction,
-                file.path(out_dir_tg, "sn_top_markers_pos"))
   plot_density_features(sn_obj, top_markers_pos, sn_reduction,
                         file.path(out_dir_tg, "sn_top_markers_pos", "density"))
 })
@@ -896,25 +812,23 @@ n_top = 20
 walk(tg_genes, function(tg_cur) {
   out_dir_tg = file.path(out_dir, tg_cur)
 
-  top_markers = markers %>%
-    filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(sn_obj)) %>%
-    #filter(p_val_adj < 0.1) %>% 
-    slice_min(p_val_adj, n = n_top) %>%
-    pull(gene) %>% unique()
-  
   top_markers_pos = markers_pos %>%
     filter(tg == tg_cur, cell_class == "Glut") %>%
     filter(gene %in% Features(sn_obj)) %>%
-    #filter(p_val_adj < 0.1) %>%
     slice_min(p_val_adj, n = n_top) %>%
+    slice_max(avg_log2FC, n = n_top) %>%
     pull(gene) %>% unique()
-  
+
   gene_sets = list(
-    list(genes = top_markers,     stem = "sn_top_markers",     oe_src = markers),
     list(genes = top_markers_pos, stem = "sn_top_markers_pos", oe_src = markers_pos)
   )
   for (gene_set in gene_sets) {
+    
+    out_dir_cur = file.path(out_dir_tg, gene_set$stem)
+    dir.create(out_dir_cur, showWarnings = F, recursive = T)
+    
+    out_fname = file.path(out_dir_cur, "heatmap_glut_normed.pdf")
+    
     feats = intersect(gene_set$genes, Features(sn_glut))
     if (length(feats) == 0) next
     avg_mat = log2(AggregateExpression(sn_obj, features = feats, group.by = "cluster", assay = "SCT")$SCT+1)
@@ -1000,7 +914,7 @@ walk(tg_genes, function(tg_cur) {
     ht = ht_song + ht_oe
 
     print(ht)
-    pdf(file.path(out_dir_tg, gene_set$stem, "heatmap_glut_normed.pdf"),
+    pdf(out_fname,
         width  = (ncol(norm_scaled) + ncol(oe_mat)) * 0.25 + 1.5,
         height = nrow(norm_scaled) * 0.2 + 1)
     draw(ht)
@@ -1016,7 +930,6 @@ walk(tg_genes, function(tg_cur) {
 # both transgene DE columns in a single heatmap per gene set.
 
 gene_sets_combined = list(
-  list(stem = "sn_top_markers",     oe_src = markers),
   list(stem = "sn_top_markers_pos", oe_src = markers_pos)
 )
 
@@ -1030,6 +943,7 @@ for (gene_set in gene_sets_combined) {
       filter(tg == tg_cur, cell_class == "Glut") %>%
       filter(gene %in% Features(sn_obj)) %>%
       slice_min(p_val_adj, n = n_top) %>%
+          slice_max(avg_log2FC, n = n_top) %>%
       pull(gene) %>% unique()
   }) %>% unlist() %>% unique()
 
@@ -1145,21 +1059,15 @@ bg_ma_avgmat = make_bg_ma(
 
 walk(tg_genes, function(tg_cur) {
   out_dir_tg = file.path(out_dir, tg_cur)
-
-  top_markers = markers %>%
-    filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(sn_obj)) %>%
-    slice_min(p_val_adj, n = n_top) %>%
-    pull(gene) %>% unique()
-
+  
   top_markers_pos = markers_pos %>%
     filter(tg == tg_cur, cell_class == "Glut") %>%
     filter(gene %in% Features(sn_obj)) %>%
     slice_min(p_val_adj, n = n_top) %>%
+    slice_max(avg_log2FC, n = n_top) %>%
     pull(gene) %>% unique()
 
-  gene_sets = list(list(genes = top_markers,     stem = "sn_top_markers"),
-                   list(genes = top_markers_pos, stem = "sn_top_markers_pos"))
+  gene_sets = list(list(genes = top_markers_pos, stem = "sn_top_markers_pos"))
   for (gene_set in gene_sets) {
     feats = intersect(gene_set$genes, Features(sn_glut))
     if (length(feats) == 0) next
@@ -1232,7 +1140,6 @@ walk(tg_genes, function(tg_cur) {
 
       # OE log2FC vs Glut-RA/Glut-Arco-1 FC
       marker_sets_cur = list(
-        markers     = markers     %>% filter(tg == tg_cur, cell_class == "Glut"),
         markers_pos = markers_pos %>% filter(tg == tg_cur, cell_class == "Glut")
       )
       iwalk(marker_sets_cur, function(mset, mset_name) {

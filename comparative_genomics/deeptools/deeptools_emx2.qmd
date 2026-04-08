@@ -5,6 +5,7 @@ editor: source
 ---
 
 ```{r setup, message=FALSE}
+library(here)
 library(tidyverse)
 library(ComplexHeatmap)
 library(jsonlite)
@@ -18,8 +19,10 @@ library(cowplot)
 ```
 
 ```{r config}
-base_dir   <- "~/ssd/rstudio/multiome/motor-pathway/deeptools/phylop_snapatac"
-p2g_dir    <- "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/peaks2geneslinks"
+source(here::here("config/paths.R"))
+
+base_dir   <- DEEPTOOLS_DIR
+p2g_dir    <- file.path(ARCHR_PROJ_DIR, "peaks2geneslinks")
 out_dir    <- file.path(base_dir, "deeptools_emx2")
 dir.create(out_dir, showWarnings = FALSE)
 
@@ -63,7 +66,6 @@ fragment_bws <- c(
 phylop_bws <- c(
   "vert. all"           = "phyloP_mamAvi605_3model_all",
   "avian all"           = "phyloP_avian363_3model_all",
-  "avian oscine"        = "phyloP_avian363_3model_birdAnc218",
   "phastCons mamAvi605" = "phastCons_mamAvi605_tc0.25_el20"
 )
 
@@ -88,8 +90,8 @@ diff_threshold <- 5
 
 ```{r load-dars}
 dars_se_fnames <- list(
-  glut  = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/peaks/peaks_nonsong_glut_se.rds",
-  astro = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/peaks/peaks_astro_se.rds"
+  glut  = file.path(ARCHR_PROJ_DIR, "peaks/peaks_nonsong_glut_se.rds"),
+  astro = file.path(ARCHR_PROJ_DIR, "peaks/peaks_astro_se.rds")
 )
 dars_se <- map(dars_se_fnames, readRDS)
 
