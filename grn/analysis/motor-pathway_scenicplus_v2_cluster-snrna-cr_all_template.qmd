@@ -24,11 +24,13 @@ library(org.Hs.eg.db)
 library(proxy)
 select = dplyr::select
 
-source("/home/brad/nest/rstudio/utils/stats.R")
+library(here)
+source(here::here("config/paths.R"))
+source(here::here("scripts/stats.R"))
 ```
 
 ```{r}
-scplus_dir = '/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/'
+scplus_dir = SCENICPLUS_JUPYTER_DIR
 working_dir = params$working_dir
 
 ## Discover all config directories
@@ -39,7 +41,7 @@ config_dirs = config_dirs[order(as.numeric(sub("config", "", config_dirs)))]
 print(paste("Found configs:", paste(config_dirs, collapse = ", ")))
 
 ## Seurat object
-analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/"
+analysis_prefix = file.path(MULTIOME_SEURAT_DIR, "reduction_viz")
 in_dir_sub = "combined_all_umap"
 in_dir = file.path(analysis_prefix, in_dir_sub)
 obj_fname = file.path(in_dir, "obj_clustered.qs")
@@ -63,7 +65,7 @@ obj_avg = log1p(AggregateExpression(obj, group.by="cluster", assays = "SCT")[[1]
 
 ## Load TFs
 ```{r}
-tfs_df = readr::read_csv("/home/brad/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs_df = readr::read_csv(here::here("data/lambert_tfs/tfs.csv"))
 tfs_dbd = tfs_df %>% filter(DBD!="Unknown")
 ```
 

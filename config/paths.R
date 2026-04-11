@@ -94,6 +94,9 @@ SNRNA_SEURAT_DIR    <- "~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbe
 # SCENIC+ output base directory (output of grn/*/scenicplus/ Snakemake workflows)
 SCENICPLUS_BASE_DIR <- "~/ssd/rstudio/multiome/motor-pathway/scenicplus/"
 
+# SCENIC+ Jupyter working directory (raw per-run outputs from the Snakemake pipelines)
+SCENICPLUS_JUPYTER_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
+
 # SCENIC+ config directory for the Glut-RA / Glut-Arco-1 run (config14)
 SCENICPLUS_GLUT_RA_ARCO_CONFIG_DIR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-arco-1_seurat-snrna-clustering/scenicplus/config14/"
 
