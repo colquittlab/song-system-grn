@@ -1,0 +1,1207 @@
+---
+title: "SCENIC+ Analysis - All Configs"
+format: html
+params:
+  working_dir: "/ra-arco-hvc-nc_seurat-snrna-clustering"
+  out_dir_base: "~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_cluster-snrna-cr_all"
+---
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(scCustomize)
+library(ArchR)
+library(tidyverse)
+library(qs)
+library(cowplot)
+library(viridis)
+library(ComplexHeatmap)
+library(circlize)
+library(rhdf5)
+library(hdf5r)
+library(anndata)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(proxy)
+select = dplyr::select
+
+source("/home/brad/nest/rstudio/utils/stats.R")
+```
+
+```{r}
+scplus_dir = '/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/'
+working_dir = params$working_dir
+
+## Discover all config directories
+scenicplus_path = file.path(scplus_dir, working_dir, "scenicplus")
+config_dirs = list.dirs(scenicplus_path, recursive = FALSE, full.names = FALSE)
+config_dirs = config_dirs[grepl("^config[0-9]+$", config_dirs)]
+config_dirs = config_dirs[order(as.numeric(sub("config", "", config_dirs)))]
+print(paste("Found configs:", paste(config_dirs, collapse = ", ")))
+
+## Seurat object
+analysis_prefix = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/"
+in_dir_sub = "combined_all_umap"
+in_dir = file.path(analysis_prefix, in_dir_sub)
+obj_fname = file.path(in_dir, "obj_clustered.qs")
+
+out_dir_base = params$out_dir_base
+dir.create(out_dir_base, showWarnings = FALSE)
+
+cat("working_dir:", working_dir, "\n")
+cat("out_dir_base:", out_dir_base, "\n")
+```
+
+## Read Seurat object
+```{r}
+obj = qread(obj_fname)
+```
+
+## Average expression
+```{r}
+obj_avg = log1p(AggregateExpression(obj, group.by="cluster", assays = "SCT")[[1]])
+```
+
+## Load TFs
+```{r}
+tfs_df = readr::read_csv("/home/brad/nest/gene_lists/lambert_tfs/tfs.csv")
+tfs_dbd = tfs_df %>% filter(DBD!="Unknown")
+```
+
+## DEG analysis (config-independent)
+```{r}
+pairs = list(ra = c("Glut-RA", "Glut-Arco-1"),
+             gaba4 = c("GABA-4-1", "GABA-1-1"),
+             astro = c("Astro-1", "Oligo"))
+
+obj_agg = AggregateExpression(obj, assays="SCT", group.by = c("assignment", "cluster"), return.seurat = T)
+
+deg = map(pairs, function(pair_cur) {
+  deg = FindMarkers(obj_agg, ident.1 = pair_cur[1], ident.2=pair_cur[2], test.use = "DESeq2", assay="SCT",
+                    group.by = "cluster", logfc.threshold = 0, min.pct = 0)
+  deg = deg %>% rownames_to_column("gene")
+  deg
+}) %>% bind_rows(.id="set")
+
+all_genes = rownames(obj)
+all_genes_id = bitr(all_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
+```
+
+## Define helper functions
+```{r}
+convert_category_to_factor = function(x) {
+  factor(x$codes, labels = x$categories, levels=0:(length(x$categories)-1))
+}
+
+extract_matrix = function(ereg_file, obs_name) {
+  cur = rhdf5::h5read(ereg_file, name = str_interp(obs_name))
+  rnames = cur[["var"]]$`_index`
+  cnames = cur[["obs"]]$Cell
+  mat = data.frame(t(cur[["X"]]))
+  colnames(mat) = rnames
+  rownames(mat) = cnames
+  mat
+}
+```
+
+## Plotting subfunctions
+```{r}
+#' Calculate mean AUC per cluster for each TF, scaled 0-1
+#' @param gene_auc Data frame with gene AUC values and cluster column
+#' @param ereg_pattern Regex pattern to filter eRegulon columns (e.g., "\\+\\/\\+")
+#' @return Matrix with TFs as rows and clusters as columns, values scaled 0-1
+calculate_gene_auc_mean = function(gene_auc, ereg_pattern) {
+  gene_auc_cur = gene_auc %>% select(one_of("cluster"), matches(ereg_pattern))
+
+  if (ncol(gene_auc_cur) <= 1) {
+    cat("No regulons matching pattern:", ereg_pattern, "\n")
+    return(NULL)
+  }
+
+  # Clean column names
+  pattern_clean = ifelse(grepl("\\+", ereg_pattern),
+                         "_(direct|extended)_\\+\\/\\+_\\([0-9]+[a-z]\\)",
+                         "_(direct|extended)_\\-\\/\\-_\\([0-9]+[a-z]\\)")
+  colnames(gene_auc_cur) = sub(pattern_clean, "", colnames(gene_auc_cur))
+  gene_auc_cur = gene_auc_cur %>% pivot_longer(-cluster, names_to="tf")
+
+  gene_auc_cur_mean = gene_auc_cur %>%
+    filter(!is.na(cluster)) %>%
+    group_by(cluster, tf) %>%
+    summarize(value_mean = mean(value), .groups = "drop") %>%
+    group_by(tf) %>%
+    mutate(value_mean_scale = scale_01(value_mean)) %>%
+    pivot_wider(id_cols=!contains("value"), names_from="tf", values_from="value_mean_scale") %>%
+    column_to_rownames("cluster") %>%
+    as.matrix() %>%
+    t()
+
+  gene_auc_cur_mean
+}
+
+#' Calculate specificity score for each row of a matrix
+#' Uses Jensen-Shannon divergence from uniform distribution
+#' Higher values = more specific to certain clusters
+#' @param mat Matrix with features as rows and clusters as columns (values should be non-negative)
+#' @return Named vector of specificity scores
+calculate_specificity = function(mat) {
+  apply(mat, 1, function(x) {
+    # Normalize to probability distribution
+    x_norm = x / sum(x)
+    # Uniform distribution
+    n = length(x)
+    uniform = rep(1/n, n)
+    # Jensen-Shannon divergence
+    m = (x_norm + uniform) / 2
+    js_div = 0.5 * sum(x_norm * log2(x_norm / m), na.rm = TRUE) +
+             0.5 * sum(uniform * log2(uniform / m), na.rm = TRUE)
+    js_div
+  })
+}
+
+#' Calculate specificity using Gini coefficient
+#' Higher values = more unequal distribution across clusters
+#' @param mat Matrix with features as rows and clusters as columns
+#' @return Named vector of Gini coefficients
+calculate_gini = function(mat) {
+  apply(mat, 1, function(x) {
+    n = length(x)
+    x_sorted = sort(x)
+    # Gini coefficient formula
+    sum((2 * seq_len(n) - n - 1) * x_sorted) / (n * sum(x_sorted))
+  })
+}
+
+#' Calculate TF specificity score for each cell type
+#' For each TF-cluster pair, computes how much higher the TF activity is
+#' in that cluster compared to all other clusters
+#' @param mat Matrix with TFs as rows and clusters as columns (e.g., from calculate_gene_auc_mean)
+#' @param method Method to calculate specificity: "zscore", "fold_change", or "diff"
+#' @return Data frame with columns: tf, cluster, specificity, rank_in_cluster
+calculate_celltype_specificity = function(mat, method = c("zscore", "fold_change", "diff")) {
+
+  method = match.arg(method)
+
+
+  results = map_dfr(rownames(mat), function(tf) {
+    x = mat[tf, ]
+
+    specificity = switch(method,
+      zscore = {
+        # Z-score: how many SDs above the mean
+        (x - mean(x)) / sd(x)
+      },
+      fold_change = {
+        # Fold change over mean of other clusters
+        map_dbl(names(x), function(cluster) {
+          others = x[names(x) != cluster]
+          x[cluster] / mean(others)
+        }) %>% set_names(names(x))
+      },
+      diff = {
+        # Difference from mean of other clusters
+        map_dbl(names(x), function(cluster) {
+          others = x[names(x) != cluster]
+          x[cluster] - mean(others)
+        }) %>% set_names(names(x))
+      }
+    )
+
+    data.frame(
+      tf = tf,
+      cluster = names(specificity),
+      value = as.numeric(x),
+      specificity = as.numeric(specificity)
+    )
+  })
+
+  # Add rank within each cluster (which TFs are most specific to each cluster)
+  results = results %>%
+    group_by(cluster) %>%
+    mutate(rank_in_cluster = rank(-specificity, ties.method = "min")) %>%
+    ungroup() %>%
+    # Add rank within each TF (which clusters is this TF most specific to)
+    group_by(tf) %>%
+    mutate(rank_in_tf = rank(-specificity, ties.method = "min")) %>%
+    ungroup()
+
+  results
+}
+
+#' Generate AUC heatmaps (positive or negative regulons)
+plot_auc_heatmaps = function(gene_auc, obj_avg, ereg_pattern, out_dir, prefix, palette) {
+  gene_auc_cur_mean = calculate_gene_auc_mean(gene_auc, ereg_pattern)
+
+  if (is.null(gene_auc_cur_mean)) {
+    return(NULL)
+  }
+
+  expr_mat = obj_avg[intersect(rownames(gene_auc_cur_mean), rownames(obj_avg)),
+                     intersect(colnames(gene_auc_cur_mean), colnames(obj_avg))]
+  expr_mat = t(scale(t(expr_mat)))
+
+  hc = hclust(dist(gene_auc_cur_mean), method="ward.D")
+
+  # Gene AUC heatmap - no names
+  height = 4
+  width = 3
+  mat = gene_auc_cur_mean
+  colors = scales::brewer_pal(palette = palette, direction = 1)(9)
+  cols = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9), colors = colors)
+
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = F, col = cols,
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap_no-names.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+
+  # Gene AUC heatmap - with names
+  height = 10
+  width = height * ncol(mat) / nrow(mat)
+  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+               show_row_names = T, col = cols,
+               row_names_gp = gpar(fontsize=6), column_names_gp = gpar(fontsize=6),
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap_names.pdf")), height = height + 10, width = width + 10)
+  print(hm)
+  dev.off()
+
+  # Expression heatmap
+  height = 4
+  width = 3
+  mat = expr_mat
+  cols_expr = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9),
+                         colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
+  hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+               show_row_names = F, col = cols_expr,
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap_no-names.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+
+  height = 10
+  width = 3
+  hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+               show_row_names = T, col = cols_expr, row_names_gp = gpar(fontsize=6),
+               height = unit(height, "in"), width = unit(width, "in"))
+  pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap_names.pdf")), height = height + 2, width = width + 2)
+  print(hm)
+  dev.off()
+
+  return(list(gene_auc_cur_mean = gene_auc_cur_mean, expr_mat = expr_mat, hc = hc))
+}
+```
+
+```{r}
+#' Plot TF UMAPs
+plot_tf_umaps = function(obj, tfs_to_plot, umap_dir, reduction_cur = "dims30nn30mindist0.3") {
+  dir.create(umap_dir, showWarnings = FALSE)
+  DefaultAssay(obj) = "SCT"
+
+  for (tp in tfs_to_plot) {
+    tryCatch({
+      gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
+                                aspect_ratio = 1, reduction = reduction_cur,
+                                raster = T, raster.dpi=c(1024,1024),
+                                pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
+      save_plot(file.path(umap_dir, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
+
+      gg = Nebulosa::plot_density(obj, features = tp, size = .1, reduction = reduction_cur) +
+        coord_equal()
+      save_plot(file.path(umap_dir, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
+    }, error = function(e) cat("Error plotting", tp, ":", conditionMessage(e), "\n"))
+  }
+}
+```
+
+```{r}
+#' Plot UMAPs for selected eRegulons
+plot_eregulon_umaps = function(obj, ereg_sane, ereg_select, umap_dir, nplot = 10,
+                                reduction_cur = "dims30nn30mindist0.3") {
+  DefaultAssay(obj) = "SCT"
+
+  for (ereg_select_cur in ereg_select) {
+    ereg_sane_cur = ereg_sane %>% filter(eRegulon_name == ereg_select_cur) %>%
+      distinct(Gene, .keep_all=T) %>%
+      arrange(desc(importance_TF2G))
+
+    if (nrow(ereg_sane_cur) > 0) {
+      to_plot = ereg_sane_cur$Gene[1:min(nplot, nrow(ereg_sane_cur))]
+      umap_dir_cur = file.path(umap_dir, sub("/", ":", ereg_select_cur))
+      dir.create(umap_dir_cur, showWarnings = FALSE)
+
+      for (tp in to_plot) {
+        tryCatch({
+          gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
+                                    aspect_ratio = 1, reduction = reduction_cur,
+                                    raster = T, raster.dpi=c(1024,1024),
+                                    pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
+          save_plot(file.path(umap_dir_cur, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
+
+          gg = Nebulosa::plot_density(obj, features = tp, size = .1, reduction = reduction_cur) +
+            coord_equal()
+          save_plot(file.path(umap_dir_cur, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
+        }, error = function(e) cat("Error plotting", tp, ":", conditionMessage(e), "\n"))
+      }
+    }
+  }
+}
+```
+
+```{r}
+#' Generate dot plots for eRegulons
+plot_eregulon_dotplots = function(obj, ereg_sane, ereg_select, dot_dir, labels_order, nplot = 20) {
+  dir.create(dot_dir, showWarnings = FALSE)
+  obj$cluster = factor(obj$cluster, levels=labels_order)
+  DefaultAssay(obj) = "SCT"
+
+  for (ereg_select_cur in ereg_select) {
+    ereg_select_cur_form = sub("/", ":", ereg_select_cur)
+    ereg_sane_cur = ereg_sane %>% filter(eRegulon_name == ereg_select_cur) %>%
+      distinct(Gene, .keep_all=T) %>%
+      arrange(desc(importance_x_rho_TF2G))
+
+    if (nrow(ereg_sane_cur) > 0) {
+      to_plot = ereg_sane_cur$Gene[1:min(nplot, nrow(ereg_sane_cur))]
+      to_plot = intersect(to_plot, rownames(obj))
+      if (length(to_plot) > 0) {
+        gg = DotPlot_scCustom(obj, features=to_plot, group.by = "cluster", flip_axes = T, x_lab_rotate = T)
+        save_plot(file.path(dot_dir, str_interp("${ereg_select_cur_form}.pdf")), gg,
+                  base_height = 3 * length(to_plot)/10, base_width = 10)
+      }
+    }
+  }
+}
+```
+
+```{r}
+#' Plot differential expression of TF target genes
+plot_tf_target_deg = function(ereg, obj_avg, deg, tf_pattern, tf_name, out_dir,
+                              clusters_expr, sets_deg, color_limit=NULL) {
+
+  ereg_cur = ereg %>% filter(grepl(tf_pattern, eRegulon_name))
+  features_cur = unique(ereg_cur$Gene)
+
+  if (length(features_cur) == 0) {
+    cat("No target genes found for", tf_name, "\n")
+    return(NULL)
+  }
+
+  # Expression heatmap across clusters
+  features_in_avg = intersect(features_cur, rownames(obj_avg))
+  clusters_in_avg = intersect(clusters_expr, colnames(obj_avg))
+
+  if (length(features_in_avg) > 0 && length(clusters_in_avg) > 0) {
+    mat = obj_avg[features_in_avg, clusters_in_avg, drop=FALSE]
+    cnames = colnames(mat)
+    mat_var = apply(mat, 1, var)
+    mat = mat[mat_var > 0, , drop=FALSE]
+
+    if (nrow(mat) > 1) {
+      mat = t(apply(mat, 1, scale))
+      colnames(mat) = cnames
+
+      hclust_methods = c("average", "ward.D", "ward.D2", "complete", "mcquitty", "median", "centroid")
+      dist_methods = c("euclidean", "correlation")
+
+      walk(hclust_methods, function(hclust_method) {
+        walk(dist_methods, function(dist_method) {
+          tryCatch({
+            hc = hclust(dist(mat, method = dist_method), method=hclust_method)
+
+            cols = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9),
+                              colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
+
+            height = max(4, nrow(mat) * 0.1)
+            width = max(3, ncol(mat) * 0.3)
+            hm = Heatmap(mat, cluster_rows = hc, cluster_columns = FALSE, col=cols,
+                         row_names_gp = gpar(fontsize=6),
+                         height = unit(height, "in"), width = unit(width, "in"))
+
+            pdf(file.path(out_dir, str_interp("${tf_name}_target_expr_heatmap_${dist_method}_${hclust_method}.pdf")),
+                height = height + 2, width = width + 2)
+            print(hm)
+            dev.off()
+          }, error = function(e) {
+            cat("Skipping expr heatmap for", tf_name, dist_method, hclust_method, ":", conditionMessage(e), "\n")
+          })
+        })
+      })
+    }
+  }
+
+  # DEG heatmap
+  deg_w = deg %>%
+    filter(set %in% sets_deg) %>%
+    pivot_wider(
+      id_cols = -c(p_val, pct.1, pct.2, p_val_adj),
+      names_from = "set",
+      values_from = "avg_log2FC"
+    ) %>%
+    column_to_rownames("gene")
+
+  features_in_deg = intersect(features_cur, rownames(deg_w))
+
+  if (length(features_in_deg) > 1) {
+    mat = deg_w[features_in_deg, sets_deg, drop=FALSE]
+    mat = mat[complete.cases(mat), , drop=FALSE]
+
+    if (nrow(mat) > 1) {
+      hclust_methods = c("average", "ward.D", "ward.D2", "complete", "mcquitty", "median", "centroid")
+      dist_methods = c("euclidean", "correlation")
+
+      walk(hclust_methods, function(hclust_method) {
+        walk(dist_methods, function(dist_method) {
+          tryCatch({
+            hc = hclust(dist(mat, method=dist_method), method=hclust_method)
+
+            if (is.null(color_limit)) {
+              limit_val = max(abs(min(mat)), max(mat))
+            } else {
+              limit_val = color_limit
+            }
+
+            cols = colorRamp2(breaks = c(-limit_val, 0, limit_val),
+                              colors = scales::brewer_pal(palette = "PuOr", direction = -1)(3))
+
+            scale_factor = 0.05
+            width = max(1, length(sets_deg) * 0.5)
+            height = nrow(mat) * scale_factor
+
+            hm = Heatmap(mat, cluster_rows = hc, cluster_columns = FALSE, col=cols,
+                         row_names_gp = gpar(fontsize=6),
+                         width = unit(width, "in"),
+                         height = unit(height, "in"))
+
+            pdf(file.path(out_dir, str_interp("${tf_name}_target_deg_heatmap_${dist_method}_${hclust_method}.pdf")),
+                height = height + 2, width = width + 2)
+            print(hm)
+            dev.off()
+          }, error = function(e) {
+            cat("Skipping DEG heatmap for", tf_name, dist_method, hclust_method, ":", conditionMessage(e), "\n")
+          })
+        })
+      })
+    }
+  }
+
+
+  return(list(features = features_cur, ereg = ereg_cur))
+}
+
+plot_deg_scatter <- function(ereg, deg, tf_pattern, tf_name, out_dir,
+                             sets_deg) {
+
+  ereg_cur = ereg %>% filter(grepl(tf_pattern, eRegulon_name))
+  features_cur = unique(ereg_cur$Gene)
+
+  if (length(features_cur) == 0) {
+    cat("No target genes found for", tf_name, "\n")
+    return(NULL)
+  }
+
+  deg_w = deg %>%
+    filter(set %in% sets_deg) %>%
+    filter(gene %in% features_cur) %>%
+    pivot_wider(
+      id_cols = -c(p_val, pct.1, pct.2, p_val_adj),
+      names_from = "set",
+      values_from = "avg_log2FC"
+    )
+
+  deg_w = deg_w %>% left_join(ereg_cur %>% rename(gene = Gene))
+
+  y_vals = deg_w[[sets_deg[2]]]
+  y_min = min(y_vals, na.rm = TRUE)
+  y_max = max(y_vals, na.rm = TRUE)
+
+  ## Plot scatter of DEGs
+  x_vals = deg_w[[sets_deg[1]]]
+  x_min = min(x_vals, na.rm = TRUE)
+  x_max = max(x_vals, na.rm = TRUE)
+
+  # Calculate Pearson correlation
+  cor_val = cor(x_vals, y_vals, use = "complete.obs")
+  cor_label = sprintf("r = %.2f", cor_val)
+
+  colors_to_plot = c("importance_TF2G", "importance_log_TF2G", "importance_x_rho_TF2G", "importance_x_rho_log_TF2G")
+  walk(colors_to_plot, function(color_to_plot) {
+    gg = ggplot(deg_w, aes(.data[[sets_deg[1]]], .data[[sets_deg[2]]])) +
+      geom_hline(yintercept=0, linetype=1, linewidth=0.3) +
+      geom_vline(xintercept=0, linetype=1, linewidth=0.3) +
+      geom_point(aes(color = .data[[color_to_plot]]), size=0.5) +
+      annotate("text", x = x_min, y = y_max, label = cor_label,
+               hjust = 0, vjust = 1, size = 2) +
+      scale_color_viridis() +
+      lims(y = c(y_min, y_max)) +
+      coord_fixed(ratio = 1) +
+      theme_bw(base_size = 6) +
+      theme(
+        aspect.ratio = 1,
+        legend.position = "right",
+        legend.key.size = unit(0.15, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 4),
+        axis.title = element_text(size = 6),
+        axis.text = element_text(size = 5),
+        plot.margin = margin(2, 2, 2, 2, "pt")
+      )
+    print(gg)
+
+    save_plot(file.path(out_dir, str_interp("${tf_name}_target_deg_scatter_${color_to_plot}.pdf")), gg,
+              base_height = 2, base_width = 3)
+  })
+}
+
+plot_deg_density <- function(ereg, deg, tf_pattern, tf_name, out_dir, sets_deg) {
+  ereg_cur = ereg %>% filter(grepl(tf_pattern, eRegulon_name))
+  features_cur = unique(ereg_cur$Gene)
+
+  if (length(features_cur) == 0) {
+    cat("No target genes found for", tf_name, "\n")
+    return(NULL)
+  }
+
+  # Pivot DEG data to wide format with sets_deg columns
+  deg_w = deg %>%
+    filter(set %in% sets_deg) %>%
+    pivot_wider(
+      id_cols = gene,
+      names_from = "set",
+      values_from = "avg_log2FC"
+    ) %>%
+    filter(!is.na(.data[[sets_deg[1]]]) & !is.na(.data[[sets_deg[2]]]))
+
+  deg_all = deg_w %>% mutate(group = "all genes") %>%
+    mutate(column_prod = abs(.data[[sets_deg[1]]] * .data[[sets_deg[2]]])) %>%
+    filter(column_prod > .1)
+
+  deg_ereg = deg_w %>%
+    filter(gene %in% features_cur) %>%
+    left_join(ereg_cur %>% rename(gene = Gene), by = "gene") %>%
+    mutate(group = tf_name)
+
+  # Create grey color palette for filled density
+  n_bins = 8
+  grey_colors = colorRampPalette(c("white", "grey20"))(n_bins)
+
+  colors_to_plot = c("importance_TF2G", "importance_log_TF2G", "importance_x_rho_TF2G", "importance_x_rho_log_TF2G")
+  walk(colors_to_plot, function(color_to_plot) {
+    gg = ggplot() +
+      geom_density_2d_filled(data = deg_all,
+                             aes(.data[[sets_deg[1]]], .data[[sets_deg[2]]]),
+                             bins = n_bins) +
+      scale_fill_manual(values = grey_colors, guide = "none") +
+      geom_point(data = deg_ereg,
+                 aes(.data[[sets_deg[1]]], .data[[sets_deg[2]]], color = .data[[color_to_plot]]),
+                 size = 0.1, alpha = 0.6) +
+      scale_color_viridis() +
+      geom_hline(yintercept = 0, linetype = 2, linewidth = 0.3) +
+      geom_vline(xintercept = 0, linetype = 2, linewidth = 0.3) +
+      coord_fixed(ratio = 1) +
+      labs(x = sets_deg[1], y = sets_deg[2]) +
+      theme_bw(base_size = 6) +
+      theme(
+        aspect.ratio = 1,
+        legend.position = "right",
+        legend.key.size = unit(0.15, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 4),
+        axis.title = element_text(size = 6),
+        axis.text = element_text(size = 5),
+        plot.margin = margin(2, 2, 2, 2, "pt"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+      )
+    print(gg)
+
+    save_plot(file.path(out_dir, str_interp("${tf_name}_deg_density2d_${color_to_plot}.pdf")), gg,
+              base_height = 2, base_width = 3)
+  })
+
+  # Separate plot with filled 2d density for eRegulon genes (no points)
+  blue_colors = colorRampPalette(c("white", "steelblue"))(n_bins)
+
+  gg_density = ggplot() +
+    geom_density_2d_filled(data = deg_all,
+                           aes(.data[[sets_deg[1]]], .data[[sets_deg[2]]]),
+                           bins = n_bins) +
+    scale_fill_manual(values = grey_colors, guide = "none") +
+    ggnewscale::new_scale_fill() +
+    geom_density_2d_filled(data = deg_ereg,
+                           aes(.data[[sets_deg[1]]], .data[[sets_deg[2]]]),
+                           bins = n_bins, alpha = 0.7) +
+    scale_fill_manual(values = blue_colors, guide = "none") +
+    geom_hline(yintercept = 0, linetype = 2, linewidth = 0.3) +
+    geom_vline(xintercept = 0, linetype = 2, linewidth = 0.3) +
+    coord_fixed(ratio = 1) +
+    labs(x = sets_deg[1], y = sets_deg[2]) +
+    theme_bw(base_size = 6) +
+    theme(
+      aspect.ratio = 1,
+      legend.position = "none",
+      axis.title = element_text(size = 6),
+      axis.text = element_text(size = 5),
+      plot.margin = margin(2, 2, 2, 2, "pt"),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  print(gg_density)
+
+  save_plot(file.path(out_dir, str_interp("${tf_name}_deg_density2d_filled.pdf")), gg_density,
+            base_height = 2, base_width = 2)
+}
+
+#' Permutation test for eRegulon gene distribution
+#' Tests whether eRegulon genes have a different DE distribution than expected by chance
+permutation_test_deg <- function(ereg, deg, tf_pattern, tf_name, sets_deg,
+                                  n_perm = 1000, stat_fn = c("correlation", "mean_product")) {
+  stat_fn = match.arg(stat_fn)
+
+  ereg_cur = ereg %>% filter(grepl(tf_pattern, eRegulon_name))
+  features_cur = unique(ereg_cur$Gene)
+  n_features = length(features_cur)
+
+  if (n_features == 0) {
+    cat("No target genes found for", tf_name, "\n")
+    return(NULL)
+  }
+
+  # Pivot DEG data to wide format
+  deg_w = deg %>%
+    filter(set %in% sets_deg) %>%
+    pivot_wider(
+      id_cols = gene,
+      names_from = "set",
+      values_from = "avg_log2FC"
+    ) %>%
+    filter(!is.na(.data[[sets_deg[1]]]) & !is.na(.data[[sets_deg[2]]]))
+
+  all_genes = deg_w$gene
+  x_all = deg_w[[sets_deg[1]]]
+  y_all = deg_w[[sets_deg[2]]]
+
+  # Calculate observed statistic
+  deg_ereg = deg_w %>% filter(gene %in% features_cur)
+  x_obs = deg_ereg[[sets_deg[1]]]
+  y_obs = deg_ereg[[sets_deg[2]]]
+
+  if (stat_fn == "correlation") {
+    obs_stat = cor(x_obs, y_obs, use = "complete.obs")
+  } else {
+    obs_stat = mean(x_obs * y_obs, na.rm = TRUE)
+  }
+
+  # Permutation test - sample random genes of same size
+  set.seed(42)
+  perm_stats = map_dbl(1:n_perm, function(i) {
+    idx = sample(1:nrow(deg_w), n_features, replace = FALSE)
+    x_perm = x_all[idx]
+    y_perm = y_all[idx]
+
+    if (stat_fn == "correlation") {
+      cor(x_perm, y_perm, use = "complete.obs")
+    } else {
+      mean(x_perm * y_perm, na.rm = TRUE)
+    }
+  })
+
+  # Calculate p-value (two-tailed)
+  p_val = mean(abs(perm_stats) >= abs(obs_stat))
+
+  cat(sprintf("%s: observed %s = %.3f, p-value = %.4f (n_genes = %d, n_perm = %d)\n",
+              tf_name, stat_fn, obs_stat, p_val, n_features, n_perm))
+
+  list(
+    tf_name = tf_name,
+    stat_fn = stat_fn,
+    obs_stat = obs_stat,
+    perm_stats = perm_stats,
+    p_val = p_val,
+    n_features = n_features
+  )
+}
+```
+
+```{r}
+#' Run GO analysis for eRegulons
+run_go_analysis = function(ereg_sane, all_genes_id, out_dir) {
+  tfs = unique(ereg_sane$TF)
+  go_fname = file.path(out_dir, "gos.rds")
+
+  gos = map(tfs, function(tf) {
+    ereg_sane_cur = ereg_sane %>% filter(TF == tf)
+    regs = unique(ereg_sane_cur$regulation)
+
+    go_cur = map(regs, function(reg) {
+      ereg_sane_cur1 = ereg_sane_cur %>% filter(regulation==reg)
+      sel_genes = unique(ereg_sane_cur1$Gene)
+      sel_genes_id = bitr(sel_genes, "SYMBOL", "ENTREZID", OrgDb = org.Hs.eg.db)
+
+      if (nrow(sel_genes_id) > 0) {
+        go = enrichGO(gene = sel_genes_id$ENTREZID,
+                      universe = all_genes_id$ENTREZID,
+                      OrgDb = org.Hs.eg.db,
+                      ont = "ALL",
+                      maxGSSize = 200,
+                      readable = TRUE)
+        return(go)
+      }
+      return(NULL)
+    }) %>% set_names(regs)
+  }) %>% set_names(tfs)
+
+  saveRDS(gos, go_fname)
+
+  go_df = map(gos, function(go1) {
+    map(go1, function(x) if(!is.null(x)) as.data.frame(x) else NULL) %>%
+      compact() %>%
+      bind_rows(.id = "sign")
+  }) %>% bind_rows(.id="pair")
+
+  return(list(gos = gos, go_df = go_df))
+}
+```
+
+```{r}
+#' Export eRegulon data
+export_eregulon_data = function(ereg_sane, ereg_tf, ereg_tftf, out_dir) {
+  # TF networks export
+  ereg_sane_out = ereg_sane %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(TF, Gene, regulation, contains("importance"), contains("rho"))
+  write_delim(ereg_sane_out, file.path(out_dir, "scenicplus_sane.txt"), delim="\t")
+
+  ereg_tf_out = ereg_tf %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(TF, Gene, regulation, contains("importance"), contains("rho"))
+  write_delim(ereg_tf_out, file.path(out_dir, "scenicplus_tf-tf.txt"), delim="\t")
+
+  ereg_tftf_out = ereg_tftf %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(TF, Gene, regulation, contains("importance"), contains("rho"))
+  write_delim(ereg_tftf_out, file.path(out_dir, "scenicplus_tf-tf-only.txt"), delim="\t")
+
+  # Export for Cytoscape
+  write_delim(ereg_sane %>% select(-is_extended),
+              file.path(out_dir, "scenicplus_eRegulons.txt"), delim="\t")
+
+  ereg_sane_un = ereg_sane %>%
+    distinct(TF, Gene, .keep_all=T) %>%
+    select(-is_extended)
+  write_delim(ereg_sane_un, file.path(out_dir, "scenicplus_eRegulons_unique-gene.txt"), delim="\t")
+}
+```
+
+## Process single config function
+```{r}
+process_config = function(config_name, scplus_dir, working_dir, out_dir_base,
+                          obj, obj_avg, tfs_dbd, deg, all_genes_id, deg_color_limit=NULL) {
+
+  cat("\n\n========================================\n")
+  cat("Processing:", config_name, "\n")
+  cat("========================================\n\n")
+
+  ## Set up paths for this config
+  ereg_file = file.path(scplus_dir, working_dir, "scenicplus", config_name, "outs", "scplusmdata.h5mu")
+
+  ## Check if file exists
+  if (!file.exists(ereg_file)) {
+    cat("Skipping", config_name, "- file not found:", ereg_file, "\n")
+    return(NULL)
+  }
+
+  out_dir = file.path(out_dir_base, config_name)
+  dir.create(out_dir, showWarnings = FALSE)
+
+  ## Extract data
+  cis_types = c("direct", "extended")
+
+  ereg = map(cis_types, \(cis_type) {
+    ereg_cur = rhdf5::h5read(ereg_file, name = str_interp("/uns/${cis_type}_e_regulon_metadata")) %>%
+      do.call(cbind.data.frame, .)
+  }) %>% bind_rows() %>% mutate(class = "Glut")
+
+  gene_auc = map(cis_types, \(cis_type) {
+    extract_matrix(ereg_file, str_interp("/mod/${cis_type}_gene_based_AUC"))
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  region_auc = map(cis_types, \(cis_type) {
+    extract_matrix(ereg_file, str_interp("/mod/${cis_type}_region_based_AUC"))
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  group_set = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts/obs"))
+  group_set = group_set[c("_index", "cluster")]
+  factor_ind = which(map_lgl(group_set, ~length(.x)==2))
+
+  for (fi in factor_ind) {
+    group_set[[fi]] = convert_category_to_factor(group_set[[fi]])
+  }
+  group_df = cbind.data.frame(group_set)
+
+  labels_order = levels(group_df$cluster)
+  labels_order = c(sort(grep("HVC", labels_order, value=T)),
+                   sort(grep("NC", labels_order, value=T)),
+                   sort(grep("Nido", labels_order, value=T)),
+                   sort(grep("RA", labels_order, value=T)),
+                   sort(grep("Arco", labels_order, value=T)),
+                   sort(grep("Glut-Pre", labels_order, value=T), decreasing = T),
+                   sort(grep("GABA", labels_order, value=T)),
+                   sort(grep("GABA-Pre", labels_order, value=T)),
+                   sort(grep("Astro", labels_order, value=T)),
+                   sort(grep("Epen", labels_order, value=T)),
+                   sort(grep("Oligo", labels_order, value=T)),
+                   sort(grep("OPC", labels_order, value=T)),
+                   sort(grep("Micro", labels_order, value=T)),
+                   sort(grep("Endo", labels_order, value=T)))
+  labels_order = unique(labels_order)
+
+  group_df = group_df %>%
+    mutate(cluster = factor(cluster, levels=labels_order))
+
+  gene_auc = gene_auc %>% left_join(group_df)
+  region_auc = region_auc %>% left_join(group_df)
+
+  gene_auc = gene_auc %>% filter(!is.na(cluster))
+  region_auc = region_auc %>% filter(!is.na(cluster))
+
+  ereg = ereg %>%
+    mutate(importance_x_abs_rho_TF2G = importance_TF2G * abs(rho_TF2G),
+           importance_x_rho_TF2G = importance_TF2G * rho_TF2G) %>%
+    mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
+           importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
+           importance_log_TF2G = log(importance_TF2G))
+
+  ## Filter eRegulons
+  ereg_sane = ereg %>%
+    filter(grepl("\\+\\/\\+", eRegulon_name) | grepl("-\\/-", eRegulon_name))
+  ereg_tf = ereg_sane %>%
+    filter(Gene %in% tfs_dbd$Name)
+  ereg_tftf = ereg_sane %>% filter(Gene %in% .$TF)
+
+  ## Heatmaps
+  cat("Generating heatmaps...\n")
+  plot_auc_heatmaps(gene_auc, obj_avg, "\\+\\/\\+", out_dir, "positive", "Greys")
+  plot_auc_heatmaps(gene_auc, obj_avg, "\\-\\/\\-", out_dir, "negative", "BuGn")
+
+  ## UMAP plots (eRegulon targets only - TF UMAPs generated outside loop)
+  cat("Generating eRegulon UMAP plots...\n")
+  umap_dir = file.path(out_dir, "umaps")
+  dir.create(umap_dir, showWarnings = FALSE)
+
+  ereg_select = c("MAFB_extended_+/+", "EMX2_direct_+/+")
+  plot_eregulon_umaps(obj, ereg_sane, ereg_select, umap_dir, nplot = 10)
+
+  ## Dot plots
+  cat("Generating dot plots...\n")
+  dot_dir = file.path(out_dir, "dotplots")
+  plot_eregulon_dotplots(obj, ereg_sane, ereg_select, dot_dir, labels_order, nplot = 20)
+
+  ## TF target gene differential expression plots
+  cat("Generating TF target DEG plots...\n")
+  tf_deg_dir = file.path(out_dir, "tf_target_deg")
+  dir.create(tf_deg_dir, showWarnings = FALSE)
+
+  # MAFB
+  plot_tf_target_deg(
+    ereg = ereg,
+    obj_avg = obj_avg,
+    deg = deg,
+    tf_pattern = "MAFB_.*_\\+\\/\\+",
+    tf_name = "MAFB",
+    out_dir = tf_deg_dir,
+    clusters_expr = c("Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "GABA-2-1", "GABA-3", "GABA-4-1", "GABA-1-1"),
+    sets_deg = c("ra", "gaba4"),
+    color_limit = deg_color_limit
+  )
+
+  # EMX2
+  plot_tf_target_deg(
+    ereg = ereg,
+    obj_avg = obj_avg,
+    deg = deg,
+    tf_pattern = "EMX2_.*_\\+\\/\\+",
+    tf_name = "EMX2",
+    out_dir = tf_deg_dir,
+    clusters_expr = grep("RA|Arco|Astro|Oligo", colnames(obj_avg), value = TRUE),
+    sets_deg = c("ra", "astro"),
+    color_limit = deg_color_limit
+  )
+
+  ## DEG scatter plots
+  cat("Generating DEG scatter plots...\n")
+  plot_deg_scatter(ereg, deg = deg, tf_pattern = "MAFB_.*_\\+\\/\\+",
+                   tf_name = "MAFB", out_dir = tf_deg_dir,
+                   sets_deg = c("ra", "gaba4"))
+  plot_deg_scatter(ereg, deg = deg, tf_pattern = "EMX2_.*_\\+\\/\\+",
+                   tf_name = "EMX2", out_dir = tf_deg_dir,
+                   sets_deg = c("ra", "astro"))
+
+  ## DEG density plots
+  cat("Generating DEG density plots...\n")
+  plot_deg_density(ereg, deg = deg, tf_pattern = "MAFB_.*_\\+\\/\\+",
+                   tf_name = "MAFB", out_dir = tf_deg_dir,
+                   sets_deg = c("ra", "gaba4"))
+  plot_deg_density(ereg, deg = deg, tf_pattern = "EMX2_.*_\\+\\/\\+",
+                   tf_name = "EMX2", out_dir = tf_deg_dir,
+                   sets_deg = c("ra", "astro"))
+
+  ## Permutation tests
+  cat("Running permutation tests...\n")
+  perm_results = list()
+  perm_results[["MAFB"]] = permutation_test_deg(
+    ereg, deg, tf_pattern = "MAFB_.*_\\+\\/\\+",
+    tf_name = "MAFB", sets_deg = c("ra", "gaba4"),
+    stat_fn = "mean_product", n_perm = 1E4)
+  perm_results[["EMX2"]] = permutation_test_deg(
+    ereg, deg, tf_pattern = "EMX2_.*_\\+\\/\\+",
+    tf_name = "EMX2", sets_deg = c("ra", "astro"),
+    stat_fn = "mean_product", n_perm = 1E4)
+
+  perm_summary = bind_rows(lapply(perm_results, function(x) {
+    if (is.null(x)) return(NULL)
+    data.frame(tf = x$tf_name, stat_fn = x$stat_fn, obs_stat = x$obs_stat,
+               p_val = x$p_val, n_features = x$n_features)
+  }))
+  write_delim(perm_summary, file.path(out_dir, "permutation_test_results.txt"), delim = "\t")
+
+  ## GO analysis
+  #cat("Running GO analysis...\n")
+  #go_results = run_go_analysis(ereg_sane, all_genes_id, out_dir)
+
+  ## Export data
+  cat("Exporting data...\n")
+  export_eregulon_data(ereg_sane, ereg_tf, ereg_tftf, out_dir)
+
+  cat("\nCompleted processing:", config_name, "\n")
+  return(list(ereg = ereg, ereg_sane = ereg_sane, perm_results = perm_results))
+}
+```
+
+## Load single config for testing
+```{r}
+#' Load data from a single config for interactive testing of plotting functions
+#' Set test_mode = TRUE to load just one config's data without running full analysis
+test_mode = FALSE
+test_config = "config11"  # Change this to test different configs
+
+load_single_config <- function(config_name, scplus_dir, working_dir, obj, tfs_dbd) {
+  ereg_file = file.path(scplus_dir, working_dir, "scenicplus", config_name, "outs", "scplusmdata.h5mu")
+
+  if (!file.exists(ereg_file)) {
+    stop("File not found: ", ereg_file)
+  }
+
+  cis_types = c("direct", "extended")
+
+  ereg = map(cis_types, \(cis_type) {
+    ereg_cur = rhdf5::h5read(ereg_file, name = str_interp("/uns/${cis_type}_e_regulon_metadata")) %>%
+      do.call(cbind.data.frame, .)
+  }) %>% bind_rows() %>% mutate(class = "Glut")
+
+  gene_auc = map(cis_types, \(cis_type) {
+    extract_matrix(ereg_file, str_interp("/mod/${cis_type}_gene_based_AUC"))
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  region_auc = map(cis_types, \(cis_type) {
+    extract_matrix(ereg_file, str_interp("/mod/${cis_type}_region_based_AUC"))
+  }) %>% bind_cols() %>% rownames_to_column("_index")
+
+  group_set = rhdf5::h5read(ereg_file, name = str_interp("/mod/scRNA_counts/obs"))
+  group_set = group_set[c("_index", "cluster")]
+  factor_ind = which(map_lgl(group_set, ~length(.x)==2))
+  for (fi in factor_ind) {
+    group_set[[fi]] = convert_category_to_factor(group_set[[fi]])
+  }
+  group_df = cbind.data.frame(group_set)
+
+  labels_order = levels(group_df$cluster)
+  labels_order = c(sort(grep("HVC", labels_order, value=T)),
+                   sort(grep("NC", labels_order, value=T)),
+                   sort(grep("Nido", labels_order, value=T)),
+                   sort(grep("RA", labels_order, value=T)),
+                   sort(grep("Arco", labels_order, value=T)),
+                   sort(grep("Glut-Pre", labels_order, value=T), decreasing = T),
+                   sort(grep("GABA", labels_order, value=T)),
+                   sort(grep("GABA-Pre", labels_order, value=T)),
+                   sort(grep("Astro", labels_order, value=T)),
+                   sort(grep("Epen", labels_order, value=T)),
+                   sort(grep("Oligo", labels_order, value=T)),
+                   sort(grep("OPC", labels_order, value=T)),
+                   sort(grep("Micro", labels_order, value=T)),
+                   sort(grep("Endo", labels_order, value=T)))
+  labels_order = unique(labels_order)
+
+  group_df = group_df %>% mutate(cluster = factor(cluster, levels=labels_order))
+
+  gene_auc = gene_auc %>% left_join(group_df) %>% filter(!is.na(cluster))
+  region_auc = region_auc %>% left_join(group_df) %>% filter(!is.na(cluster))
+
+  ereg = ereg %>%
+    mutate(importance_x_abs_rho_TF2G = importance_TF2G * abs(rho_TF2G),
+           importance_x_rho_TF2G = importance_TF2G * rho_TF2G) %>%
+    mutate(importance_x_rho_log_TF2G = log(importance_x_rho_TF2G),
+           importance_x_abs_rho_log_TF2G = log(importance_x_abs_rho_TF2G),
+           importance_log_TF2G = log(importance_TF2G))
+
+  ereg_sane = ereg %>%
+    filter(grepl("\\+\\/\\+", eRegulon_name) | grepl("-\\/-", eRegulon_name))
+  ereg_tf = ereg_sane %>% filter(Gene %in% tfs_dbd$Name)
+  ereg_tftf = ereg_sane %>% filter(Gene %in% .$TF)
+
+  list(
+    ereg = ereg,
+    ereg_sane = ereg_sane,
+    ereg_tf = ereg_tf,
+    ereg_tftf = ereg_tftf,
+    gene_auc = gene_auc,
+    region_auc = region_auc,
+    group_df = group_df,
+    labels_order = labels_order,
+    config_name = config_name
+  )
+}
+```
+
+```{r}
+# Load single config data when in test mode
+if (test_mode) {
+  cat("TEST MODE: Loading data from", test_config, "\n")
+  test_data = load_single_config(test_config, scplus_dir, working_dir, obj, tfs_dbd)
+
+  # Unpack for convenience - these variables are now available for testing
+  ereg = test_data$ereg
+  ereg_sane = test_data$ereg_sane
+  ereg_tf = test_data$ereg_tf
+  ereg_tftf = test_data$ereg_tftf
+  gene_auc = test_data$gene_auc
+  region_auc = test_data$region_auc
+  group_df = test_data$group_df
+  labels_order = test_data$labels_order
+
+  # Create test output directory
+  test_out_dir = file.path(out_dir_base, "test_plots")
+  dir.create(test_out_dir, showWarnings = FALSE)
+
+  cat("Data loaded. Available variables:\n")
+  cat("  ereg, ereg_sane, ereg_tf, ereg_tftf\n")
+  cat("  gene_auc, region_auc, group_df, labels_order\n")
+  cat("  test_out_dir:", test_out_dir, "\n")
+  cat("\nExample usage:\n")
+  cat("  plot_auc_heatmaps(gene_auc, obj_avg, '\\\\+\\\\/\\\\+', test_out_dir, 'test_pos', 'Greys')\n")
+}
+```
+
+```{r}
+
+if (test_mode) {
+  
+  #' Define expressed genes
+  obj_avg_cur = obj_avg[,c("Glut-RA", "Glut-Arco-1", "GABA-1-1", "GABA-4-1")]
+  
+  plot(density(obj_avg_cur[, "Glut-RA"]))
+  expr_thresh = 2
+  
+  genes_to_select = rownames(obj_avg_cur)[apply(obj_avg_cur, 1, function(x) any(x > expr_thresh))]
+  length(genes_to_select)
+  length(genes_to_select) / nrow(obj_avg_cur)
+  
+  tf_pattern = "MAFB_.*_\\+\\/\\+"
+  #tf_pattern = "MAFB_.*"
+  deg_cur = deg %>% filter(gene %in% genes_to_select)
+  plot_deg_scatter(ereg, deg = deg_cur,
+                   tf_name = "MAFB",
+                   tf_pattern = tf_pattern,
+                   out_dir = test_out_dir,
+                   sets_deg = c("ra", "gaba4"))
+  
+  plot_deg_density(ereg, deg = deg_cur,
+                   tf_name = "MAFB",
+                   tf_pattern = tf_pattern,
+                   out_dir = test_out_dir,
+                   sets_deg = c("ra", "gaba4"))
+  
+  perm_result = permutation_test_deg(ereg, deg_cur, tf_pattern = "MAFB_.*_\\+\\/\\+",
+                                     tf_name = "MAFB", sets_deg = c("ra", "gaba4"),
+                                     stat_fn = "mean_product", n_perm=1E5)
+  perm_result
+  
+  perm_result = permutation_test_deg(ereg, deg_cur, tf_pattern = "MAFB_.*_\\+\\/\\+",
+                                     tf_name = "MAFB", sets_deg = c("astro", "gaba4"),
+                                     stat_fn = "mean_product", n_perm=1E5)
+  
+  
+  tf_pattern = "EMX2_.*_\\+\\/\\+"
+  #tf_pattern = "EMX2_.*"
+  plot_deg_scatter(ereg, deg = deg,
+                   tf_name = "EMX2",
+                   tf_pattern = tf_pattern,
+                   out_dir = test_out_dir,
+                   sets_deg = c("ra", "astro"))
+  perm_result = permutation_test_deg(ereg, deg, tf_pattern = "EMX2_.*_\\+\\/\\+",
+                                     tf_name = "EMX2", sets_deg = c("ra", "astro"),
+                                     stat_fn = "mean_product")
+  perm_result
+  
+  gene_auc_mean = calculate_gene_auc_mean(gene_auc, ereg_pattern = "\\+\\/\\+")
+  gene_auc_spec = calculate_celltype_specificity(gene_auc_mean, method="zscore")
+  gene_auc_spec_mat = gene_auc_spec %>% select(tf, cluster, specificity) %>% pivot_wider(names_from = "cluster", values_from="specificity") %>%
+    column_to_rownames("tf") %>% as.matrix()
+  
+  mat = gene_auc_spec_mat
+  palette = "Greys"
+  colors = scales::brewer_pal(palette = palette, direction = 1)(9)
+  cols = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9), colors = colors)
+  
+  height = 10
+  width = height * ncol(mat) / nrow(mat)
+  hm = Heatmap(mat, cluster_columns = F, cluster_rows = T,
+               show_row_names = T,
+               #col = cols,
+               row_names_gp = gpar(fontsize=6), column_names_gp = gpar(fontsize=6),
+               height = unit(height, "in"), width = unit(width, "in"))
+  hm
+}
+```
+
+
+
+## Run analysis for all configs
+```{r}
+results = list()
+if (!test_mode) {
+  for (config_name in config_dirs) {
+    results[[config_name]] = process_config(
+      config_name = config_name,
+      scplus_dir = scplus_dir,
+      working_dir = working_dir,
+      out_dir_base = out_dir_base,
+      obj = obj,
+      obj_avg = obj_avg,
+      tfs_dbd = tfs_dbd,
+      deg = deg,
+      all_genes_id = all_genes_id,
+      deg_color_limit = 5
+    )
+  }
+}
+```
+
+## TF UMAPs (config-independent)
+```{r}
+# Collect all unique TFs across all configs
+all_tfs = unique(unlist(lapply(results, function(x) {
+  if (!is.null(x)) unique(x$ereg_sane$TF) else NULL
+})))
+
+cat("Generating TF UMAPs for", length(all_tfs), "TFs...\n")
+umap_dir_tfs = file.path(out_dir_base, "tf_umaps")
+plot_tf_umaps(obj, all_tfs, umap_dir_tfs)
+```
+
+## Summary
+```{r}
+cat("\n\nProcessing complete!\n")
+cat("Configs processed:", paste(names(results[!sapply(results, is.null)]), collapse = ", "), "\n")
+cat("Output directory:", out_dir_base, "\n")
+```
