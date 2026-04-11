@@ -132,7 +132,7 @@ apply_qc_filters <- function(obj, mito_features, max_mito = 2,
 ```
 
 ```{r process-seurat}
-redo <- FALSE
+redo <- TRUE
 
 if (redo) {
   # Load and merge data
@@ -256,7 +256,7 @@ plot_density_features <- function(obj, features, reduction, out_dir) {
 ```
 
 ```{r generate-plots}
-redo_plot <- FALSE
+redo_plot <- TRUE
 reduction <- "umap_rna_30_mindist0.3nn30"
 
 if (redo_plot) {
@@ -388,7 +388,7 @@ markers_pos_fname = file.path(out_dir, "markers_pos.rds")
 
 tg_genes = c("MAFB", "EMX2")
 cell_classes = c("Glut", "GABA", "PC")
-redo = F
+redo = T
 if (redo) {
 obj = PrepSCTFindMarkers(obj, assay = "SCT", verbose = TRUE)
 
@@ -552,65 +552,9 @@ walk(tg_genes, function(tg_cur) {
     save_plot(file.path(out_dir_tg, sprintf("ereg_density_avg_log2FC_%s.pdf", mset_name)), gg,
               base_height = 1.5, base_width = 3)
 
-    # Permutation test: sample n_focal genes from the full eRegulon pool 1000×
-    # and compare observed median/mean to the random null distribution.
-    n_focal_perm = nrow(focal_df)
-    pool_fc      = ereg_un_sel$avg_log2FC
-    obs_median   = median(focal_fc, na.rm = TRUE)
-    obs_mean     = mean(focal_fc,   na.rm = TRUE)
-
-    set.seed(10)
-    perm_stats = map_dfr(seq_len(1000), function(i) {
-      s = sample(pool_fc, n_focal_perm, replace = n_focal_perm > length(pool_fc))
-      tibble(perm_median = median(s), perm_mean = mean(s))
-    })
-
-    p_median = mean(perm_stats$perm_median >= obs_median)
-    p_mean   = mean(perm_stats$perm_mean   >= obs_mean)
-
-    # Density: focal FC vs all genes not in the selected eRegulon
-    all_genes_df = mset %>% filter(!gene %in% focal_df$gene)
-    gg_perm_density = ggplot() +
-      geom_density(data = all_genes_df, aes(avg_log2FC),
-                   fill = "gray70", color = "gray70", alpha = 0.5) +
-      geom_density(data = focal_df, aes(avg_log2FC), color = "firebrick") +
-      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
-               label = sprintf("perm p(med)=%.3g\nperm p(mean)=%.3g", p_median, p_mean)) +
-      labs(x = "avg_log2FC", title = sprintf("%s vs background (n=%d)", tg_cur, n_focal_perm)) +
-      theme_bw() + plot_theme()
-    print(gg_perm_density)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_density_%s.pdf", mset_name)),
-              gg_perm_density, base_height = 1.5, base_width = 2.5)
-
-    # Permutation distribution of median
-    gg_perm_med = ggplot(perm_stats, aes(perm_median)) +
-      geom_density(fill = "gray70", color = "gray70", alpha = 0.5) +
-      geom_vline(xintercept = obs_median, color = "firebrick", linetype = 2) +
-      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
-               label = sprintf("p=%.3g\nobs=%.3f", p_median, obs_median)) +
-      labs(x = "median avg_log2FC", title = sprintf("%s perm. median", tg_cur)) +
-      theme_bw() + plot_theme()
-    print(gg_perm_med)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_median_%s.pdf", mset_name)),
-              gg_perm_med, base_height = 1.5, base_width = 2)
-
-    # Permutation distribution of mean
-    gg_perm_mean = ggplot(perm_stats, aes(perm_mean)) +
-      geom_density(fill = "gray70", color = "gray70", alpha = 0.5) +
-      geom_vline(xintercept = obs_mean, color = "firebrick", linetype = 2) +
-      annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, size = 2,
-               label = sprintf("p=%.3g\nobs=%.3f", p_mean, obs_mean)) +
-      labs(x = "mean avg_log2FC", title = sprintf("%s perm. mean", tg_cur)) +
-      theme_bw() + plot_theme()
-    print(gg_perm_mean)
-    save_plot(file.path(out_dir_tg, sprintf("ereg_permtest_mean_%s.pdf", mset_name)),
-              gg_perm_mean, base_height = 1.5, base_width = 2)
-
     tibble(tg = tg_cur, marker_set = mset_name,
            ks_D = ks_res$statistic, ks_p = ks_res$p.value,
-           n_focal = length(focal_fc), n_other = length(other_fc),
-           perm_p_median = p_median, perm_p_mean = p_mean,
-           obs_median = obs_median, obs_mean = obs_mean)
+           n_focal = length(focal_fc), n_other = length(other_fc))
   })
   write_csv(ks_df, file.path(out_dir_tg, "ereg_ks_test_avg_log2FC.csv"))
   print(ks_df)
