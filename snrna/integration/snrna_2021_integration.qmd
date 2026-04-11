@@ -1,0 +1,472 @@
+---
+title: "Untitled"
+format: html
+editor: source
+---
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(qs)
+library(ComplexHeatmap)
+library(circlize)
+
+source("~/ssd/rstudio/multiome/song-system-grn/scripts/stats.R")
+source("~/ssd/rstudio/multiome/song-system-grn/scripts/common_aesthetics.R")
+```
+
+```{r}
+snrna_obj_fname = file.path("/hdd/brad/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/obj_clustered.qs")
+snrna_2021_obj_fname = file.path("/mnt/nest/sc_datasets/colquitt_2021/HVC_RA_paper.qs")
+
+out_dir = file.path("~/ssd/rstudio/multiome/song-system-grn/snrna/integration/")
+script_name = "snrna_2021_integration"
+out_dir = file.path(out_dir, script_name)
+dir.create(out_dir)
+
+obj_merged_fname = file.path(out_dir, "obj_merged.qs")
+```
+
+## Load and merge
+```{r}
+snrna_obj = qread(snrna_obj_fname)
+snrna_2021_obj = qread(snrna_2021_obj_fname)
+```
+
+```{r}
+# obj = merge(snrna_obj, snrna_2021_obj)
+# 
+# obj = obj %>%
+#   SCTransform() %>% 
+#   RunPCA(verbose=F)
+# 
+# saveRDS(obj, obj_merged_fname)
+```
+
+## Label transfer
+
+```{r}
+transfer_params = expand_grid(k.anchor = c(5),
+                              k.filter = c(NA, 50, 100),
+                              k.score = c(30),
+                              max.features = c(200, 400))
+dims_to_use = 1:20
+```
+
+```{r}
+cores_to_use = min(nrow(transfer_params), 20)
+```
+
+```{r}
+
+pred_long_fname = file.path(out_dir, "pred_long.rds")
+
+redo = T
+if (redo) {
+  
+  common_features = intersect(Features(snrna_2021_obj), Features(snrna_obj))
+  
+  snrna_2021_obj_common = snrna_2021_obj[common_features,]
+  
+  counts_bf = as(GetAssayData(snrna_obj, assay = "RNA", layer = "counts"), "dgCMatrix")
+  snrna_obj_common = CreateSeuratObject(counts = counts_bf[common_features, ],
+                                     meta.data = snrna_obj@meta.data)
+
+  DefaultAssay(snrna_obj_common) = "RNA"
+  DefaultAssay(snrna_2021_obj_common) = "RNA"
+  
+  snrna_2021_obj_common = snrna_2021_obj_common %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA()
+  
+  snrna_obj_common =  snrna_obj_common %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA()
+  
+  #snrna_obj_common = AddMetaData(snrna_obj_common, FetchData(snrna_obj, "cluster_int_sub2"))
+  
+  nparams = nrow(transfer_params)
+  pred_longs = lapply(1:nparams, function(i) {
+    k.anchor_cur <- transfer_params$k.anchor[i]
+    k.filter_cur <- transfer_params$k.filter[i]
+    k.score_cur <- transfer_params$k.score[i]
+    max.features_cur <- transfer_params$max.features[i]
+    
+    anchors = FindTransferAnchors(reference = snrna_2021_obj_common, 
+                                  normalization.method = "LogNormalize",
+                                  k.anchor = k.anchor_cur,
+                                  k.filter = k.filter_cur,
+                                  k.score = k.score_cur,
+                                  max.features = max.features_cur,
+                                  reduction = "rpca",
+                                  query = snrna_obj_common,
+                                  dims = dims_to_use
+    )
+    
+    predictions_cluster = TransferData(anchorset = anchors,
+                                       refdata = snrna_2021_obj_common$cluster_int_sub2,
+                                       dims = dims_to_use) %>%
+      mutate(predicted.id_cluster = predicted.id)
+    
+    predictions_cluster$cluster = snrna_obj_common$cluster
+    
+    pred_long = predictions_cluster %>%
+      dplyr::select(contains("prediction.score"), "cluster") %>%
+      dplyr::select(-prediction.score.max) %>%
+      pivot_longer(contains("prediction"), names_to="col_tmp") %>%
+      mutate(col1 = str_replace( col_tmp, "prediction.score.", "")) %>%
+      mutate(cluster_int_sub2 = gsub("\\.", "-", col1)) %>%
+      mutate(k.anchor = k.anchor_cur,
+             k.filter = k.filter_cur,
+             k.score = k.score_cur,
+             max.features = max.features_cur)
+    return(pred_long)
+  })
+  
+  pred_long = pred_longs %>% bind_rows()
+  saveRDS(pred_long, pred_long_fname)
+} else {
+  pred_long = readRDS(pred_long_fname)
+}
+```
+
+
+## Mean probabilities
+```{r}
+cluster_order = c(
+                  c("Glut-HVC-1", "Glut-NC-1"),
+                  c("Glut-HVC-2", "Glut-NC-4", "Glut-NC-3"),
+                  c( "Glut-NC-2", "Glut-Nido-1", "Glut-Nido-2", "Glut-Nido-3"),
+                   c("Glut-LMAN-1", "Glut-NR-1", "Glut-NR-3" ),
+                  c("Glut-LMAN-2", "Glut-NR-4", "Glut-NR-2", "Glut-NR-5"),
+                  c("Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "Glut-Arco-3", "Glut-Arco-4", "Glut-Arco-5"))
+```
+
+```{r}
+pred_long_sum = pred_long %>%
+  ungroup() %>% 
+  group_by(cluster_int_sub2, cluster, k.anchor, k.filter, k.score, max.features) %>%
+  dplyr::summarize(value_mean = mean(value),
+                   value_median = median(value),
+                   value_sem = sem(value)) %>%
+  mutate(param_set = paste(k.anchor, k.filter, k.score, max.features, sep="_"))
+
+pred_long_split = split(pred_long_sum, pred_long_sum$param_set)
+
+pred_long_mats = map(pred_long_split, function(pred_long_sum_cur) {
+  pred_long_mat = pred_long_sum_cur %>%
+    ungroup() %>% 
+    dplyr::select(-value_sem, -value_median, -k.anchor, -k.filter, -k.score, -max.features, -param_set) %>%
+    pivot_wider(names_from = "cluster", values_from = "value_mean") %>%
+    column_to_rownames("cluster_int_sub2") %>%
+    as.matrix() %>%
+    t()
+  
+  #pred_long_mat = pred_long_mat[intersect(cluster_order, rownames(pred_long_mat)),]
+  pred_long_mat
+})
+
+
+```
+
+```{r}
+colors_df = data.frame(cluster = cluster_order) %>%
+  mutate(col = case_when(grepl("HVC", cluster) ~ position_colors["hvc"],
+                         grepl("NC|Nido", cluster) ~ position_colors["ncl"],
+                         grepl("LMAN", cluster) ~ position_colors["lman"],
+                         grepl("NR", cluster) ~ position_colors["nido"],
+                         grepl("RA", cluster) ~ position_colors["ra"],
+                         grepl("Arco", cluster) ~ position_colors["arco"]))
+```
+
+
+
+#### Heatmap with bar
+```{r}
+pred_long_sum2 = pred_long_sum %>%
+  group_by(cluster, param_set, k.anchor, k.filter, k.score, max.features) %>%
+  summarize(value_mean_sum = sum(value_mean),
+            value_mean_max = max(value_mean),
+            value_median_max = max(value_median)) %>%
+  left_join(colors_df) %>%
+  mutate(cluster = factor(cluster, levels=rev(cluster_order))) 
+```
+
+```{r}
+
+walk(names(pred_long_mats), function(param_set_cur) {
+  pred_long_mat = pred_long_mats[[param_set_cur]]
+  pred_long_sum2_cur = pred_long_sum2 %>% 
+    dplyr::filter(param_set == param_set_cur)
+  ncolors=9
+  cols = colorRamp2(breaks = seq(0,1,length.out=ncolors), 
+                    colors = brewer_pal(palette = "Greys")(ncolors))
+  
+  ncols = ncol(pred_long_mat)
+  height_box = .05
+  height = height_box * ncols
+  width = height * ncols / nrow(pred_long_mat)
+  hm = Heatmap(pred_long_mat, 
+               col=cols, 
+               border = T,
+               name = param_set_cur,
+               cluster_rows = T,
+               column_names_gp = gpar(fontsize=6),
+               show_column_dend = T,
+               row_names_gp = gpar(fontsize=6),
+               row_names_side = "left",
+               #clustering_method_columns = "ward.D",
+               height = unit(height, "in"),
+               width = unit(width, "in"))
+  print(hm)
+  pdf(file.path(out_dir, str_interp("prob_with-sum_${param_set_cur}.pdf")),
+      height = height + 2, width = width + 6)
+  print(hm)
+  dev.off()
+})
+
+```
+
+```{r}
+walk(names(pred_long_mats), function(param_set_cur) {
+  pred_long_mat = pred_long_mats[[param_set_cur]]
+  pred_long_sum2_cur = pred_long_sum2 %>% 
+    dplyr::filter(param_set == param_set_cur)
+  ncolors=9
+  cols = colorRamp2(breaks = seq(0,1,length.out=ncolors), colors = brewer_pal(palette = "Greys")(ncolors))
+  
+  ncols = ncol(pred_long_mat)
+  height_box = .06
+  height = height_box * ncols
+  width = height * ncols / nrow(pred_long_mat)
+  hm = Heatmap(pred_long_mat, 
+               col=cols, 
+               name = param_set_cur,
+               border = T,
+               cluster_rows = F,
+               column_names_gp = gpar(fontsize=6),
+               show_column_dend = F,
+               row_names_gp = gpar(fontsize=6),
+               row_names_side = "left",
+               clustering_method_columns = ,
+               height = unit(height, "in"),
+               width = unit(width, "in"))
+  print(hm)
+  pdf(file.path(out_dir, str_interp("prob_with-max_${param_set_cur}.pdf")),
+      height = height + 2, width = width + 6)
+  print(hm)
+  dev.off()
+})
+```
+```{r}
+walk(names(pred_long_mats), function(param_set_cur) {
+  pred_long_sum2_cur = pred_long_sum2 %>% 
+    dplyr::filter(param_set == param_set_cur)
+  pred_long_sum3 = pred_long_sum2_cur %>% 
+    mutate(position2 = names(position_colors)[match(col, position_colors)]) %>%
+    mutate(position2 = factor(position2, levels=c("hvc", "ncl", "lman", "nido", "ra", "arco"),
+                              labels = c("HVC", "NC", "LMAN", "NR", "RA", "Arco")))
+  
+  pred_long_sum4 = pred_long_sum3 %>%
+    ungroup() %>% 
+    group_by(position2, col) %>%
+    summarize(value_mean_max_mean = mean(value_mean_max))
+  gg = ggplot(pred_long_sum3, aes(position2, value_mean_max)) +
+    geom_bar(aes(y=value_mean_max_mean, fill=col), data=pred_long_sum4, stat = "identity") +
+    scale_fill_identity() +
+    labs(x="", y="") + 
+    theme_classic() + 
+    
+    theme(axis.text = element_text(size=6),
+          axis.text.x = element_text(angle=90, vjust=.5, hjust=1))
+  gg
+  save_plot(file.path(out_dir, str_interp("max_mean_by_position_${param_set_cur}.pdf")), gg, base_width=1.5, base_height = 1.5)
+})
+```
+
+```{r}
+pred_long_sum2 = pred_long_sum %>%
+  group_by(cluster) %>%
+  summarize(value_mean_sum = sum(value_mean),
+            value_mean_max = max(value_mean),
+            value_median_max = max(value_median)) %>%
+  left_join(colors_df) %>%
+  mutate(cluster = factor(cluster, levels=rev(cluster_order)))
+```
+
+---
+
+## Glut-only integration
+
+```{r}
+out_dir_glut = file.path(out_dir, "glut")
+dir.create(out_dir_glut, showWarnings = FALSE)
+
+pred_long_glut_fname = file.path(out_dir_glut, "pred_long_glut.rds")
+
+cluster_order_glut = c(
+  c("Glut-HVC-1", "Glut-NC-1"),
+  c("Glut-HVC-2", "Glut-NC-4", "Glut-NC-3"),
+  c("Glut-NC-2", "Glut-Nido-1", "Glut-Nido-2", "Glut-Nido-3"),
+  c("Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "Glut-Arco-3", "Glut-Arco-4", "Glut-Arco-5"))
+
+colors_df_glut = data.frame(cluster = cluster_order_glut) %>%
+  mutate(col = case_when(grepl("HVC",  cluster) ~ position_colors["hvc"],
+                         grepl("NC|Nido", cluster) ~ position_colors["ncl"],
+                         grepl("RA",   cluster) ~ position_colors["ra"],
+                         grepl("Arco", cluster) ~ position_colors["arco"]))
+```
+
+```{r}
+redo_glut = T
+if (redo_glut) {
+
+  cells_snrna_glut      = Cells(snrna_obj)[grepl("Glut", snrna_obj$cluster) &
+                                             !grepl("Pre|NR|LMAN", snrna_obj$cluster)]
+  cells_2021_glut       = Cells(snrna_2021_obj)[grepl("Glut", snrna_2021_obj$cluster_int_sub2) &
+                                                  !grepl("NR|LMAN", snrna_2021_obj$cluster_int_sub2)]
+
+  snrna_obj_glut        = snrna_obj[, cells_snrna_glut]
+  snrna_2021_obj_glut   = snrna_2021_obj[, cells_2021_glut]
+
+  common_features_glut  = intersect(Features(snrna_2021_obj_glut), Features(snrna_obj_glut))
+
+  snrna_2021_obj_glut_c = snrna_2021_obj_glut[common_features_glut, ]
+
+  counts_glut           = as(GetAssayData(snrna_obj_glut, assay = "RNA", layer = "counts"), "dgCMatrix")
+  snrna_obj_glut_c      = CreateSeuratObject(counts = counts_glut[common_features_glut, ],
+                                              meta.data = snrna_obj_glut@meta.data)
+
+  DefaultAssay(snrna_obj_glut_c)      = "RNA"
+  DefaultAssay(snrna_2021_obj_glut_c) = "RNA"
+
+  snrna_2021_obj_glut_c = snrna_2021_obj_glut_c %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA()
+
+  snrna_obj_glut_c = snrna_obj_glut_c %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA()
+
+  nparams = nrow(transfer_params)
+  pred_longs_glut = lapply(1:nparams, function(i) {
+    k.anchor_cur    <- transfer_params$k.anchor[i]
+    k.filter_cur    <- transfer_params$k.filter[i]
+    k.score_cur     <- transfer_params$k.score[i]
+    max.features_cur <- transfer_params$max.features[i]
+
+    anchors = FindTransferAnchors(reference = snrna_2021_obj_glut_c,
+                                  normalization.method = "LogNormalize",
+                                  k.anchor = k.anchor_cur,
+                                  k.filter = k.filter_cur,
+                                  k.score = k.score_cur,
+                                  max.features = max.features_cur,
+                                  reduction = "rpca",
+                                  query = snrna_obj_glut_c,
+                                  dims = dims_to_use)
+
+    predictions_cluster = TransferData(anchorset = anchors,
+                                       refdata = snrna_2021_obj_glut_c$cluster_int_sub2,
+                                       dims = dims_to_use) %>%
+      mutate(predicted.id_cluster = predicted.id)
+
+    predictions_cluster$cluster = snrna_obj_glut_c$cluster
+
+    pred_long = predictions_cluster %>%
+      dplyr::select(contains("prediction.score"), "cluster") %>%
+      dplyr::select(-prediction.score.max) %>%
+      pivot_longer(contains("prediction"), names_to = "col_tmp") %>%
+      mutate(col1 = str_replace(col_tmp, "prediction.score.", "")) %>%
+      mutate(cluster_int_sub2 = gsub("\\.", "-", col1)) %>%
+      mutate(k.anchor = k.anchor_cur,
+             k.filter = k.filter_cur,
+             k.score = k.score_cur,
+             max.features = max.features_cur)
+    return(pred_long)
+  })
+
+  pred_long_glut = pred_longs_glut %>% bind_rows()
+  saveRDS(pred_long_glut, pred_long_glut_fname)
+} else {
+  pred_long_glut = readRDS(pred_long_glut_fname)
+}
+```
+
+### Mean probabilities (Glut)
+
+```{r}
+pred_long_sum_glut = pred_long_glut %>%
+  ungroup() %>%
+  group_by(cluster_int_sub2, cluster, k.anchor, k.filter, k.score, max.features) %>%
+  dplyr::summarize(value_mean   = mean(value),
+                   value_median = median(value),
+                   value_sem    = sem(value)) %>%
+  mutate(param_set = paste(k.anchor, k.filter, k.score, max.features, sep = "_"))
+
+pred_long_split_glut = split(pred_long_sum_glut, pred_long_sum_glut$param_set)
+
+pred_long_mats_glut = map(pred_long_split_glut, function(pred_long_sum_cur) {
+  pred_long_mat = pred_long_sum_cur %>%
+    ungroup() %>%
+    dplyr::select(-value_sem, -value_median, -k.anchor, -k.filter, -k.score, -max.features, -param_set) %>%
+    pivot_wider(names_from = "cluster", values_from = "value_mean") %>%
+    column_to_rownames("cluster_int_sub2") %>%
+    as.matrix() %>%
+    t()
+  pred_long_mat
+})
+```
+
+```{r}
+pred_long_sum2_glut = pred_long_sum_glut %>%
+  group_by(cluster, param_set, k.anchor, k.filter, k.score, max.features) %>%
+  summarize(value_mean_sum   = sum(value_mean),
+            value_mean_max   = max(value_mean),
+            value_median_max = max(value_median)) %>%
+  left_join(colors_df_glut) %>%
+  mutate(cluster = factor(cluster, levels = rev(cluster_order_glut)))
+```
+
+#### Heatmap with bar (Glut)
+
+```{r}
+walk(names(pred_long_mats_glut), function(param_set_cur) {
+  pred_long_mat = pred_long_mats_glut[[param_set_cur]]
+  pred_long_sum2_cur = pred_long_sum2_glut %>%
+    dplyr::filter(param_set == param_set_cur)
+  ncolors = 9
+  cols = colorRamp2(breaks = seq(0, 1, length.out = ncolors),
+                    colors = brewer_pal(palette = "Greys")(ncolors))
+
+  ncols = ncol(pred_long_mat)
+  height_box = .2
+  height = height_box * ncols
+  width  = height * ncols / nrow(pred_long_mat)
+  hm = Heatmap(pred_long_mat,
+               col = cols,
+               border = T,
+               name = param_set_cur,
+               cluster_rows = T,
+               column_names_gp = gpar(fontsize = 6),
+               show_column_dend = T,
+               row_names_gp = gpar(fontsize = 6),
+               row_names_side = "left",
+               height = unit(height, "in"),
+               width  = unit(width, "in"))
+
+  print(hm)
+  pdf(file.path(out_dir_glut, str_interp("prob_${param_set_cur}.pdf")),
+      height = height + 2, width = width + 6)
+  print(hm)
+  dev.off()
+})
+```
+
