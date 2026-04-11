@@ -11,8 +11,10 @@
 "/mnt/trackhub/lonStrDom2/GCF_005870125.1/scATAC/motor-pathway/wigs/Oligo-fragment-bin1-smoothNone.bw"
 
     ],
-    "regions_dir": [
-"DARs"
+    "regions": [
+	"/hdd/jupyter/brad/snapatac/motor-pathway_multiome/motor-pathway_multiome_cellbender_cluster-snrna-cr/call_peaks/Astro-1.bed",
+	"/hdd/jupyter/brad/snapatac/motor-pathway_multiome/motor-pathway_multiome_cellbender_cluster-snrna-cr/call_peaks/GABA-4-1.bed",
+	"/hdd/jupyter/brad/snapatac/motor-pathway_multiome/motor-pathway_multiome_cellbender_cluster-snrna-cr/call_peaks/Glut-RA.bed"
     ],
     "output_dir": "output/",
     "mode": "reference-point",

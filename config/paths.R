@@ -83,7 +83,7 @@ ARCHR_SETUP_DIR <- "~/ssd/rstudio/multiome/archr/setup/"
 ARCHR_PROJ_DIR      <- "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
 
 # DeepTools phyloP × SnapATAC output directory
-DEEPTOOLS_DIR <- "~/ssd/rstudio/multiome/motor-pathway/deeptools"
+DEEPTOOLS_DIR <- "~/ssd/rstudio/multiome/song-system-grn/comparative_genomics/deeptools"
 
 # Multiome Seurat project (output of multiome/seurat/seurat_preprocess.qmd)
 MULTIOME_SEURAT_DIR <- "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"

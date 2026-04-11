@@ -518,6 +518,11 @@ if (redo) {
 ```
 
 ### Plots
+
+```{r}
+obj$class = 
+```
+
 ```{r}
 redo_plot = T
 if (redo_plot) {

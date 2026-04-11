@@ -283,7 +283,7 @@ str(filtered_peaks, max.level = 2)
 Slow I/O chunk — run once and keep results in `signal_data`.
 
 ```{r load-signal}
-## signal_data[[gene]][[contrast]] = list(log2fc, phylop, lfc_full, phylop_full)
+## signal_data[[gene]][[contrast]] = list(log2fc, lfc_full, phylop_full_mean, diff, diff_full)
 signal_data <- imap(filtered_peaks, function(contrasts, gn) {
   imap(contrasts, function(pk_names, contrast_nm) {
     bed_nm <- dar_beds[[contrast_nm]]
@@ -303,26 +303,9 @@ signal_data <- imap(filtered_peaks, function(contrasts, gn) {
     )
     rownames(log2fc_mat) <- pk_names
 
-    phylop_mat <- vapply(phylop_bws,
-      function(bw) rowMedians(load_sig(bw, bed_nm, pk_names)[, central_idx, drop = FALSE]),
-      numeric(n_pk))
-    rownames(phylop_mat) <- pk_names
-
-    ## Full-profile smoothed matrices (rolling max and rolling mean)
-    phylop_full <- map(phylop_bws, function(bw) {
-      mat <- t(apply(load_sig(bw, bed_nm, pk_names), 1, smooth_row_max))
-      rownames(mat) <- pk_names
-      mat
-    })
-
+    ## Full-profile smoothed matrices (rolling mean)
     phylop_full_mean <- map(phylop_bws, function(bw) {
       mat <- t(apply(load_sig(bw, bed_nm, pk_names), 1, smooth_row_mean))
-      rownames(mat) <- pk_names
-      mat
-    })
-
-    phylop_full_raw <- map(phylop_bws, function(bw) {
-      mat <- load_sig(bw, bed_nm, pk_names)
       rownames(mat) <- pk_names
       mat
     })
@@ -362,9 +345,8 @@ signal_data <- imap(filtered_peaks, function(contrasts, gn) {
       mat
     })
 
-    list(log2fc = log2fc_mat, phylop = phylop_mat,
-         lfc_full = lfc_full, phylop_full = phylop_full,
-         phylop_full_mean = phylop_full_mean, phylop_full_raw = phylop_full_raw,
+    list(log2fc = log2fc_mat,
+         lfc_full = lfc_full, phylop_full_mean = phylop_full_mean,
          diff = diff_mat, diff_full = diff_full)
   })
 })
@@ -375,8 +357,8 @@ signal_data <- imap(filtered_peaks, function(contrasts, gn) {
 Deduplicates peaks shared across contrasts, combines rows, and clusters.
 
 ```{r assemble}
-## assembled[[gene]] = list(all_peaks, n, log2fc_all, phylop_all,
-##                          lfc_full_all, phylop_full_all, row_clust)
+## assembled[[gene]] = list(all_peaks, n, log2fc_all,
+##                          lfc_full_all, phylop_full_mean_all, diff_all, diff_full_all, row_clust)
 assembled <- imap(signal_data, function(contrasts, gn) {
   pk_raw  <- unlist(map(contrasts, function(b) rownames(b$log2fc)))
   dedup   <- !duplicated(pk_raw)
@@ -384,22 +366,13 @@ assembled <- imap(signal_data, function(contrasts, gn) {
   n       <- length(all_pks)
 
   log2fc_all <- do.call(rbind, map(contrasts, "log2fc"))[dedup, , drop = FALSE]
-  phylop_all <- do.call(rbind, map(contrasts, "phylop"))[dedup, , drop = FALSE]
 
   lfc_full_all <- map(colnames(log2fc_all), function(nm)
     do.call(rbind, map(contrasts, function(b) b$lfc_full[[nm]]))[dedup, , drop = FALSE]
   ) |> set_names(colnames(log2fc_all))
 
-  phylop_full_all <- map(names(phylop_bws), function(nm)
-    do.call(rbind, map(contrasts, function(b) b$phylop_full[[nm]]))[dedup, , drop = FALSE]
-  ) |> set_names(names(phylop_bws))
-
   phylop_full_mean_all <- map(names(phylop_bws), function(nm)
     do.call(rbind, map(contrasts, function(b) b$phylop_full_mean[[nm]]))[dedup, , drop = FALSE]
-  ) |> set_names(names(phylop_bws))
-
-  phylop_full_raw_all <- map(names(phylop_bws), function(nm)
-    do.call(rbind, map(contrasts, function(b) b$phylop_full_raw[[nm]]))[dedup, , drop = FALSE]
   ) |> set_names(names(phylop_bws))
 
   diff_all <- do.call(rbind, map(contrasts, "diff"))[dedup, , drop = FALSE]
@@ -413,11 +386,10 @@ assembled <- imap(signal_data, function(contrasts, gn) {
   else FALSE
 
   message(gn, ": ", n, " unique peaks")
-  list(all_peaks            = all_pks,                 n                    = n,
-       log2fc_all           = log2fc_all,              phylop_all           = phylop_all,
-       lfc_full_all         = lfc_full_all,            phylop_full_all      = phylop_full_all,
-       phylop_full_mean_all = phylop_full_mean_all,    phylop_full_raw_all  = phylop_full_raw_all,
-       diff_all             = diff_all,                diff_full_all        = diff_full_all,
+  list(all_peaks            = all_pks,              n                    = n,
+       log2fc_all           = log2fc_all,
+       lfc_full_all         = lfc_full_all,         phylop_full_mean_all = phylop_full_mean_all,
+       diff_all             = diff_all,             diff_full_all        = diff_full_all,
        row_clust            = row_clust)
 })
 ```
@@ -435,39 +407,6 @@ heatmaps <- imap(assembled, function(a, gn) {
   lfc_lim <- max(abs(quantile(a$log2fc_all, c(0.01, 0.99), na.rm = TRUE)))
   lfc_col <- colorRamp2(c(-lfc_lim, 0, lfc_lim), c("#2166AC", "white", "#D6604D"))
 
-  ## ── Summary: log2FC narrow (one column per pair) ─────────────────────────
-  lfc_summary <- lapply(colnames(a$log2fc_all), function(nm)
-    Heatmap(
-      matrix(a$log2fc_all[, nm], ncol = 1, dimnames = list(all_peaks, nm)),
-      name = nm, col = lfc_col,
-      cluster_rows = row_clust, cluster_columns = FALSE,
-      show_row_names = FALSE,
-      column_names_gp = gpar(fontsize = 8), column_names_rot = 45,
-      column_title = nm, column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-      width = hm_width, use_raster = TRUE, raster_quality = 3
-    )
-  )
-
-  ## ── Summary: phyloP narrow (one column per track) ────────────────────────
-  phylop_summary <- imap(phylop_bws, function(bw, label) {
-    vals <- a$phylop_all[, label]
-    Heatmap(
-      matrix(vals, ncol = 1, dimnames = list(all_peaks, label)),
-      name = label, col = make_pp_col(bw, vals),
-      cluster_rows = row_clust, cluster_columns = FALSE,
-      show_row_names = FALSE,
-      column_names_gp = gpar(fontsize = 8), column_names_rot = 45,
-      column_title = label, column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-      width = hm_width, use_raster = TRUE, raster_quality = 3
-    )
-  })
-
-  ## ── Right annotation: peak coordinates ───────────────────────────────────
-  right_ann <- rowAnnotation(
-    coords = anno_text(all_peaks, gp = gpar(fontsize = 5)),
-    show_annotation_name = FALSE
-  )
-
   ## ── Full-profile: log2FC ─────────────────────────────────────────────────
   lfc_full_hm <- imap(a$lfc_full_all, function(mat, nm) {
     rownames(mat) <- all_peaks
@@ -477,21 +416,6 @@ heatmaps <- imap(assembled, function(a, gn) {
       show_row_names = FALSE,
       column_labels = make_col_labels(mat), column_names_gp = gpar(fontsize = 7),
       column_title = nm, column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-      width = full_width, use_raster = TRUE, raster_quality = 3
-    )
-  })
-
-  ## ── Full-profile: phyloP rolling max (one per track) ─────────────────────
-  phylop_full_hm <- imap(phylop_bws, function(bw, label) {
-    mat <- a$phylop_full_all[[label]]
-    rownames(mat) <- all_peaks
-    Heatmap(
-      mat, name = label, col = make_pp_col(bw, mat),
-      cluster_rows = row_clust, cluster_columns = FALSE,
-      show_row_names = TRUE, row_names_gp = gpar(fontsize = 5),
-      column_labels = make_col_labels(mat), column_names_gp = gpar(fontsize = 7),
-      column_title = paste0(label, " (max)"),
-      column_title_gp = gpar(fontsize = 9, fontface = "bold"),
       width = full_width, use_raster = TRUE, raster_quality = 3
     )
   })
@@ -515,18 +439,6 @@ heatmaps <- imap(assembled, function(a, gn) {
   diff_lim <- max(abs(quantile(a$diff_all, c(0.01, 0.99), na.rm = TRUE)))
   diff_col <- colorRamp2(c(-diff_lim, 0, diff_lim), c("#2166AC", "white", "#D6604D"))
 
-  diff_summary <- lapply(colnames(a$diff_all), function(nm)
-    Heatmap(
-      matrix(a$diff_all[, nm], ncol = 1, dimnames = list(all_peaks, nm)),
-      name = nm, col = diff_col,
-      cluster_rows = row_clust, cluster_columns = FALSE,
-      show_row_names = FALSE,
-      column_names_gp = gpar(fontsize = 8), column_names_rot = 45,
-      column_title = nm, column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-      width = hm_width, use_raster = TRUE, raster_quality = 3
-    )
-  )
-
   diff_full_hm <- imap(a$diff_full_all, function(mat, nm) {
     rownames(mat) <- all_peaks
     Heatmap(
@@ -539,243 +451,9 @@ heatmaps <- imap(assembled, function(a, gn) {
     )
   })
 
-  list(lfc_summary         = lfc_summary,         phylop_summary      = phylop_summary,
-       right_ann            = right_ann,
-       lfc_full_hm          = lfc_full_hm,         phylop_full_hm      = phylop_full_hm,
-       phylop_full_mean_hm  = phylop_full_mean_hm,
-       diff_summary         = diff_summary,         diff_full_hm        = diff_full_hm)
-})
-```
-
-## Draw summary heatmaps
-
-```{r draw-summary, results="asis", fig.width=14, fig.height=8}
-iwalk(heatmaps, function(hms, gn) {
-  a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
-  dir.create(gene_out, showWarnings = FALSE, recursive = TRUE)
-
-  combined  <- Reduce(`+`, c(hms$lfc_summary, hms$phylop_summary, list(hms$right_ann)))
-  title_str <- paste0(gn, " — p2g-linked DARs  (n = ", a$n, ")")
-
-  cat("\n\n###", gn, "\n\n")
-  draw(combined,
-       column_title    = title_str,
-       column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-
-  pdf_width <- (length(hms$lfc_summary) + length(hms$phylop_summary)) * 1.5 + 5
-  pdf_out   <- file.path(gene_out, "p2g_dar_lfc_phylop_heatmap.pdf")
-  pdf(pdf_out, width = pdf_width, height = max(4, a$n * 0.06 + 3))
-  draw(combined,
-       column_title    = title_str,
-       column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-  dev.off()
-  message("Saved: ", pdf_out)
-})
-```
-
-## Draw difference summary heatmaps
-
-```{r draw-diff-summary, results="asis", fig.width=11, fig.height=8}
-iwalk(heatmaps, function(hms, gn) {
-  a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
-
-  combined  <- Reduce(`+`, c(hms$diff_summary, hms$phylop_summary,
-                             list(hms$right_ann)))
-  title_str <- paste0(gn, " — log2FC difference  (n = ", a$n, ")")
-
-  cat("\n\n###", gn, "(difference)\n\n")
-  draw(combined,
-       column_title    = title_str,
-       column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-
-  pdf_width <- (length(hms$diff_summary) + length(hms$phylop_summary)) * 1.5 + 5
-  pdf_out   <- file.path(gene_out, "p2g_dar_diff_phylop_heatmap.pdf")
-  pdf(pdf_out, width = pdf_width, height = max(4, a$n * 0.06 + 3))
-  draw(combined,
-       column_title    = title_str,
-       column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-  dev.off()
-  message("Saved: ", pdf_out)
-})
-```
-
-## Draw difference full-profile heatmaps
-
-```{r draw-diff-fullprofile, results="asis", fig.width=11, fig.height=8}
-iwalk(heatmaps, function(hms, gn) {
-  a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
-
-  iwalk(hms$phylop_full_hm, function(hm_pp, label) {
-    combined  <- Reduce(`+`, c(hms$diff_full_hm, list(hm_pp)))
-    title_str <- paste0(gn, " — diff × ", label, "  (n = ", a$n, ")")
-
-    cat("\n\n####", gn, "— diff ×", label, "(full profile)\n\n")
-    draw(combined,
-         column_title    = title_str,
-         column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-
-    pdf_out <- file.path(gene_out,
-      paste0("p2g_dar_diff_phylop_full_", gsub("[. /]", "_", label), ".pdf"))
-    pdf(pdf_out, width = 8, height = max(4, a$n * 0.06 + 3))
-    draw(combined,
-         column_title    = title_str,
-         column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-    dev.off()
-    message("Saved: ", pdf_out)
-  })
-})
-```
-
-## Draw full-profile heatmaps
-
-```{r draw-fullprofile, results="asis", fig.width=11, fig.height=8}
-iwalk(heatmaps, function(hms, gn) {
-  a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
-
-  iwalk(hms$phylop_full_hm, function(hm_pp, label) {
-    combined  <- Reduce(`+`, c(hms$lfc_full_hm, list(hm_pp)))
-    title_str <- paste0(gn, " — ", label, "  (n = ", a$n, ")")
-
-    cat("\n\n####", gn, "—", label, "(full profile)\n\n")
-    draw(combined,
-         column_title    = title_str,
-         column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-
-    pdf_out <- file.path(gene_out,
-      paste0("p2g_dar_lfc_phylop_full_", gsub("[. /]", "_", label), ".pdf"))
-    pdf(pdf_out, width = 11, height = max(4, a$n * 0.06 + 3))
-    draw(combined,
-         column_title    = title_str,
-         column_title_gp = gpar(fontsize = 11, fontface = "bold"))
-    dev.off()
-    message("Saved: ", pdf_out)
-  })
-})
-```
-
-## Scatter: phyloP central signal vs fragment difference
-
-One point per peak.  X = central-window maximum of the rolling-max-smoothed phyloP
-signal; Y = central-window arithmetic fragment difference.  Panels: rows = diff
-pair, columns = phyloP track.
-
-```{r draw-scatter, results="asis", fig.width=12, fig.height=6}
-iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
-
-  ## Central-window max of the smoothed phyloP full profiles (one value per peak)
-  phylop_central <- imap_dfr(a$phylop_full_all, function(mat, nm) {
-    tibble(
-      peak         = a$all_peaks,
-      phylop_val   = rowMaxs(mat[, central_idx, drop = FALSE]),
-      phylop_track = nm
-    )
-  })
-
-  ## Central-window diff values (already stored in diff_all)
-  diff_central <- as.data.frame(a$diff_all) |>
-    tibble::rownames_to_column("peak") |>
-    pivot_longer(-peak, names_to = "diff_pair", values_to = "diff_val")
-
-  plot_df <- left_join(phylop_central, diff_central, by = "peak",
-                       relationship = "many-to-many")
-
-  p <- ggplot(plot_df, aes(x = phylop_val, y = diff_val)) +
-    geom_point(size = 1.2, alpha = 0.7, colour = "#444444") +
-    geom_smooth(method = "lm", se = TRUE, linewidth = 0.6,
-                colour = "#D6604D", fill = "#D6604D", alpha = 0.15) +
-    facet_grid(diff_pair ~ phylop_track, scales = "free_x") +
-    labs(
-      title = paste0(gn, "  (n = ", a$n, " peaks)"),
-      x     = "phyloP  (central-window max of smoothed signal)",
-      y     = "fragment signal difference  (central-window median)"
-    ) +
-    theme_bw(base_size = 5) +
-    theme(strip.text       = element_text(size = 5),
-          axis.text        = element_text(size = 5),
-          axis.title       = element_text(size = 5),
-          panel.grid.minor = element_blank())
-
-  cat("\n\n###", gn, "(scatter)\n\n")
-  print(p)
-
-  pdf_out <- file.path(gene_out, "p2g_scatter_phylop_diff.pdf")
-  ggsave(pdf_out, p,
-         width  = 1.5 * length(a$phylop_full_all) + 1,
-         height = 1.5 * length(diff_pairs) + 1)
-  message("Saved: ", pdf_out)
-})
-```
-
-## Scatter: full-profile flattened (all peaks × all bins)
-
-Every (peak, bin) pair contributes one point.  X = smoothed phyloP value at that
-bin; Y = smoothed diff value at the same bin.  This captures the bin-level
-relationship without any central-window summarisation.
-
-```{r draw-scatter-full, results="asis", fig.width=12, fig.height=6}
-## Flatten a named list of n_peaks × n_bins matrices to a long tibble keyed by
-## (peak_idx, bin_idx) for an element-wise join.
-flatten_full <- function(mat_list, value_col, track_col) {
-  imap_dfr(mat_list, function(mat, nm) {
-    n_pk  <- nrow(mat)
-    n_bin <- ncol(mat)
-    tibble(
-      peak_idx        = rep(seq_len(n_pk),  times = n_bin),
-      bin_idx         = rep(seq_len(n_bin), each  = n_pk),
-      !!value_col    := as.vector(mat),
-      !!track_col    := nm
-    )
-  })
-}
-
-iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
-
-  phylop_flat <- flatten_full(a$phylop_full_all, "phylop_val", "phylop_track")
-  diff_flat   <- flatten_full(a$diff_full_all,   "diff_val",   "diff_pair")
-
-  ## Element-wise join: (peak_idx, bin_idx) pairs phyloP[i,j] with diff[i,j];
-  ## many-to-many only across the label columns (track × pair combinations)
-  plot_df <- left_join(phylop_flat, diff_flat,
-                       by = c("peak_idx", "bin_idx"),
-                       relationship = "many-to-many") |>
-    filter(!grepl("phastCons", phylop_track))
-
-  phylop_tracks_shown <- unique(plot_df$phylop_track)
-  n_bins <- ncol(a$phylop_full_all[[1]])
-  n_pts  <- a$n * n_bins
-
-  p <- ggplot(plot_df, aes(x = phylop_val, y = diff_val)) +
-    ggrastr::geom_point_rast(size = 0.5, alpha = 0.35, colour = "#444444",
-                             raster.dpi = 300) +
-    geom_vline(xintercept = 0, linewidth = 0.3, colour = "grey40") +
-    geom_hline(yintercept = 0, linewidth = 0.3, colour = "grey40") +
-    facet_grid(diff_pair ~ phylop_track, scales = "free_x") +
-    labs(
-      title = paste0(gn, "  (", a$n, " peaks \u00d7 ", n_bins,
-                     " bins = ", n_pts, " pts/panel)"),
-      x = "phyloP  (full profile, rolling max)",
-      y = "fragment difference  (full profile, rolling mean)"
-    ) +
-    theme_bw(base_size = 5) +
-    theme(strip.text       = element_text(size = 5),
-          axis.text        = element_text(size = 5),
-          axis.title       = element_text(size = 5),
-          panel.grid.minor = element_blank())
-
-  cat("\n\n###", gn, "(full-profile scatter)\n\n")
-  print(p)
-
-  pdf_out <- file.path(gene_out, "p2g_scatter_full_phylop_diff.pdf")
-  ggsave(pdf_out, p,
-         width  = 1.5 * length(phylop_tracks_shown) + 1,
-         height = 1.5 * length(diff_pairs) + 1)
-  message("Saved: ", pdf_out)
+  list(lfc_full_hm         = lfc_full_hm,
+       phylop_full_mean_hm = phylop_full_mean_hm,
+       diff_full_hm        = diff_full_hm)
 })
 ```
 
@@ -886,6 +564,21 @@ iwalk(assembled, function(a, gn) {
 ## Scatter: full-profile flattened (rolling mean)
 
 ```{r draw-scatter-full-mean, results="asis", fig.width=12, fig.height=6}
+## Flatten a named list of n_peaks × n_bins matrices to a long tibble keyed by
+## (peak_idx, bin_idx) for an element-wise join.
+flatten_full <- function(mat_list, value_col, track_col) {
+  imap_dfr(mat_list, function(mat, nm) {
+    n_pk  <- nrow(mat)
+    n_bin <- ncol(mat)
+    tibble(
+      peak_idx        = rep(seq_len(n_pk),  times = n_bin),
+      bin_idx         = rep(seq_len(n_bin), each  = n_pk),
+      !!value_col    := as.vector(mat),
+      !!track_col    := nm
+    )
+  })
+}
+
 iwalk(assembled, function(a, gn) {
   gene_out <- file.path(out_dir, gn)
 
@@ -927,57 +620,6 @@ iwalk(assembled, function(a, gn) {
          width  = 1.5 * length(phylop_tracks_shown) + 1,
          height = 1.5 * length(diff_pairs) + 1)
   message("Saved: ", pdf_out)
-})
-```
-
-## Scatter: full-profile flattened — unsmoothed phyloP × rolling-mean diff
-
-```{r draw-scatter-full-raw, results="asis", fig.width=12, fig.height=6}
-scatter_full_raw <- function(a, gn, gene_out) {
-  diff_flat <- flatten_full(a$diff_full_all, "diff_val", "diff_pair")
-
-  ## rolling-max diff variant
-  phylop_flat_max <- flatten_full(a$phylop_full_all, "phylop_val", "phylop_track")
-  plot_max <- left_join(
-    flatten_full(a$phylop_full_raw_all, "phylop_val", "phylop_track"),
-    diff_flat, by = c("peak_idx", "bin_idx"), relationship = "many-to-many"
-  ) |> filter(!grepl("phastCons", phylop_track))
-
-  phylop_tracks_shown <- unique(plot_max$phylop_track)
-  n_bins <- ncol(a$phylop_full_raw_all[[1]])
-  n_pts  <- a$n * n_bins
-
-  p <- ggplot(plot_max, aes(x = phylop_val, y = diff_val)) +
-    ggrastr::geom_point_rast(size = 0.5, alpha = 0.35, colour = "#444444",
-                             raster.dpi = 300) +
-    geom_vline(xintercept = 0, linewidth = 0.3, colour = "darkred") +
-    geom_hline(yintercept = 0, linewidth = 0.3, colour = "darkred") +
-    facet_grid(diff_pair ~ phylop_track, scales = "free_x") +
-    labs(
-      title = paste0(gn, "  (", a$n, " peaks \u00d7 ", n_bins,
-                     " bins = ", n_pts, " pts/panel)"),
-      x = "phyloP  (full profile, unsmoothed)",
-      y = "fragment difference  (full profile, rolling mean)"
-    ) +
-    theme_bw(base_size = 5) +
-    theme(strip.text       = element_text(size = 5),
-          axis.text        = element_text(size = 5),
-          axis.title       = element_text(size = 5),
-          panel.grid.minor = element_blank())
-
-  cat("\n\n###", gn, "(full-profile scatter, raw phyloP)\n\n")
-  print(p)
-
-  pdf_out <- file.path(gene_out, "p2g_scatter_full_phylop_raw_diff.pdf")
-  ggsave(pdf_out, p,
-         width  = 1.5 * length(phylop_tracks_shown) + 1,
-         height = 1.5 * length(diff_pairs) + 1)
-  message("Saved: ", pdf_out)
-}
-
-iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
-  scatter_full_raw(a, gn, gene_out)
 })
 ```
 
@@ -1038,28 +680,20 @@ iwalk(assembled, function(a, gn) {
     )
   }
 
-  raw_res  <- make_density_plot(
-    flatten_full(a$phylop_full_raw_all,  "phylop_val", "phylop_track"),
-    "phyloP  (unsmoothed)")
   mean_res <- make_density_plot(
     flatten_full(a$phylop_full_mean_all, "phylop_val", "phylop_track"),
     "phyloP  (rolling mean)")
 
-  cat("\n\n###", gn, "(phyloP density unsmoothed, diff >", diff_threshold, ")\n\n")
-  print(raw_res$plot)
   cat("\n\n###", gn, "(phyloP density rolling mean, diff >", diff_threshold, ")\n\n")
   print(mean_res$plot)
 
-  for (res in list(list(p = raw_res,  tag = "highdiff"),
-                   list(p = mean_res, tag = "highdiff_mean"))) {
-    pdf_out <- file.path(gene_out, paste0("p2g_density_phylop_", res$tag, ".pdf"))
-    cowplot::save_plot(pdf_out, res$p$plot,
-                       ncol        = res$p$n_tracks,
-                       nrow        = 1,
-                       base_width  = 1.3,
-                       base_height = 1)
-    message("Saved: ", pdf_out)
-  }
+  pdf_out <- file.path(gene_out, "p2g_density_phylop_highdiff_mean.pdf")
+  cowplot::save_plot(pdf_out, mean_res$plot,
+                     ncol        = mean_res$n_tracks,
+                     nrow        = 1,
+                     base_width  = 1.3,
+                     base_height = 1)
+  message("Saved: ", pdf_out)
 })
 ```
 
@@ -1083,7 +717,7 @@ scatter_highdiff <- function(phylop_flat, diff_flat, phylop_label,
   }
 
   phylop_tracks_shown <- unique(plot_df$phylop_track)
-  n_bins <- ncol(a$phylop_full_raw_all[[1]])
+  n_bins <- ncol(a$phylop_full_mean_all[[1]])
 
   p <- ggplot(plot_df, aes(x = phylop_val, y = diff_val)) +
     ggrastr::geom_point_rast(size = 0.5, alpha = 0.35, colour = "#444444",
@@ -1118,16 +752,6 @@ iwalk(assembled, function(a, gn) {
   gene_out  <- file.path(out_dir, gn)
   diff_flat <- flatten_full(a$diff_full_all, "diff_val", "diff_pair")
 
-  scatter_highdiff(
-    flatten_full(a$phylop_full_raw_all,  "phylop_val", "phylop_track"),
-    diff_flat, "unsmoothed", a, gn, gene_out,
-    "p2g_scatter_full_highdiff_phylop_raw_diff.pdf"
-  )
-  scatter_highdiff(
-    flatten_full(a$phylop_full_all,      "phylop_val", "phylop_track"),
-    diff_flat, "rolling max", a, gn, gene_out,
-    "p2g_scatter_full_highdiff_phylop_max_diff.pdf"
-  )
   scatter_highdiff(
     flatten_full(a$phylop_full_mean_all, "phylop_val", "phylop_track"),
     diff_flat, "rolling mean", a, gn, gene_out,
