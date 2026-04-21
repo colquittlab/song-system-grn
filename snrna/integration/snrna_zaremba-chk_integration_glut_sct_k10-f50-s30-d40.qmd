@@ -1,0 +1,461 @@
+---
+title: "Zaremba chk integration - sct rpca k10 f50 s30 d40"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(qs)
+library(scCustomize)
+library(AnnotationHub)
+library(Matrix.utils)
+library(cowplot)
+library(ComplexHeatmap)
+library(scales)
+library(circlize)
+library(ggrastr)
+library(here)
+
+source(here::here("scripts/stats.R"))
+source(here::here("scripts/gene_lists.R"))
+source(here::here("scripts/common_aesthetics.R"))
+source(here::here("config/paths.R"))
+```
+
+```{r}
+script_name = "snrna_zaremba-chk_integration_glut_sct_k10-f50-s30-d40"
+out_dir     = here::here("snrna/integration", script_name)
+sct_dir     = file.path(out_dir, "sct")
+anchors_dir = file.path(sct_dir, "anchors")
+int_dir     = file.path(sct_dir, "integrated")
+dir.create(anchors_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(int_dir,     recursive = TRUE, showWarnings = FALSE)
+
+bf_fname  = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
+chk_fname = "/hdd/sc_datasets/zaremba_gg_dev_2024/Gg_adult_snRNA_seq_srt.rds"
+ortho_fname = OMA_ORTHOLOGS_ZF_CK
+
+bf_out_fname  = file.path(out_dir, "obj_bf.qs")
+chk_out_fname = file.path(out_dir, "obj_chk.qs")
+
+options(future.globals.maxSize = 50 * 1E9)
+
+obj_bf_fname       = file.path(sct_dir, "obj_bf_common.qs")
+obj_chk_fname      = file.path(sct_dir, "obj_chk_common.qs")
+sct_features_fname = file.path(sct_dir, "sct_features.rds")
+```
+
+## Preprocessing
+
+```{r}
+redo_prep = FALSE
+```
+
+### Process objects
+
+```{r}
+if (!file.exists(bf_out_fname) || redo_prep) {
+  obj_bf = qread(bf_fname)
+  DefaultAssay(obj_bf) = "RNA"
+  obj_bf$dataset = "bf"
+
+  if (any(map_lgl(Assays(obj_bf), \(x) grepl("MAGIC", x)))) {
+    assay_to_remove = Assays(obj_bf)[map_lgl(Assays(obj_bf), \(x) grepl("MAGIC", x))]
+    obj_bf[[assay_to_remove]] = NULL
+  }
+  obj_bf[["SCT"]] = NULL
+  obj_bf[["RAW"]] = NULL
+
+  cells = Reduce(intersect, list(Cells(obj_bf)[grepl("Glut", obj_bf$cluster)],
+                                  Cells(obj_bf)[!grepl("Pre",  obj_bf$cluster)]))
+  obj_bf = subset(obj_bf, cells = cells)
+  qsave(obj_bf, bf_out_fname)
+} else {
+  obj_bf = qread(bf_out_fname)
+}
+```
+
+```{r}
+if (!file.exists(chk_out_fname) || redo_prep) {
+  oma     = read_delim(ortho_fname)
+  obj_chk = readRDS(chk_fname)
+
+  ah     = AnnotationHub()
+  ens_gg = query(ah, c("Ensembl", "Gallus gallus", "EnsDb"))
+  gg_db  = ens_gg[["AH53208"]]
+  ens_df = AnnotationDbi::select(gg_db, keys = Features(obj_chk),
+                                  c("SYMBOL", "GENENAME"), "GENEID")
+  ens_df_filt = ens_df %>% dplyr::filter(GENENAME != "")
+
+  obj_chk_mat = GetAssayData(obj_chk, assay = "RNA", layer = "counts")
+  obj_chk_mat = obj_chk_mat[ens_df_filt$GENEID, ]
+  rownames(obj_chk_mat) = ens_df_filt$GENENAME[match(rownames(obj_chk_mat), ens_df_filt$GENEID)]
+  obj_chk_mat = obj_chk_mat[intersect(rownames(obj_chk_mat), oma$gene_name_ck), ]
+  rownames(obj_chk_mat) = oma$gene_name_zf[match(rownames(obj_chk_mat), oma$gene_name_ck)]
+  obj_chk_mat = Matrix.utils::aggregate.Matrix(obj_chk_mat, rownames(obj_chk_mat), fun = "sum")
+
+  chk_md  = obj_chk@meta.data
+  obj_chk = CreateSeuratObject(obj_chk_mat, meta.data = chk_md)
+  DefaultAssay(obj_chk) = "RNA"
+  obj_chk$cluster  = obj_chk$anno_level_3
+  obj_chk$dataset  = "chk"
+
+  cells = Reduce(intersect, list(Cells(obj_chk)[grepl("Ex",         obj_chk$cluster)],
+                                  Cells(obj_chk)[!grepl("Pre",        obj_chk$cluster)],
+                                  Cells(obj_chk)[obj_chk$cluster != "Ex_TCF7L2"]))
+  obj_chk = subset(obj_chk, cells = cells)
+  qsave(obj_chk, chk_out_fname)
+} else {
+  obj_chk = qread(chk_out_fname)
+}
+```
+
+### SCTransform + integration features
+
+```{r}
+if (!file.exists(obj_bf_fname) || redo_prep) {
+  common_features = intersect(Features(obj_chk), Features(obj_bf))
+
+  counts_bf   = as(GetAssayData(obj_bf, assay = "RNA", layer = "counts"), "dgCMatrix")
+  obj_bf_common  = CreateSeuratObject(counts = counts_bf[common_features, ],
+                                       meta.data = obj_bf@meta.data)
+  obj_chk_common = obj_chk[common_features, ]
+
+  obj_bf_common  = obj_bf_common  %>% SCTransform(verbose = FALSE) %>% RunPCA(verbose = FALSE)
+  obj_chk_common = obj_chk_common %>% SCTransform(verbose = FALSE) %>% RunPCA(verbose = FALSE)
+
+  sct_features   = SelectIntegrationFeatures(list(obj_bf_common, obj_chk_common), nfeatures = 3000)
+  obj_bf_common  = PrepSCTIntegration(list(obj_bf_common),  anchor.features = sct_features)[[1]]
+  obj_chk_common = PrepSCTIntegration(list(obj_chk_common), anchor.features = sct_features)[[1]]
+
+  obj_chk_common = AddMetaData(obj_chk_common, FetchData(obj_chk, "anno_level_3"))
+
+  qsave(obj_bf_common,  obj_bf_fname)
+  qsave(obj_chk_common, obj_chk_fname)
+  saveRDS(sct_features, sct_features_fname)
+}
+```
+
+## Parameters
+
+```{r}
+k.anchor     = 10
+k.filter     = 50
+k.score      = 30
+max.features = 200
+dims_to_use  = 1:40
+ndims        = length(dims_to_use)
+reduction        = "rpca"
+weight_reduction = if (reduction == "cca") "cca" else "pcaproject"
+int_method       = if (reduction == "cca") CCAIntegration else RPCAIntegration
+new_reduc        = paste0("integrated.", reduction)
+
+param_set = paste(k.anchor, k.filter, k.score, max.features, ndims, reduction, sep = "_")
+
+anchor_fname    = file.path(anchors_dir,
+                            sprintf("anchor_k%s_f%s_s%s_m%s_d%s_%s.qs",
+                                    k.anchor, k.filter, k.score, max.features, ndims, reduction))
+pred_long_fname = file.path(sct_dir,
+                            sprintf("pred_long_k%s_f%s_s%s_m%s_d%s_%s.rds",
+                                    k.anchor, k.filter, k.score, max.features, ndims, reduction))
+umap_long_fnames = list.files(int_dir,
+                               pattern = sprintf("_k%s_f%s_s%s_m%s_d%s_%s\\.rds$",
+                                                 k.anchor, k.filter, k.score, max.features, ndims, reduction),
+                               full.names = TRUE)
+umap_long_fname = if (length(umap_long_fnames) > 0) umap_long_fnames[[1]] else
+  file.path(int_dir, sprintf("umap_%s.rds", param_set))
+```
+
+## Analysis
+
+```{r}
+redo = FALSE
+```
+
+### Anchors
+
+```{r}
+sct_features = readRDS(sct_features_fname)
+
+if (!file.exists(anchor_fname) || redo) {
+  obj_bf  = qread(obj_bf_fname)
+  obj_chk = qread(obj_chk_fname)
+  anchors = FindTransferAnchors(reference = obj_bf, query = obj_chk,
+                                normalization.method = "SCT",
+                                features     = sct_features,
+                                k.anchor     = k.anchor,
+                                k.filter     = k.filter,
+                                k.score      = k.score,
+                                max.features = max.features,
+                                reduction    = reduction,
+                                dims         = dims_to_use)
+  qsave(anchors, anchor_fname)
+} else {
+  anchors = qread(anchor_fname)
+  obj_bf  = qread(obj_bf_fname)
+  obj_chk = qread(obj_chk_fname)
+}
+```
+
+### Label transfer
+
+```{r}
+if (!file.exists(pred_long_fname) || redo) {
+  predictions = TransferData(anchorset        = anchors,
+                             weight.reduction = weight_reduction,
+                             refdata          = obj_bf$cluster,
+                             dims             = dims_to_use)
+  predictions$anno_level_3 = obj_chk$anno_level_3
+
+  pred_long = predictions %>%
+    dplyr::select(contains("prediction.score"), anno_level_3) %>%
+    dplyr::select(-prediction.score.max) %>%
+    pivot_longer(-anno_level_3, names_to = "col_tmp") %>%
+    mutate(col1    = str_extract(col_tmp, "Glut.*$"),
+           cluster = gsub("\\.", "-", col1),
+           k.anchor     = k.anchor,
+           k.filter     = k.filter,
+           k.score      = k.score,
+           max.features = max.features,
+           ndims        = ndims,
+           reduction    = reduction)
+  saveRDS(pred_long, pred_long_fname)
+} else {
+  pred_long = readRDS(pred_long_fname)
+}
+```
+
+### UMAP integration
+
+```{r}
+if (!file.exists(umap_long_fname) || redo) {
+  obj_bf  = qread(obj_bf_fname)
+  obj_chk = qread(obj_chk_fname)
+
+  obj          = merge(obj_bf, obj_chk)
+  obj[["RNA"]] = JoinLayers(obj[["RNA"]])
+  DefaultAssay(obj) = "RNA"
+  obj[["SCT"]]  = NULL
+  obj[["RNA"]]  = split(obj[["RNA"]], f = obj$dataset, layers = c("counts", "data"))
+
+  obj = obj %>%
+    SCTransform(verbose = FALSE) %>%
+    RunPCA(npcs = ndims, verbose = FALSE)
+
+  obj = IntegrateLayers(obj,
+                        method               = int_method,
+                        orig.reduction       = "pca",
+                        new.reduction        = new_reduc,
+                        normalization.method = "SCT",
+                        dims                 = dims_to_use,
+                        k.anchor             = k.anchor,
+                        k.filter             = k.filter,
+                        k.score              = k.score,
+                        verbose              = FALSE)
+
+  obj = RunUMAP(obj, reduction = new_reduc, dims = dims_to_use, verbose = FALSE)
+
+  umap_long = as.data.frame(Embeddings(obj, "umap")) %>%
+    setNames(c("umap_1", "umap_2")) %>%
+    rownames_to_column("cell") %>%
+    mutate(dataset      = obj$dataset,
+           cluster      = obj$cluster,
+           anno_level_3 = obj$anno_level_3,
+           k.anchor     = k.anchor, k.filter = k.filter,
+           k.score      = k.score,  max.features = max.features,
+           ndims        = ndims,    reduction = reduction)
+
+  saveRDS(umap_long, umap_long_fname)
+} else {
+  umap_long = readRDS(umap_long_fname)
+}
+```
+
+## Plots
+
+```{r}
+cluster_order = c(
+  c("Glut-HVC-1", "Glut-NC-1", "Glut-NC-2"),
+  c("Glut-HVC-2", "Glut-NC-4", "Glut-NC-3"),
+  c("Glut-Nido-1", "Glut-Nido-2", "Glut-Nido-3"),
+  c("Glut-LMAN-1", "Glut-NR-1", "Glut-NR-3"),
+  c("Glut-LMAN-2", "Glut-NR-4", "Glut-NR-2", "Glut-NR-5"),
+  c("Glut-RA", "Glut-Arco-1", "Glut-Arco-2", "Glut-Arco-3", "Glut-Arco-4", "Glut-Arco-5")
+)
+
+colors_df = data.frame(cluster = cluster_order) %>%
+  mutate(col = case_when(grepl("HVC",     cluster) ~ position_colors["hvc"],
+                         grepl("NC|Nido", cluster) ~ position_colors["ncl"],
+                         grepl("LMAN",    cluster) ~ position_colors["lman"],
+                         grepl("NR",      cluster) ~ position_colors["nido"],
+                         grepl("RA",      cluster) ~ position_colors["ra"],
+                         grepl("Arco",    cluster) ~ position_colors["arco"]))
+```
+
+### Label probabilities
+
+```{r}
+pred_long_sum = pred_long %>%
+  ungroup() %>%
+  group_by(anno_level_3, cluster) %>%
+  dplyr::summarize(value_mean   = mean(value),
+                   value_median = median(value),
+                   value_sem    = sem(value))
+
+make_mat = function(val_col) {
+  mat = pred_long_sum %>%
+    ungroup() %>%
+    dplyr::select(anno_level_3, cluster, {{ val_col }}) %>%
+    pivot_wider(names_from = "cluster", values_from = {{ val_col }}) %>%
+    column_to_rownames("anno_level_3") %>%
+    as.matrix() %>% t()
+  mat[intersect(cluster_order, rownames(mat)), ]
+}
+
+pred_long_sum2 = pred_long_sum %>%
+  group_by(cluster) %>%
+  summarize(value_mean_max   = max(value_mean),
+            value_median_max = max(value_median)) %>%
+  left_join(colors_df) %>%
+  mutate(cluster = factor(cluster, levels = rev(cluster_order)))
+
+make_hm = function(mat, height_box = 0.15) {
+  ncolors = 9
+  cols  = colorRamp2(breaks = seq(0, 1, length.out = ncolors),
+                     colors = brewer_pal(palette = "Greys")(ncolors))
+  ncols = ncol(mat)
+  Heatmap(mat, col = cols, border = TRUE, name = param_set,
+          cluster_rows = FALSE, show_column_dend = FALSE,
+          column_names_gp = gpar(fontsize = 6), row_names_gp = gpar(fontsize = 6),
+          row_names_side = "left", clustering_method_columns = ,
+          height = unit(height_box * nrow(mat), "in"),
+          width  = unit(height_box * ncols,     "in"))
+}
+
+make_bar_annot = function(val_col) {
+  vals     = pred_long_sum2 %>% ungroup() %>% pull({{ val_col }})
+  bar_cols = pred_long_sum2$col
+  names(vals) = names(bar_cols) = pred_long_sum2$cluster
+  vals     = vals[intersect(cluster_order, names(vals))]
+  bar_cols = bar_cols[intersect(cluster_order, names(bar_cols))]
+  HeatmapAnnotation(ab = anno_barplot(vals, 0, which = "row", border = FALSE,
+                                      gp = gpar(fill = bar_cols)),
+                    which = "row")
+}
+```
+
+#### Mean
+
+```{r}
+mat_mean   = make_mat(value_mean)
+height_box = 0.15
+hm_mean    = make_hm(mat_mean, height_box) + make_bar_annot(value_mean_max)
+print(hm_mean)
+pdf(file.path(sct_dir, sprintf("prob_with-max_%s.pdf", param_set)),
+    height = height_box * nrow(mat_mean) + 2,
+    width  = height_box * ncol(mat_mean) + 6)
+print(hm_mean); dev.off()
+```
+
+#### Max mean by position
+
+```{r}
+pred_long_sum3 = pred_long_sum2 %>%
+  mutate(position2 = names(position_colors)[match(col, position_colors)]) %>%
+  mutate(position2 = factor(position2, levels = c("hvc", "ncl", "lman", "nido", "ra", "arco"),
+                            labels = c("HVC", "NC", "LMAN", "NR", "RA", "Arco")))
+pred_long_sum4 = pred_long_sum3 %>%
+  ungroup() %>% group_by(position2, col) %>%
+  summarize(value_mean_max_mean = mean(value_mean_max))
+gg = ggplot(pred_long_sum3, aes(position2, value_mean_max)) +
+  geom_bar(aes(y = value_mean_max_mean, fill = col), data = pred_long_sum4, stat = "identity") +
+  scale_fill_identity() + labs(x = "", y = "") + theme_classic() +
+  theme(axis.text = element_text(size = 6),
+        axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1))
+print(gg)
+save_plot(file.path(sct_dir, sprintf("max_mean_by_position_%s.pdf", param_set)),
+          gg, base_width = 1.5, base_height = 1.5)
+```
+
+### Integration UMAPs
+
+```{r}
+song_colors   = c(RA = position_colors["ra"], HVC = position_colors["hvc"],
+                  LMAN = position_colors["lman"])
+dataset_colors = c(bf = "steelblue", chk = "firebrick3")
+
+cluster_color = function(cluster) {
+  case_when(
+    grepl("HVC",     cluster) ~ position_colors["hvc"],
+    grepl("NC|Nido", cluster) ~ position_colors["ncl"],
+    grepl("LMAN",    cluster) ~ position_colors["lman"],
+    grepl("NR",      cluster) ~ position_colors["nido"],
+    grepl("RA",      cluster) ~ position_colors["ra"],
+    grepl("Arco",    cluster) ~ position_colors["arco"],
+    TRUE                       ~ "grey80"
+  )
+}
+
+umap_d = umap_long %>%
+  mutate(song_class = case_when(dataset == "chk"             ~ "chk",
+                                grepl("Glut-RA",   cluster)  ~ "RA",
+                                grepl("Glut-HVC",  cluster)  ~ "HVC",
+                                grepl("Glut-LMAN", cluster)  ~ "LMAN",
+                                TRUE                          ~ "non-song"),
+         col     = ifelse(dataset == "bf", cluster_color(cluster), NA),
+         is_song = dataset == "bf" & grepl("Glut-RA|Glut-HVC|Glut-LMAN", cluster))
+```
+
+```{r}
+d = umap_d %>% slice_sample(prop = 1)
+
+gg_species = ggplot(d, aes(umap_1, umap_2, color = dataset)) +
+  geom_point_rast(size = 0.2, alpha = 0.4, raster.dpi = 300) +
+  scale_color_manual(values = dataset_colors) +
+  labs(title = param_set, x = "UMAP 1", y = "UMAP 2", color = "Species") +
+  theme_classic(base_size = 7) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1)))
+
+gg_song = ggplot(d %>% arrange(song_class == "non-song" | song_class == "chk"),
+                 aes(umap_1, umap_2, color = song_class)) +
+  geom_point_rast(size = 0.2, alpha = 0.4, raster.dpi = 300) +
+  scale_color_manual(values = c(song_colors, "non-song" = "grey80", "chk" = "grey50"),
+                     breaks = c("RA", "HVC", "LMAN", "non-song", "chk")) +
+  labs(title = param_set, x = "UMAP 1", y = "UMAP 2", color = "Circuit") +
+  theme_classic(base_size = 7) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1)))
+
+gg = plot_grid(gg_species, gg_song, nrow = 1)
+print(gg)
+save_plot(file.path(int_dir, sprintf("umap_%s.pdf", param_set)),
+          gg, base_width = 7, base_height = 3)
+```
+
+```{r}
+chk_grey = "grey70"
+d_chk     = umap_d %>% filter(dataset == "chk") %>% slice_sample(prop = 1)
+d_song    = umap_d %>% filter(is_song) %>% slice_sample(prop = 1)
+d_nonsong = umap_d %>% filter(dataset == "bf", !is_song) %>% slice_sample(prop = 1)
+
+umap_panel = function(d_bf_sub, title) {
+  ggplot() +
+    geom_point_rast(aes(umap_1, umap_2), data = d_chk,
+                    color = chk_grey, size = 0.2, alpha = 0.4, raster.dpi = 300) +
+    geom_point_rast(aes(umap_1, umap_2, color = col), data = d_bf_sub,
+                    size = 0.2, alpha = 0.6, raster.dpi = 300) +
+    scale_color_identity(guide = "legend",
+                         labels = names(position_colors),
+                         breaks = position_colors) +
+    labs(title = title, x = "UMAP 1", y = "UMAP 2", color = NULL) +
+    theme_classic(base_size = 7) +
+    guides(color = guide_legend(override.aes = list(size = 2, alpha = 1)))
+}
+
+gg_split = plot_grid(umap_panel(d_song,    "Song nuclei"),
+                     umap_panel(d_nonsong, "Non-song"),
+                     nrow = 1)
+print(gg_split)
+save_plot(file.path(int_dir, sprintf("umap_split_%s.pdf", param_set)),
+          gg_split, base_width = 7, base_height = 3)
+```
