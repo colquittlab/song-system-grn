@@ -55,21 +55,25 @@ set.seed(10)
 ```{r setup-paths}
 # Define input/output paths
 
-data_dirs <- map(c(file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.mafb_v2"),
-                   file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.emx2")), function(x) list.files(x, full.names = TRUE)) %>% flatten()
+samples <- c("MAFBn", "MAFBp", "EMX2p")
+data_dirs <- setNames(
+  c(
+    file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.mafb_v2", "MAFBn"),
+    file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.mafb_v2", "MAFBp"),
+    file.path(PIPSEQ_MAFB_EMX2_DIR, "bGalGal1.mat.emx2",    "EMX2p")
+  ),
+  samples
+)
 
 in_files <- map(data_dirs, function(x) {
-  files = list.files(x, pattern = "scRNA\\.filtered", full.names = TRUE)
-  files
+  list.files(x, pattern = "scRNA\\.filtered", full.names = TRUE)
 })
-samples = map_chr(data_dirs, basename)
-names(in_files) <- samples
-names(data_dirs) = samples
 
 out_dir <- here::here("overexpression/chick_mafb-emx2_run1")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 obj_fname <- file.path(out_dir, "obj.qs")
+obj_filter_fname <- file.path(out_dir, "obj_filter.qs")
 ```
 
 ## Gene Annotation
@@ -132,7 +136,7 @@ apply_qc_filters <- function(obj, mito_features, max_mito = 2,
 ```
 
 ```{r process-seurat}
-redo <- TRUE
+redo <- T
 
 if (redo) {
   # Load and merge data
@@ -273,7 +277,7 @@ if (redo_plot) {
     "NXPH1", "DACH2", "NR2F2", "LHX9", "NR4A2", "MAFB", "EMX2", "mScarlet", "EMX2-tg", "MAFB-tg", "mNeonGreen"
   )
   plot_features(obj, features, reduction, out_dir)
-  plot_density_features(obj, features, reduction, file.path(out_dir, "density"))
+  #plot_density_features(obj, features, reduction, file.path(out_dir, "density"))
 }
 ```
 
@@ -343,14 +347,14 @@ idents_comb = c(`0`="Glut-1",
                 `1`="PC-1",
                 `2`="PC-2",
                 `3`="PC-3",
-                `4`="GABA",
+                `4`="GABA-1",
                 `5`="Glut-2",
-                `6`="GABA",
+                `6`="GABA-2",
                 `7`="Epen",
-                `8`="GABA",
+                `8`="GABA-3",
                 `9`="Endo",
                 `10`="PC-4",
-                `11`="GABA",
+                `11`="GABA-4",
                 `12`="OPC",
                 `13`="Micro"
                 )
@@ -378,8 +382,8 @@ obj$cell_class_sample_tg_pos = paste(obj$cell_class, obj$sample, obj$tg_pos, sep
 ## DEG
 
 ```{r}
-ortho_fname = OMA_ORTHOLOGS_ZF_CK
-oma = read_delim(ortho_fname)
+# ortho_fname = OMA_ORTHOLOGS_ZF_CK
+# oma = read_delim(ortho_fname)
 ```
 
 
@@ -390,28 +394,26 @@ tg_genes = c("MAFB", "EMX2")
 cell_classes = c("Glut", "GABA", "PC")
 redo = T
 if (redo) {
-obj = PrepSCTFindMarkers(obj, assay = "SCT", verbose = TRUE)
+  obj = PrepSCTFindMarkers(obj, assay = "SCT", verbose = TRUE)
+  
+  features_to_test = grep("^ENS", Features(obj), invert = T, value=T )
 
-features_to_test = grep("^ENS", Features(obj), invert = T, value=T )
-features_to_test = intersect(features_to_test, oma$gene_name_ck)
-
-markers_pos = map(cell_classes, function(cc_cur) {
-  map(tg_genes, function(tg_gene) {
-    markers_cur = FindMarkers(obj, features = features_to_test,  logfc.threshold = 0,
-                              ident.1 = sprintf("%s_%s", cc_cur, tg_gene),
-                              ident.2 = sprintf("%s_none", cc_cur),
-                              group.by = "cell_class_tg_pos")
-    markers_cur$gene = rownames(markers_cur)
-    markers_cur
-  }) %>% set_names(tg_genes) %>% bind_rows(.id="tg")
-}) %>% set_names(cell_classes) %>% bind_rows(.id="cell_class")
-
-saveRDS(markers_pos, markers_pos_fname)
+  markers_pos = map(cell_classes, function(cc_cur) {
+    map(tg_genes, function(tg_gene) {
+      markers_cur = FindMarkers(obj, features = features_to_test,  logfc.threshold = .1,
+                                ident.1 = sprintf("%s_%s", cc_cur, tg_gene),
+                                ident.2 = sprintf("%s_none", cc_cur),
+                                group.by = "cell_class_tg_pos", recorrect_umi=FALSE)
+      markers_cur$gene = rownames(markers_cur)
+      markers_cur
+    }) %>% set_names(tg_genes) %>% bind_rows(.id="tg")
+  }) %>% set_names(cell_classes) %>% bind_rows(.id="cell_class")
+  
+  saveRDS(markers_pos, markers_pos_fname)
 } else {
   markers_pos = readRDS(markers_pos_fname)
 }
 ```
-
 
 ## Load scenicplus results
 
@@ -795,29 +797,10 @@ walk(tg_genes, function(tg_cur) {
                                colors = c("darkblue", "white", "darkred"))
     if (nrow(norm_scaled) == 0) next
 
-    # OE FC column (MAFB+/MAFB- or EMX2+/EMX2-), matched to gene_set source
-    g = rownames(norm_scaled)
-    oe_fc = setNames(
-      (gene_set$oe_src %>% filter(tg == tg_cur, cell_class == "Glut"))$avg_log2FC,
-      (gene_set$oe_src %>% filter(tg == tg_cur, cell_class == "Glut"))$gene
-    )
-    oe_mat = matrix(oe_fc[g], ncol = 1, dimnames = list(g, sprintf("%s+/-", tg_cur)))
-    
-    oe_lim = ceiling(quantile(abs(oe_mat), 0.75, na.rm = TRUE))
-    oe_lim = ceiling(max(abs(oe_mat)))
-    print(oe_lim)
-    oe_pal = scales::brewer_pal(type="div", palette=4, direction = -1)
-    
-    oe_col = circlize::colorRamp2(seq(-1* oe_lim, oe_lim, length.out=9),
-                                  oe_pal(9))
-    
-    ht_oe = Heatmap(oe_mat
-                   )
-    
-    ht_oe
     ht_song = Heatmap(norm_scaled, name = "log2\n(song - non-song)",
                       col = col,
                       cluster_rows    = TRUE,
+                      clustering_method_rows = "ward.D",
                       show_row_dend   = FALSE,
                       cluster_columns = FALSE,
                       border          = "black",
@@ -835,35 +818,141 @@ walk(tg_genes, function(tg_cur) {
                         legend_width = unit(15, "mm"),
                         grid_height  = unit(2, "mm")))
 
-    ht_oe = Heatmap(oe_mat, name = sprintf("log2FC\n(%s OE)", tg_cur),
-                    col = oe_col,
-                    na_col = "gray90",
-                    cluster_rows    = FALSE,
-                    cluster_columns = FALSE,
-                    border          = "black",
-                    row_names_gp    = gpar(fontsize = 5, fontfamily = "sans"),
-                    column_names_gp = gpar(fontsize = 5, fontfamily = "sans"),
-                    height = unit(nrow(oe_mat) * adjust_factor, "in"),
-                    width  = unit(ncol(oe_mat) * adjust_factor, "in"),
-                    heatmap_legend_param = list(
-                      at         = c(-oe_lim, 0, oe_lim),
-                      labels     = c(sprintf("%.1f", -oe_lim), "0",
-                                     sprintf("%.1f",  oe_lim)),
-                      labels_gp  = gpar(fontsize = 5),
-                      title_gp   = gpar(fontsize = 5),
-                      direction  = "horizontal",
-                      legend_width = unit(15, "mm"),
-                      grid_height  = unit(2, "mm")))
-
-    ht = ht_song + ht_oe
+    ht = ht_song
 
     print(ht)
     pdf(out_fname,
-        width  = (ncol(norm_scaled) + ncol(oe_mat)) * 0.25 + 1.5,
+        width  = ncol(norm_scaled) * 0.25 + 1.5,
         height = nrow(norm_scaled) * 0.2 + 1)
     draw(ht)
     dev.off()
   }
+})
+```
+
+#### Heatmaps — row-normalized expression
+
+```{r plot-deg-songbird-sn-heatmap-rownorm}
+ct_cols = c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")
+
+walk(tg_genes, function(tg_cur) {
+  out_dir_tg = file.path(out_dir, tg_cur)
+
+  top_markers_pos = markers_pos %>%
+    filter(tg == tg_cur, cell_class == "Glut") %>%
+    filter(gene %in% Features(sn_obj)) %>%
+    slice_min(p_val_adj, n = n_top) %>%
+    slice_max(avg_log2FC, n = n_top) %>%
+    pull(gene) %>% unique()
+
+  feats = intersect(top_markers_pos, Features(sn_glut))
+  if (length(feats) == 0) return(invisible(NULL))
+
+  avg_mat = log2(AggregateExpression(sn_obj, features = feats, group.by = "cluster", assay = "SCT")$SCT + 1)
+  avg_mat = avg_mat[feats, ct_cols, drop = FALSE]
+
+  rn_mat = t(scale(t(avg_mat)))
+  rn_mat = rn_mat[complete.cases(rn_mat), , drop = FALSE]
+  if (nrow(rn_mat) == 0) return(invisible(NULL))
+
+  val_limit = ceiling(quantile(abs(rn_mat), 0.95, na.rm = TRUE))
+  rn_mat = pmin(pmax(rn_mat, -val_limit), val_limit)
+
+  col = circlize::colorRamp2(
+    breaks = c(-val_limit, 0, val_limit),
+    colors = c("darkblue", "white", "darkred")
+  )
+
+  out_dir_cur = file.path(out_dir_tg, "sn_top_markers_pos")
+  dir.create(out_dir_cur, showWarnings = FALSE, recursive = TRUE)
+  out_fname = file.path(out_dir_cur, "heatmap_glut_rownorm.pdf")
+
+  ht = Heatmap(rn_mat, name = "row z-score",
+               col = col,
+               cluster_rows           = TRUE,
+               clustering_method_rows = "ward.D",
+               show_row_dend          = FALSE,
+               cluster_columns        = FALSE,
+               border          = "black",
+               row_names_gp    = gpar(fontsize = 5, fontfamily = "sans"),
+               column_names_gp = gpar(fontsize = 5, fontfamily = "sans"),
+               height = unit(nrow(rn_mat) * adjust_factor, "in"),
+               width  = unit(ncol(rn_mat) * adjust_factor, "in"),
+               heatmap_legend_param = list(
+                 at           = c(-val_limit, 0, val_limit),
+                 labels       = c(sprintf("%.1f", -val_limit), "0",
+                                  sprintf("%.1f",  val_limit)),
+                 labels_gp    = gpar(fontsize = 5),
+                 title_gp     = gpar(fontsize = 5),
+                 direction    = "horizontal",
+                 legend_width = unit(15, "mm"),
+                 grid_height  = unit(2, "mm")))
+
+  print(ht)
+  pdf(out_fname,
+      width  = ncol(rn_mat) * 0.25 + 1.5,
+      height = nrow(rn_mat) * 0.2 + 1)
+  draw(ht)
+  dev.off()
+})
+```
+
+#### Scatter plots — OE DE vs song/non-song DE
+
+```{r plot-deg-songbird-sn-scatter}
+
+n_top = 50
+walk(tg_genes, function(tg_cur) {
+  out_dir_tg = file.path(out_dir, tg_cur)
+  dir.create(out_dir_tg, showWarnings = FALSE)
+
+  markers_tg = markers_pos %>%
+    filter(tg == tg_cur, cell_class == "Glut") %>%
+    filter(gene %in% Features(sn_obj)) %>%
+    slice_min(p_val_adj, n = n_top) %>%
+    slice_max(avg_log2FC, n = n_top)
+
+  feats = unique(markers_tg$gene)
+  if (length(feats) == 0) return(invisible(NULL))
+
+  avg_mat = log2(
+    AggregateExpression(sn_obj, features = feats, group.by = "cluster", assay = "SCT")$SCT + 1
+  )
+
+  label_genes = switch(tg_cur,
+    MAFB = c("SLC13A1", "ATP6V1C2", "GSDMA"),
+    EMX2 = c("LIG4", "FCF1", "CNTD1"),
+    character(0)
+  )
+
+  plots = imap(song_pairs, function(nonsong_ct, song_ct) {
+    df = tibble(
+      gene      = feats,
+      oe_log2fc = markers_tg$avg_log2FC[match(feats, markers_tg$gene)],
+      song_diff = avg_mat[feats, song_ct] - avg_mat[feats, nonsong_ct]
+    ) %>% filter(!is.na(oe_log2fc), !is.na(song_diff))
+
+    df_label = df %>% filter(gene %in% label_genes)
+
+    ggplot(df, aes(x = oe_log2fc, y = song_diff)) +
+      geom_hline(yintercept = 0, linewidth = 0.3, linetype = "dashed", color = "gray50") +
+      geom_point(size = 0.5, alpha = 0.4,
+                 position = position_jitter(width = 0.02, height = 0, seed = 42)) +
+      ggrepel::geom_text_repel(data = df_label, aes(label = gene),
+                               size = 2, max.overlaps = Inf) +
+      labs(x = sprintf("log2FC (%s OE)", tg_cur),
+           y = sprintf("log2 expr\n(%s − %s)", song_ct, nonsong_ct)) +
+      theme_bw() + plot_theme()
+  })
+
+  gg_combined = plot_grid(plotlist = plots, nrow = 1)
+  print(gg_combined)
+  save_plot(
+    file.path(out_dir_tg, "scatter_oe_vs_song-nonsong.pdf"),
+    gg_combined,
+    base_height = 2,
+    base_width  = 2 * length(song_pairs)
+  )
 })
 ```
 
@@ -973,138 +1062,86 @@ for (gene_set in gene_sets_combined) {
 }
 ```
 
-#### Scatters
+## DEG Expression — Violin and Box Plots
 
-```{r plot-deg-songbird-sn-scatter}
-# Background MA ribbons from all genes (computed once)
-avg_mat_all = log2(AggregateExpression(sn_glut, group.by = "cluster", assay = "SCT")$SCT + 1)
+```{r deg-vln-box}
+n_top_vln <- 20
 
-make_bg_ma <- function(A, M) {
-  tibble(A = A, M = M) %>%
-    filter(!is.na(A), !is.na(M)) %>%
-    mutate(bin = cut(A, breaks = 50)) %>%
-    group_by(bin) %>%
-    summarise(A_mid = mean(A), M_lo = quantile(M, 0.05), M_hi = quantile(M, 0.95),
-              .groups = "drop") %>%
-    filter(!is.na(bin))
-}
-
-bg_ma_sns = markers_sns_base %>%
-  filter(compare == "Glut-RA") %>%
-  transmute(gene,
-            A = (avg_mat_all[gene, "Glut-RA"] + avg_mat_all[gene, "Glut-Arco-1"]) / 2,
-            M = avg_log2FC_sns) %>%
-  { make_bg_ma(.$A, .$M) }
-
-bg_ma_avgmat = make_bg_ma(
-  A = (avg_mat_all[, "Glut-RA"] + avg_mat_all[, "Glut-Arco-1"]) / 2,
-  M =  avg_mat_all[, "Glut-RA"] - avg_mat_all[, "Glut-Arco-1"]
+tg_comparisons <- list(
+  MAFB = c("Glut_MAFB", "Glut_none"),
+  EMX2 = c("Glut_EMX2", "Glut_none")
 )
 
 walk(tg_genes, function(tg_cur) {
-  out_dir_tg = file.path(out_dir, tg_cur)
-  
-  top_markers_pos = markers_pos %>%
+  out_dir_tg <- file.path(out_dir, tg_cur)
+  dir.create(out_dir_tg, showWarnings = FALSE)
+
+  groups <- tg_comparisons[[tg_cur]]
+
+  top_genes <- markers_pos %>%
     filter(tg == tg_cur, cell_class == "Glut") %>%
-    filter(gene %in% Features(sn_obj)) %>%
-    slice_min(p_val_adj, n = n_top) %>%
-    slice_max(avg_log2FC, n = n_top) %>%
-    pull(gene) %>% unique()
+    filter(avg_log2FC > 0) %>%
+    slice_min(p_val_adj, n = n_top_vln) %>%
+    slice_max(avg_log2FC, n = n_top_vln) %>%
+    pull(gene) %>%
+    unique() %>%
+    intersect(Features(obj))
 
-  gene_sets = list(list(genes = top_markers_pos, stem = "sn_top_markers_pos"))
-  for (gene_set in gene_sets) {
-    feats = intersect(gene_set$genes, Features(sn_glut))
-    if (length(feats) == 0) next
-    avg_mat = log2(AggregateExpression(sn_obj, features = feats, group.by = "cluster", assay = "SCT")$SCT + 1)
+  if (length(top_genes) == 0) return(invisible(NULL))
 
-    scatter_base = tibble(
-      gene          = rownames(avg_mat),
-      `Glut-RA`     = avg_mat[, "Glut-RA"],
-      `Glut-Arco-1` = avg_mat[, "Glut-Arco-1"]
-    ) %>% mutate(A = (`Glut-RA` + `Glut-Arco-1`) / 2)
+  cells_use <- Cells(obj)[obj$cell_class_tg_pos %in% groups]
+  obj_sub   <- subset(obj, cells = cells_use)
+  obj_sub$cell_class_tg_pos <- factor(obj_sub$cell_class_tg_pos, levels = groups)
 
-    # Scatter (expression axes — same regardless of FC source)
-    jitter = position_jitter(width = 0.02, height = 0.02, seed = 42)
-    gg = ggplot(scatter_base, aes(`Glut-Arco-1`, `Glut-RA`, label = gene)) +
-      geom_point(size = 0.8, position = jitter) +
-      ggrepel::geom_text_repel(size = 1.5, position = jitter,
-                               min.segment.length = 0, max.overlaps = Inf) +
-      geom_abline(slope = 1, intercept = 0, linetype = 2, color = "gray50") +
-      labs(x = "Glut-Arco-1 (log2)", y = "Glut-RA (log2)",
-           title = sprintf("%s – %s", tg_cur, gene_set$stem)) +
-      theme_bw() + plot_theme()
-    print(gg)
-    save_plot(file.path(out_dir_tg, gene_set$stem, "scatter_RA_vs_Arco1.pdf"), gg,
-              base_height = 1.5, base_width = 1.5)
+  # Violin + box plot grid
+  gg_vln <- VlnPlot(
+    obj_sub,
+    features    = top_genes,
+    group.by    = "cell_class_tg_pos",
+    pt.size     = 1,
+    combine     = FALSE
+  )
+  gg_vln <- map(gg_vln, function(p) {
+    p + geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white", alpha = 0.6) +
+      plot_theme() +
+      theme(axis.title.x = element_blank(), legend.position = "none")
+  })
+  gg_vln_combined <- plot_grid(plotlist = gg_vln, ncol = 5)
+  print(gg_vln_combined)
+  save_plot(
+    file.path(out_dir_tg, "vln_top_deg_glut.pdf"),
+    gg_vln_combined,
+    base_height = ceiling(length(top_genes) / 5) * 1.5,
+    base_width  = 7.5
+  )
 
-    # Two FC versions: avg_log2FC_sns and avg_mat-derived
-    sns_ra = markers_sns_base %>%
-      filter(compare == "Glut-RA") %>%
-      dplyr::select(gene, avg_log2FC_sns)
+  # Box plot grid
+  expr_mat <- GetAssayData(obj_sub, assay = "SCT", layer = "data")[top_genes, , drop = FALSE]
+  expr_df  <- as.data.frame(t(as.matrix(expr_mat))) %>%
+    rownames_to_column("cell") %>%
+    mutate(group = obj_sub$cell_class_tg_pos) %>%
+    pivot_longer(cols = all_of(top_genes), names_to = "gene", values_to = "expression") %>%
+    mutate(gene = factor(gene, levels = top_genes),
+           group = factor(group, levels = groups))
 
-    fc_versions = list(
-      sns    = list(df = scatter_base %>% inner_join(sns_ra, by = "gene") %>%
-                           dplyr::rename(M = avg_log2FC_sns),
-                    bg     = bg_ma_sns,
-                    y_lab  = "avg_log2FC sns (Glut-RA vs Glut-Arco-1)"),
-      avgmat = list(df = scatter_base %>% mutate(M = `Glut-RA` - `Glut-Arco-1`),
-                    bg     = bg_ma_avgmat,
-                    y_lab  = "log2 expr FC (Glut-RA vs Glut-Arco-1)")
-    )
-
-    iwalk(fc_versions, function(fv, fv_name) {
-      scatter_df = fv$df
-      if (nrow(scatter_df) == 0) return()
-
-      ma_jitter = position_jitter(width = 0.02, height = 0.02, seed = 42)
-      ma_layers = list(
-        geom_point(size = 0.8, position = ma_jitter),
-        ggrepel::geom_text_repel(size = 1.5, position = ma_jitter,
-                                 min.segment.length = 0, max.overlaps = Inf),
-        geom_hline(yintercept = 0, linetype = 2, color = "gray50"),
-        labs(x = "Average expression (log2)", y = fv$y_lab,
-             title = sprintf("%s – %s", tg_cur, gene_set$stem)),
-        theme_bw(), plot_theme()
-      )
-
-      ma_base_gg = ggplot(scatter_df, aes(A, M, label = gene)) + ma_layers
-      gg_ma      = ggplot(scatter_df, aes(A, M, label = gene)) +
-        geom_ribbon(data = fv$bg, aes(x = A_mid, ymin = M_lo, ymax = M_hi),
-                    fill = "gray80", alpha = 0.6, inherit.aes = FALSE) +
-        ma_layers
-
-      print(ma_base_gg)
-      save_plot(file.path(out_dir_tg, gene_set$stem,
-                          sprintf("ma_RA_vs_Arco1_%s.pdf", fv_name)),
-                ma_base_gg, base_height = 1.5, base_width = 1.5)
-      print(gg_ma)
-      save_plot(file.path(out_dir_tg, gene_set$stem,
-                          sprintf("ma_RA_vs_Arco1_%s_bg.pdf", fv_name)),
-                gg_ma, base_height = 1.5, base_width = 1.5)
-
-      # OE log2FC vs Glut-RA/Glut-Arco-1 FC
-      marker_sets_cur = list(
-        markers_pos = markers_pos %>% filter(tg == tg_cur, cell_class == "Glut")
-      )
-      iwalk(marker_sets_cur, function(mset, mset_name) {
-        df = scatter_df %>% inner_join(mset %>% dplyr::select(gene, avg_log2FC), by = "gene")
-        if (nrow(df) == 0) return()
-        jit = position_jitter(width = 0.02, height = 0.02, seed = 42)
-        gg = ggplot(df, aes(avg_log2FC, M, label = gene)) +
-          geom_point(size = 0.8, position = jit) +
-          ggrepel::geom_text_repel(size = 1.5, position = jit,
-                                   min.segment.length = 0, max.overlaps = Inf) +
-          geom_hline(yintercept = 0, linetype = 2, color = "gray50") +
-          geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
-          labs(x = sprintf("avg_log2FC (%s OE)", tg_cur), y = fv$y_lab,
-               title = sprintf("%s – %s", tg_cur, gene_set$stem)) +
-          theme_bw() + plot_theme()
-        print(gg)
-        save_plot(file.path(out_dir_tg, gene_set$stem,
-                            sprintf("oe_vs_RA-Arco1_%s_%s.pdf", mset_name, fv_name)),
-                  gg, base_height = 1.5, base_width = 1.5)
-      })
-    })
-  }
+  gg_box <- ggplot(expr_df, aes(x = group, y = expression, fill = group)) +
+    geom_violin(trim = TRUE, scale = "width", alpha = 0.6) +
+    geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white", alpha = 0.7) +
+    facet_wrap(~gene, ncol = 5, scales = "free_y") +
+    scale_fill_manual(values = setNames(
+      scales::hue_pal()(length(groups)), groups
+    )) +
+    theme_bw() + plot_theme() +
+    theme(axis.text.x  = element_text(angle = 30, hjust = 1),
+          axis.title.x = element_blank(),
+          legend.position = "none")
+  print(gg_box)
+  save_plot(
+    file.path(out_dir_tg, "box_top_deg_glut.pdf"),
+    gg_box,
+    base_height = ceiling(length(top_genes) / 5) * 1.8,
+    base_width  = 7.5
+  )
 })
 ```
+
