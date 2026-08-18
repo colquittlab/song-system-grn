@@ -1,55 +1,67 @@
 ---
 title: "Untitled"
 format: html
-editor: visual
+editor: source
 ---
 
 ```{r}
 library(Seurat)
-library(BPCells)
-library(SeuratDisk)
-library(SeuratWrappers)
+library(BPCells)      # write_matrix_dir / open_matrix_dir
 library(tidyverse)
-library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
-library(rtracklayer)
-library(GenomicRanges)
-library(qs)
-library(furrr)
-library(cowplot)
-library(clustree)
+library(GenomicRanges) # seqnames(), on the imported annotation
+library(qs2)
+library(furrr)        # future_map over the per-sample load
+library(cowplot)      # save_plot
 library(scCustomize)
 
-source("../../scripts/scRNA.R")
+## clustree is only ever called as clustree::clustree() below, but it must still be **attached**,
+## so do not "clean this up" again -- I did, and it broke every clustree chunk with
+## `Unknown guide: edge_colourbar`. The chain: clustree.matrix() builds its plot with ggraph's
+## scale_edge_colour_gradientn(), whose `guide` argument defaults to the *string*
+## "edge_colourbar"; ggplot2 4.x resolves a string guide in validate_guide() via
+## exists("guide_edge_colourbar", envir = global_env()), which searches the attached search path
+## only. clustree has `Depends: ggraph`, so library(clustree) is what puts that function there.
+## Loading a namespace with :: does not attach a package's Depends, so the qualified call alone
+## leaves the guide unresolvable. library(ggraph) would do just as well.
+library(clustree)
+
+## Dropped from this block: SeuratWrappers and BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc (no
+## symbol from either appears anywhere in the notebook), rtracklayer (used only as
+## rtracklayer::import, which needs no attach), and SeuratDisk (its one call was removed).
+## doFuture went from the future block below -- nothing here uses foreach.
+
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
 source(here::here("config/paths.R"))
 reticulate::use_condaenv("/home/brad/micromamba/envs/scanorama")
 rename = dplyr::rename
 select = dplyr::select
-```
 
-```{r}
-# params_table = read_csv("~/ssd/rstudio/multiome/motor-pathway/preprocess_table_ucsc.csv")
-# params_table = params_table %>% filter(process)
-# params_table = params_table %>% filter(sample_name %in% c("hvc_run1", "nc_run1", "hvc_run2", "nc_run2",
-#                                                            "ra_run2", "arco_run2", "ra_run3", "arco_run3"))
-# params_list = split(params_table, seq(nrow(params_table)))
+## Names produced by process_rna(), derived rather than typed out.
+##
+## The processing below uses the shared pipeline (process_rna / generate_umaps / generate_clusters
+## in scRNA.R), as dev_full1 does, instead of hand-rolled SCTransform |> RunPCA |> RunUMAP |>
+## seurat_find_clusters chains. That pipeline encodes the parameters in the names it generates --
+## a UMAP is "umap_rna_<dims>_mindist<d>nn<n>" and a cluster column is "<prefix>_pca_<dims>_<res>",
+## where the old chain produced a single "umap_rna" and "<prefix>_pca.<res>". The gain is that a
+## dims sweep no longer silently overwrites itself; the cost is that every downstream reference has
+## to be derived from the same parameters, which is what these two helpers are for. Keep them in
+## step with generate_umaps()/generate_clusters() if the shared script's naming ever changes.
+umap_name = function(dims, min.dist = 0.3, n.neighbors = 30, prefix = "umap") {
+  sprintf("%s_rna_%d_mindist%snn%d", prefix, dims, min.dist, n.neighbors)
+}
+cluster_name = function(prefix, dims, res) {
+  sprintf("%s_pca_%d_%s", prefix, dims, res)
+}
 ```
 
 ```{r}
 samples_to_process = c("ra_run1", "arco_run1", "hvc_run1", "nc_run1",
-                       #"nc_run2", 
                        "lman_run1", "nr_run1")
-#ds = map_chr(samples_to_process, ~sprintf("~/ssd/snRNA/210607_snrna/%s/outs/filtered_feature_bc_matrix", .x))
-#names(ds) = samples_to_process
-#out_dirs = map(samples_to_process, function(samp) file.path(out_dir, samp))
-#walk(out_dirs, dir.create)
-#out_fnames = map(samples_to_process, function(samp) file.path(out_dir, samp, "obj.qs"))
-
 ```
 
 ```{r}
-base_dir = "/hdd1/brad/snRNA/210607_snrna/"
+base_dir = "~/nest/snRNA/210607_snrna/"
 
-#sample_names = params_table$sample_name
 ## Cellbender
 cb_dirs = file.path(base_dir, "cellbender", paste(samples_to_process, "lonStrDom2_3p_merge_ucsc", sep="_"))
 cb_fnames = map(cb_dirs, list.files, full.names=T, pattern="FPR_0.01_filtered.h5")
@@ -57,32 +69,24 @@ names(cb_fnames) = samples_to_process
 
 ## Cellranger
 cr_dirs = file.path(base_dir, samples_to_process)
-#cr_fnames = list.files(cr_dir, pattern="sample.*_ucsc", full.names = T)
 feature_h5s = file.path(cr_dirs, "outs", "filtered_feature_bc_matrix.h5")
-#atac_frags = file.path(cr_dirs, "outs", "atac_fragments.tsv.gz")
 
 names(feature_h5s) = samples_to_process
-#names(atac_frags) = params_table$sample_name
 
 
 data_dir = file.path(base_dir, "aggr", "outs")
-#setup_dir = "~/ssd/rstudio/multiome/archr/setup/"
-analysis_prefix = "~/hdd/rstudio/snRNA/snrna_cellranger/"
-out_name = "snrna_seurat_cellbender.0.01_preprocess"
-out_dir = file.path(analysis_prefix, out_name)
+script_name = "snrna_seurat_cellbender_preprocess"
+out_dir = here::here("snrna/clustering", script_name)
 dir.create(out_dir, recursive = T)
 
 feature_h5 = file.path(data_dir, "filtered_feature_bc_matrix.h5")
-#atac_frags = file.path(data_dir, "atac_fragments.tsv.gz")
 
 aggr_csv = read_csv(file.path(base_dir, "aggr.csv"))
 aggr_csv = aggr_csv[match(samples_to_process, aggr_csv$sample_id),]
 
-#out_split_fname = file.path(out_dir, "obj_position_split.qs")
-out_full_fname = file.path(out_dir, "obj.qs")
-out_processed_fname = file.path(out_dir, "obj_processed.qs")
-out_fname = file.path(out_dir, "obj_clustered.qs")
-out_h5_fname = file.path(out_dir, "obj_clustered.h5seurat")
+out_full_fname = file.path(out_dir, "obj.qs2")
+out_processed_fname = file.path(out_dir, "obj_processed.qs2")
+out_fname = file.path(out_dir, "obj_clustered.qs2")
 
 seed = 10
 set.seed(seed)
@@ -100,6 +104,7 @@ genes_mt = na.omit(annotation_mt$Name)
 ```
 
 ```{r}
+options(future.globals.maxSize = Inf)
 plan(sequential)
 ```
 
@@ -107,11 +112,8 @@ plan(sequential)
 
 ```{r}
 
-redo  = F
+redo = T
 if (redo) {
-  # objs = mclapply(sample_names, mc.set.seed=F,
-  #                 mc.cores=length(sample_names),
-  #                 function(sample_name) {
   objs = future_map(samples_to_process,
                     .options = furrr_options(seed=seed),
                     .f = function(sample_name) {
@@ -119,7 +121,6 @@ if (redo) {
     ## Load CellBender corrected
     cb_fname = cb_fnames[[sample_name]]
     cb_mat = scCustomize::Read_CellBender_h5_Mat(cb_fname)
-    #sample_index = str_extract(sample_name, "[0-9]+")
     sample_index = which(aggr_csv$sample_id == sample_name)
     ### Fix barcodes
     bcodes = colnames(cb_mat)
@@ -138,8 +139,7 @@ if (redo) {
     ## Load CellRanger raw
     feature_h5 = feature_h5s[sample_name]
     cn = Seurat::Read10X_h5(filename = feature_h5)
-    #cn_gex = cn$`Gene Expression`
-    
+
     ### Fix barcodes
     bcodes = colnames(cn)
     bcodes = sub("-1", str_interp("-${sample_index}"), bcodes)
@@ -165,9 +165,9 @@ if (redo) {
   obj = scCustomize::Merge_Seurat_List(objs)
   obj = JoinLayers(obj)
   
-  qsave(obj, out_full_fname)
+  qs_save(obj, out_full_fname, nthreads = 8)
 } else {
-  obj = qread(out_full_fname)
+  obj = qs_read(out_full_fname, nthreads = 8)
 }
 ```
 
@@ -218,98 +218,118 @@ print(gg)
 obj = obj_filt
 ```
 
-```{r}
-# params_table = params_table %>% mutate(dir_sample = file.path(data_subdir, sample_to_process)) 
-# aggr_params = aggr_csv %>% mutate(sample_name = library_id) %>% left_join(params_table)
-# aggr_params = aggr_params %>% 
-#   mutate(sample_name_s = map(sample_name, ~ unlist(str_split(.x, "_"))),
-#          position = map_chr(sample_name_s, 1),
-#          run = map_chr(sample_name_s, 2)) %>%
-#   mutate(well = as.character(1:n()))
-# 
-# md = FetchData(obj, "well") %>%
-#   rownames_to_column() %>% 
-#   left_join(aggr_params %>% select(well, position, run)) %>%
-#   column_to_rownames()
-# 
-# obj = AddMetaData(obj, md)
-```
-
-```{r}
-# params_table = params_table %>%
-#   mutate(
-#     position = str_extract(sample_name, "^[a-z]+"),
-#     run =  str_extract(sample_name, "[a-z]+[0-9]$"),
-#     replicate = case_when(position %in% c("hvc", "nc") & run == "run1" ~ "rep1", 
-#                           position %in% c("hvc", "nc") & run == "run2" ~ "rep2", 
-#                           position %in% c("ra", "arco") & run == "run2" ~ "rep1",
-#                           position %in% c("ra", "arco") & run == "run3" ~ "rep2")
-#   )
-# 
-# md = FetchData(obj, c("position", "run")) %>%
-#   rownames_to_column() %>%
-#   left_join(params_table %>% select(position, run, replicate, sample_name)) %>%
-#   column_to_rownames()
-# 
-# obj = AddMetaData(obj, md)
-```
-
 ## Load souporcell
 
-```{r}
-soc_dirs = file.path(base_dir, samples_to_process)
-#soc_dirs = list.dirs(base_dir, recursive = F, full.names= T)
-#soc_dirs = grep("run", soc_dirs, value=T)
-#soc_dirs = list.dirs(soc_dirs, recursive = F, full.names = T)
-#soc_dirs = grep("ucsc", soc_dirs, value=T )
-# sample_to_process = map(soc_dirs, function(x) {
-#   xs = unlist(str_split(x, "/"))
-#   paste(xs[(length(xs)-1):length(xs)], collapse="/")
-# }) %>% unlist()
-names(soc_dirs) = samples_to_process
+Individual identity comes from `snrna_souporcell_clustering.qmd`, not from `clusters.tsv` directly.
+souporcell's `assignment` is a *per-library* cluster index -- `ra_run1` cluster 0 and `hvc_run1`
+cluster 0 are unrelated birds -- so it cannot be used as an animal label, which is what the previous
+version of this chunk did. That notebook compares the six libraries' `cluster_genotypes.vcf` files to
+each other and resolves the 18 (library, cluster) slots into individuals; `individual` below is that
+label, and is the variable to group by downstream.
 
-soc_dirs = soc_dirs[samples_to_process]
-soc_cluster_fnames = map(soc_dirs, ~file.path(.x, "souporcell", "clusters.tsv"))
-soc_clusters = map(soc_cluster_fnames, read_delim)
-soc_clusters = map(seq_along(soc_clusters), function(i) {
-  soc_cur = soc_clusters[[i]]
-  #soc_cur = soc_cur %>% mutate(barcode = paste(barcode, i, sep="_"))
-  soc_cur = soc_cur %>% mutate(barcode = sub("1", i, barcode))
-  soc_cur
-}) %>% bind_rows()
+It also found that these six libraries are **not** three birds dissected into all six regions. They
+are two batches sharing no animals: three birds in `ra`/`arco`/`hvc`/`nc` and three different birds in
+`lman`/`nr`, six in total. `batch` carries that, and it constrains what can be compared -- `individual`
+is only meaningful within a batch, so a bird effect cannot be fit across all six libraries at once.
+
+```{r}
+soc_fname = here::here("snrna/clustering", "snrna_souporcell_clustering",
+                       "souporcell_assignments.csv")
+stopifnot("run snrna_souporcell_clustering.qmd first" = file.exists(soc_fname))
+
+soc_clusters = read_csv(soc_fname, show_col_types = FALSE)
+
+## `cell` is written with this notebook's own naming convention (underscore prefix, `-1` replaced by
+## the aggr.csv index), so it joins directly. Assert rather than assume: a mismatch would otherwise
+## surface as silently all-NA metadata.
+n_matched = length(intersect(soc_clusters$cell, Cells(obj)))
+stopifnot("souporcell cell names do not match the object" = n_matched > 0.5 * ncol(obj))
+message(n_matched, " of ", ncol(obj), " cells matched in souporcell_assignments.csv")
+
 soc_clusters = soc_clusters %>%
-  mutate(barcode = paste0("_", barcode))
-soc_clusters = soc_clusters %>% column_to_rownames("barcode")
-soc_clusters = soc_clusters %>% 
-  select(status, assignment) %>%
-  rename(doublet_status = status)
+  select(cell, doublet_status, individual, batch,
+         souporcell_cluster = sc_cluster, souporcell_component = component) %>%
+  mutate(souporcell_cluster = as.character(souporcell_cluster)) %>%
+  column_to_rownames("cell")
 soc_clusters = soc_clusters[Cells(obj),]
 ```
 
 ```{r}
-table(soc_clusters$assignment)
+table(soc_clusters$individual, useNA="ifany")
+table(soc_clusters$doublet_status, useNA="ifany")
 ```
 
 ```{r}
 obj = AddMetaData(obj, soc_clusters)
-# obj = subset(obj, subset= doublet_status=="singlet")
 ```
 
 ## Doublet detection
 
+DoubletFinder needs an expected number of doublets per library, `nExp`. This used to be a flat 4% of
+cells everywhere; souporcell measures it per library instead, and the six libraries do not agree with
+each other or with 4%.
+
+One correction is needed before that number can be used. souporcell can only see a doublet made of
+two *different* birds -- a doublet of two nuclei from the same bird has that bird's genotype and is
+called a singlet. With individual proportions `p_i` in a library, a random doublet is detectable with
+probability `1 - sum(p_i^2)`, which is 2/3 for three equally represented birds. So souporcell's
+observed rate is a *lower bound* and the total rate is the observed one divided by that factor
+(~1.5x here). Using the observed rate directly would tell DoubletFinder to look for a third fewer
+doublets than are actually present.
+
+`nExp` is therefore the *total* expected doublets, souporcell's included, because paramSweep and
+doubletFinder both run over all cells at this point -- souporcell's doublets are not dropped until
+the Re-process step below, which keeps the intersection of the two callers' singlets. The cells only
+DoubletFinder can find are the same-bird ones; asking it for the total and intersecting is the
+simplest way to get those without restructuring the chunk.
+
+```{r}
+soc_rate = obj@meta.data %>%
+  filter(doublet_status %in% c("singlet", "doublet")) %>%
+  group_by(sample_name) %>%
+  summarise(
+    n_called = n(),
+    n_doublet = sum(doublet_status == "doublet"),
+    observed_rate = n_doublet / n_called,
+    ## Fraction of doublets souporcell could have detected, from this library's own individual
+    ## proportions -- not assumed equal, since the per-bird cell counts are not balanced.
+    detectable = {
+      p = prop.table(table(individual[doublet_status == "singlet"]))
+      1 - sum(p^2)
+    },
+    total_rate = observed_rate / detectable,
+    .groups = "drop"
+  )
+
+## Guard rail only against a broken estimate, not against a high one: souporcell calls 20-48% of
+## raw barcodes doublets in these six libraries, and the QC filter above removes much but not all of
+## that, so a corrected rate well north of 10% is the expected result here rather than a red flag.
+## Capping it at something tighter would silently restore the flat 4% for every library, which is
+## exactly the assumption this replaces. Rates this high track the ambient-RNA column in the
+## souporcell notebook's run-quality table -- read it before treating any of them as gospel.
+soc_rate = soc_rate %>%
+  mutate(
+    nExp_rate = if_else(is.na(total_rate) | total_rate <= 0 | total_rate > 0.5, 0.04, total_rate),
+    fallback = nExp_rate != total_rate
+  )
+if (any(soc_rate$fallback)) {
+  warning("Falling back to a flat 4% doublet rate for: ",
+          paste(soc_rate$sample_name[soc_rate$fallback], collapse=", "))
+}
+doublet_rate = setNames(soc_rate$nExp_rate, soc_rate$sample_name)
+soc_rate
+```
+
 ```{r}
 md_df_fname = file.path(out_dir, "md_doubletfinder.rds")
-redo  = F
+redo = T
 if (redo) {
   library(DoubletFinder)
-  library(future)
-  library(doFuture)
+  library(future) # plan(sequential) and future.globals.maxSize below
   options(future.globals.maxSize = 50 *1E9)
   obj_list = SplitObject(obj, split.by="sample_name")
 
   plan(sequential)
-  #cl <- makeCluster(length(obj_list))
-  #doParallel::registerDoParallel(cl)
   md_list = map(obj_list, function(obj_cur) {
     
     sample_name = obj_cur$sample_name[1]
@@ -328,7 +348,6 @@ if (redo) {
     gt.calls = str_to_title(gt.calls) 
     sweep.stats = map(seq_along(sweep.res.list), function(i) {
       tryCatch({
-        #sweep.stat <- summarizeSweep(sweep.res.list[i], GT = TRUE, GT.calls = gt.calls)
         sweep.stat <- summarizeSweep(sweep.res.list[i], GT = F)
         sweep.stat
       },
@@ -340,17 +359,13 @@ if (redo) {
     bcmvn <- find.pK(sweep.stats)
     pK = as.numeric(as.character(bcmvn[which.max(bcmvn$BCmetric),]$pK))
     print(sprintf("%s pK = %s", sample_name, pK))
-    nExp <- round(ncol(obj_cur) * 0.04) 
+    ## souporcell's own doublet rate for this library, corrected for the same-bird doublets it
+    ## cannot see (see the chunk above), rather than a flat 4%.
+    nExp <- round(ncol(obj_cur) * doublet_rate[[sample_name]])
+    print(sprintf("%s nExp = %s (rate %.3f)", sample_name, nExp, doublet_rate[[sample_name]]))
     obj_cur = DoubletFinder::doubletFinder(obj_cur, pN = 0.25, pK = pK, nExp = nExp, PCs = 1:10, sct=F)
     DF.name = colnames(obj_cur@meta.data)[grepl("DF.classification", colnames(obj_cur@meta.data))]
-    
-    # cowplot::plot_grid(ncol = 2, 
-    #                    DimPlot(obj_cur, group.by = "position", reduction="umap_rna_int") + NoAxes(),
-    #                    DimPlot(obj_cur, group.by = DF.name, reduction="umap_rna_int") + NoAxes())
-    # 
-    # gg = VlnPlot(obj_cur, features = "nFeature_RNA", group.by = DF.name, pt.size = 0.1)
-    # print(gg)
-    
+
     return(obj_cur@meta.data[, c(DF.name, "sample_name")])
   })
   
@@ -374,10 +389,7 @@ obj = AddMetaData(obj, md)
 
 ```{r}
 table(obj$doublet_status, obj$DF_class)
-# DimPlot_scCustom(obj, group.by="DF_class", reduction="umap_rna_int")
 VlnPlot(obj, features = "nFeature_RNA", split.by = "sample_name", group.by = "DF_class", pt.size = 0.1)
-
-#DimPlot_scCustom(obj, group.by="doublet_status", reduction="umap_rna_int")
 VlnPlot(obj, features = "nFeature_RNA", group.by = "doublet_status", pt.size = 0.1)
 ```
 
@@ -392,73 +404,40 @@ obj = subset(obj, cells=cells)
 cluster_prefix = "cluster"
 
 rna_dims = 30
-redo  = F
+ress = seq(.2, 1, .2)
+redo  = T
 if (redo) {
-  
+
   ## GEX
   DefaultAssay(obj) = "RNA"
-  
-  if (is.null(Layers(obj)))
-    obj[["RNA"]] <- split(obj[["RNA"]], f = obj$replicate)
-  
-   obj <- obj %>%
-     SCTransform() %>%
-   # NormalizeData(verbose = F) %>%
-    #FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
-    #ScaleData(verbose = T) %>%
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
-  #DefaultAssay(obj) = "SCT"
-  obj = obj %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.2, 1, .2), 
-                         reduction="pca",
-                         algorithm = 2,
-                         #graph.name = NULL,
-                         cluster_prefix = cluster_prefix, 
-                         assay="SCT")
-  
-  
-  # # Integrate PCA embeddings
-  # obj <- IntegrateLayers(object = obj, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca", 
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
-  
-  #obj = JoinLayers(obj)
-  
-  # obj = obj %>% 
-  #   seurat_find_clusters(dims.use=1:rna_dims, 
-  #                        ress = seq(.5, 2, .5), 
-  #                        reduction="pca_harmony",
-  #                        algorithm = 2,
-  #                        graph.name = NULL,
-  #                        cluster_prefix = paste(cluster_prefix, "pca_harmony", sep="_"), 
-  #                        assay="SCT")
-  # 
-  # 
-  # 
-  # obj =  RunUMAP(
-  #   object = obj,
-  #   reduction = "pca_harmony",
-  #   reduction.name = "umap_rna_int", 
-  #   assay = "RNA",
-  #   dims = 1:rna_dims,
-  #   verbose = TRUE
-  # )
-  
-  #rm(cn, counts, integration.anchors, obj_list, obj_lsi, obj_pca)
-  qsave(obj, out_processed_fname)
+
+  ## SCTransform explicitly, then hand the object to process_rna(), rather than letting it
+  ## normalize via run_sct = TRUE. Two reasons, both of which apply to every processing block below:
+  ##
+  ##  - process_rna() calls SCTransform() with no arguments, so there is no way to pass
+  ##    vars.to.regress through it, and the subset blocks below regress out perc_mito;
+  ##  - check_normalization_needed() returns FALSE whenever an SCT assay with a scale.data layer is
+  ##    already present, so on a re-run -- or on any subset, which inherits its parent's SCT assay --
+  ##    process_rna() would skip normalization and run PCA on a model fitted to different cells.
+  ##    Calling SCTransform() here overwrites that assay with one fitted to these cells, and
+  ##    process_rna() then correctly reports "Using existing normalization".
+  obj = obj %>% SCTransform()
+
+  ## run_parallel = FALSE: it forks one worker per element of rna_dims_list, and every block here
+  ## sweeps a single value, so the fork buys nothing and copies a large object.
+  obj = process_rna(obj,
+                    cluster_prefix = cluster_prefix,
+                    rna_dims_list = rna_dims,
+                    resolutions = ress,
+                    algorithm = 2,
+                    run_sct = TRUE,
+                    run_parallel = FALSE)
+
+  qs_save(obj, out_processed_fname, nthreads = 8)
 } else {
-  obj = qread(out_processed_fname)
+  obj = qs_read(out_processed_fname, nthreads = 8)
 }
+reduction_cur = umap_name(rna_dims)
 ```
 
 ```{r}
@@ -468,9 +447,9 @@ obj$position = str_extract(obj$sample_name, "([a-z]+)_", group=1)
 ## Plots
 
 ```{r}
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
-  reductions = c("umap_rna")
+  reductions = c(reduction_cur)
   cats = c("position")
   
   walk(reductions, function(reduction) {
@@ -492,9 +471,8 @@ if (redo_plot) {
 
 ```{r}
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   ress = grep("cluster", unique(colnames(obj@meta.data)), value = T)
-  #ress = grep("harmony", ress, value=T)
   walk(ress, function(res) {
     gg = DimPlot(object = obj, group.by = res, label=T, reduction = reduction)
     gg = gg + labs(title=res)
@@ -513,7 +491,7 @@ if (redo_plot) {
                "SATB2", "SATB1", "FEZF2", "BCL11B", "EMX1", "ZBTB20")
   features =  intersect(features, rownames(obj))
   
-  reduction = "umap_rna"
+  reduction = reduction_cur
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj, features=feat, reduction = reduction) + coord_equal()
     print(gg)
@@ -525,52 +503,55 @@ if (redo_plot) {
 
 ```
 
-```{r}
-DefaultAssay(obj) = "RAW"
-reduction = "umap_rna"
-walk(features, function(feat) {
-  gg = FeaturePlot_scCustom(obj, features=feat, reduction = reduction) + coord_equal()
-  print(gg)
-  save_plot(file.path(out_dir, sprintf("umap_%s.png", feat)), gg)
-})
-
-```
 
 ```{r}
-res_to_use = "cluster.0.2"
+res_to_use = cluster_name(cluster_prefix, rna_dims, 1)
 ```
 
 ```{r fig.height = 10}
+DefaultAssay(obj) = "SCT"
 DotPlot(obj, features = features, group.by = res_to_use) + coord_flip()
 ```
 
 ```{r}
 
-## FINISH
 idents_comb = c(`0`="Glut",
-                `1`="GABA",
-                `2`="Glut",
+                `1`="Astro",
+                `2`="GABA",
                 `3`="Glut",
-                `4`="Astro",
-                `5`="GABA",
+                `4`="Glut",
+                `5`="Glut",
                 `6`="Glut",
-                `7`="Glut",
-                `8`="Oligo",
+                `7`="GABA",
+                `8`="GABA",
                 `9`="Glut",
-                `10`="Glut",
-                `11`="OPC",
-                `12`="GABA",
-                `13`="Epen",
+                `10`="Oligo",
+                `11`="Glut",
+                `12`="Glut",
+                `13`="Glut",
                 `14`="GABA",
-                `15`="Glut",
-                `16`="Astro",
+                `15`="OPC",
+                `16`="Glut",
                 `17`="Glut",
                 `18`="Glut",
-                `19`="GABA",
-                `20`="Glut",
-                `21`="GABA",
+                `19`="Glut",
+                `20`="GABA",
+                `21`="Glut",
                 `22`="Glut",
-                `23`="Astro"
+                `23`="GABA",
+                `24`="Glut",
+                `25`="Glut",
+                `26`="Glut",
+                `27`="Epen",
+                `28`="Astro",
+                `29`="GABA",
+                `30`="GABA",
+                `31`="GABA",
+                `32`="Micro",
+                `33`="Oligo",
+                `34`="Glut",
+                `35`="Glut",
+                `36`="Astro"
                 )
 
 out_cluster_cur = "celltype"
@@ -587,49 +568,36 @@ dir.create(glut_dir)
 ```
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_glutamatergic.qs")
-dims.use_list = list( 1:20)
+fname_int_ex = file.path(out_dir, "obj_glutamatergic.qs2")
 rna_dims = 20
-names(dims.use_list) = map_chr(dims.use_list, max)
+ress = seq(.3, .8, .1)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("Glut", obj$celltype)]
   obj_glut = subset(obj, cells=cells)
-  
-  obj_glut <- obj_glut %>%
-    SCTransform() %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
-  # obj_glut <- IntegrateLayers(object = obj_glut, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca",
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
-  obj_glut = obj_glut %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.3, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
 
-  qsave(obj_glut, fname_int_ex)
+  ## SCTransform before process_rna(): the subset carries its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA to run on a model fitted to all cells.
+  obj_glut = obj_glut %>% SCTransform()
+
+  obj_glut = process_rna(obj_glut,
+                         cluster_prefix = cluster_prefix_cur,
+                         rna_dims_list = rna_dims,
+                         resolutions = ress,
+                         algorithm = 2,
+                         run_sct = TRUE,
+                         run_parallel = FALSE)
+
+  qs_save(obj_glut, fname_int_ex, nthreads = 8)
 } else {
-  obj_glut = qread(fname_int_ex)
+  obj_glut = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(paste(cluster_prefix_cur, "pca", sep="_"), unique(colnames(obj_glut@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -639,12 +607,12 @@ ress = grep(paste(cluster_prefix_cur, "pca", sep="_"), unique(colnames(obj_glut@
   })
 
 
-DimPlot(obj_glut, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_glut, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_glut, group.by="position", reduction=reduction_cur)
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.5")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.5)
 ```
 
 ```{r}
@@ -660,9 +628,9 @@ features = c("SOX4", "EOMES", "SPEF2", "SCUBE1", "GFRA1", "CRHR2", "GAD1",
              "SLC1A2", "SOX2", "SOX4",
              "SATB1", "FEZF2", "BCL11B", "ZBTB20")
 features = unique(features)
-redo_plot = F
+redo_plot = T
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut, features=feat, reduction=reduction) + coord_equal()
@@ -684,25 +652,20 @@ idents_comb = c(`0`="Glut-Nido",
                 `2`="Glut-Nido",
                 `3`="Glut-Nido",
                 `4`="Glut-Arco",
-                `5`="Glut-Arco",
+                `5`="Glut-Nido",
                 `6`="Glut-Nido",
-                `7`="Glut-Nido",
-                `8`="Glut-Arco",
+                `7`="Glut-Arco",
+                `8`="Glut-Nido",
                 `9`="Glut-Nido",
                 `10`="Glut-Nido",
-                `11`="Glut-Nido",
+                `11`="Glut-Arco",
                 `12`="Glut-Nido",
-                `13`="Glut-Nido",
+                `13`="Glut-Arco",
                 `14`="Glut-Nido",
-                `15`="Glut-Arco",
+                `15`="Glut-Nido",
                 `16`="Glut-Nido",
                 `17`="Glut-Nido",
-                `18`="Glut-Nido",
-                `19`="Glut-Arco",
-                `20`="Glut-Arco",
-                `21`="Glut-Nido",
-                `22`="Glut-Nido"
-                
+                `18`="Glut-Nido"
                 )
 
 out_cluster_cur = str_interp("celltype_n_glut")
@@ -711,7 +674,7 @@ obj_glut@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut@meta.data[,
 ```
 
 ```{r}
-qsave(obj_glut, fname_int_ex)
+qs_save(obj_glut, fname_int_ex, nthreads = 8)
 ```
 
 ## Glutamatergic Arco
@@ -722,45 +685,36 @@ dir.create(glut_arco_dir)
 ```
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco.qs")
+fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco.qs2")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_arco")
 
-redo = F
+redo = T
 if (redo) {
-  #cells = Cells(obj_glut)[obj_glut$position %in% c("ra", "arco")]
   cells = Cells(obj_glut)[grepl("Arco", obj_glut$celltype_n_glut)]
   obj_glut_arco = subset(obj_glut, cells=cells)
 
-  obj_glut_arco <- obj_glut_arco %>%
-    SCTransform(vars.to.regress = "perc_mito") %>%
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_glut_arco = obj_glut_arco %>% SCTransform(vars.to.regress = "perc_mito")
 
-  obj_glut_arco = obj_glut_arco %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.3, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  obj_glut_arco = process_rna(obj_glut_arco,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.3, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
 
-  qsave(obj_glut_arco, fname_int_ex)
+  qs_save(obj_glut_arco, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_glut_arco = qread(fname_int_ex)
+  obj_glut_arco = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_arco@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -768,22 +722,20 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_arco@meta.data)), value
     gg = gg + labs(title=res)
     print(gg)
   })
-#}
 
-DimPlot(obj_glut_arco, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_glut_arco, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_glut_arco, group.by="position", reduction=reduction_cur)
-#DimPlot(obj_glut_arco, group.by="run", reduction=reduction_cur)
 
 
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_glut_arco, prefix=paste(cluster_prefix_cur,  "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_glut_arco, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.5")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.5)
 ```
 
 ```{r}
@@ -797,7 +749,7 @@ features = c("perc_mito", "nCount_RNA", "SLC17A6", "GAD1", "SLC1A2", "CRHR2", "N
              
 )
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut_arco, features=feat, reduction=reduction) + coord_equal()
@@ -812,7 +764,7 @@ DotPlot(obj_glut_arco, features = features, group.by = res_to_use_sub) + coord_f
 ```
 
 ```{r}
-table(obj_glut_arco@meta.data[,res_to_use_sub], obj_glut_arco$assignment)
+table(obj_glut_arco@meta.data[,res_to_use_sub], obj_glut_arco$individual)
 ```
 
 ```{r}
@@ -822,37 +774,15 @@ idents_comb = c(`0`="Glut-Arco-1",
                 `3`="Glut-RA",
                 `4`="Glut-Arco-3",
                 `5`="Glut-Arco-4",
-                `6`="Glut-Arco-5",
-                `7`="Glut-Arco-6",
-                `8`="Exclude",
-                `9`="Glut-Arco-7",
-                `10`="Exclude",
-                `11`="Glut-RA",
-                `12`="Exclude",
-                `13`="Exclude"
+                `6`="Exclude",
+                `7`="Glut-Arco-5",
+                `8`="Glut-Arco-6",
+                `9`="Exclude"
                 )
 
 out_cluster_cur = str_interp("celltype_n_glut_arco")
 out_cluster_cur_sym = as.symbol(out_cluster_cur)
 obj_glut_arco@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut_arco@meta.data[,res_to_use_sub], from = names(idents_comb), to = idents_comb)
-
-## Combine with obj_glut
-# md_cur = FetchData(obj_glut_arco, c("position", out_cluster_cur)) %>%
-#   mutate(position = case_when(grepl("Glut-RA", !!out_cluster_cur_sym) ~ "ra",
-#                               !grepl("Glut-RA", !!out_cluster_cur_sym)~ "arco"))
-#   rename(celltype_n_glut_new = celltype_n_glut_arco) %>%
-#   rownames_to_column()
-# 
-# md_glut = FetchData(obj_glut, "celltype_n_glut") %>%
-#   rownames_to_column() %>%
-#   left_join(md_cur) %>%
-#   mutate(celltype_n_glut_new = droplevels(if_else(is.na(celltype_n_glut_new), celltype_n_glut, celltype_n_glut_new))) %>%
-#   select(-celltype_n_glut) %>% 
-#   rename(celltype_n_glut = celltype_n_glut_new) %>% 
-#   column_to_rownames()
-# obj_glut = AddMetaData(obj_glut, md_glut)
-
-#obj_glut_arco = AddMetaData(obj_glut_arco, md_cur)
 
 table(FetchData(obj_glut_arco, c("position", out_cluster_cur)))
 ```
@@ -860,43 +790,36 @@ table(FetchData(obj_glut_arco, c("position", out_cluster_cur)))
 ### Re-process
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco_filt.qs")
+fname_int_ex = file.path(out_dir, "obj_glutamatergic_arco_filt.qs2")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_arco")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut_arco)[!grepl("Exclude", obj_glut_arco$celltype_n_glut_arco)]
   obj_glut_arco_filt = subset(obj_glut_arco, cells=cells)
 
-  obj_glut_arco_filt <- obj_glut_arco_filt %>%
-    SCTransform(vars.to.regress="perc_mito") %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_glut_arco_filt = obj_glut_arco_filt %>% SCTransform(vars.to.regress = "perc_mito")
 
-  obj_glut_arco_filt = obj_glut_arco_filt %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.3, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  obj_glut_arco_filt = process_rna(obj_glut_arco_filt,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.3, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
   
-  qsave(obj_glut_arco_filt, fname_int_ex)
+  qs_save(obj_glut_arco_filt, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_glut_arco_filt = qread(fname_int_ex)
+  obj_glut_arco_filt = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_arco_filt@meta.data)), value = T)
 ress = grep("pca", ress, value=T)
   walk(ress, function(res) {
@@ -905,20 +828,23 @@ ress = grep("pca", ress, value=T)
     gg = gg + labs(title=res)
     print(gg)
   })
-#}
 
-DimPlot(obj_glut_arco_filt, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_glut_arco_filt, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_glut_arco_filt, group.by="position", reduction=reduction_cur)
 
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_glut_arco_filt, prefix=paste(cluster_prefix_cur,  "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_glut_arco_filt, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.3")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.5)
+```
+
+```{r}
+table(obj_glut_arco_filt@meta.data[,res_to_use_sub], obj_glut_arco_filt$position)
 ```
 
 ```{r}
@@ -931,7 +857,7 @@ features = c( "nCount_RNA", "perc_mito", "SLC17A6", "GAD1", "SLC1A2", "CRHR2", "
              
 )
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut_arco_filt, features=feat, reduction=reduction) + coord_equal()
@@ -951,9 +877,13 @@ idents_comb = c(`0`="Glut-Arco-1",
                 `2`="Glut-RA",
                 `3`="Glut-RA",
                 `4`="Glut-Arco-3",
-                `5`="Glut-Arco-4",
-                `6`="Glut-Arco-5",
-                `7`="Glut-RA"
+                `5`="Glut-RA",
+                `6`="Glut-Arco-4",
+                `7`="Glut-Arco-5",
+                `8`="Exclude",
+                `9`="Glut-Arco-6",
+                `10`="Glut-Arco-7"
+                
                 )
 
 out_cluster_cur = str_interp("celltype_n_glut_arco")
@@ -964,25 +894,13 @@ obj_glut_arco_filt@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut_a
 md_cur = FetchData(obj_glut_arco_filt, c("position", out_cluster_cur)) %>%
   mutate(position = case_when(grepl("Glut-RA", !!out_cluster_cur_sym) ~ "ra",
                               !grepl("Glut-RA", !!out_cluster_cur_sym)~ "arco"))
-#   rename(celltype_n_glut_new = celltype_n_glut_arco) %>%
-#   rownames_to_column()
-# 
-# md_glut = FetchData(obj_glut, "celltype_n_glut") %>%
-#   rownames_to_column() %>%
-#   left_join(md_cur) %>%
-#   mutate(celltype_n_glut_new = droplevels(if_else(is.na(celltype_n_glut_new), celltype_n_glut, celltype_n_glut_new))) %>%
-#   select(-celltype_n_glut) %>% 
-#   rename(celltype_n_glut = celltype_n_glut_new) %>% 
-#   column_to_rownames()
-# obj_glut = AddMetaData(obj_glut, md_glut)
-
 obj_glut_arco_filt = AddMetaData(obj_glut_arco_filt, md_cur)
 
 table(FetchData(obj_glut_arco_filt, c("position", out_cluster_cur)))
 ```
 
 ```{r}
-qsave(obj_glut_arco_filt, fname_int_ex)
+qs_save(obj_glut_arco_filt, fname_int_ex, nthreads = 8)
 ```
 
 ## Glutamatergic Nido
@@ -993,45 +911,37 @@ dir.create(glut_nido_dir)
 ```
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido.qs")
+fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido.qs2")
 
 rna_dims = 10
-names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_nido")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut)[grepl("Nido", obj_glut$celltype_n_glut)]
   obj_glut_nido = subset(obj_glut, cells=cells)
 
-   obj_glut_nido <- obj_glut_nido %>%
-    SCTransform(vars.to.regress="perc_mito") %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
+   ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_glut_nido = obj_glut_nido %>% SCTransform(vars.to.regress = "perc_mito")
 
-  obj_glut_nido = obj_glut_nido %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.3, 1, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  obj_glut_nido = process_rna(obj_glut_nido,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.3, 1, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
   
-  qsave(obj_glut_nido, fname_int_ex)
+  qs_save(obj_glut_nido, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_glut_nido = qread(fname_int_ex)
+  obj_glut_nido = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_nido@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -1041,17 +951,17 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_nido@meta.data)), value
   })
 
 
-DimPlot(obj_glut_nido, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_glut_nido, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_glut_nido, group.by="position", reduction=reduction_cur)
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_glut_nido, prefix=paste(cluster_prefix_cur, "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_glut_nido, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.7")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.7)
 ```
 
 ```{r}
@@ -1062,7 +972,7 @@ features = c("perc_mito", "nFeature_RNA", "SLC17A6", "GAD1", "PVALB", "ALDH1A2",
 )
 
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   DefaultAssay(obj_glut_nido) = "RAW"
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut_nido, features=feat, reduction=reduction) + coord_equal()
@@ -1075,7 +985,7 @@ if (redo_plot) {
 
 ```{r}
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   DefaultAssay(obj_glut_nido) = "SCT"
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut_nido, features=feat, reduction=reduction) + coord_equal()
@@ -1096,7 +1006,7 @@ table(FetchData(obj_glut_nido, c("position", res_to_use_sub)))
 ```
 
 ```{r}
-table(FetchData(obj_glut_nido, c("assignment", res_to_use_sub)))
+table(FetchData(obj_glut_nido, c("individual", res_to_use_sub)))
 ```
 
 ```{r}
@@ -1128,67 +1038,45 @@ out_cluster_cur = str_interp("celltype_n_glut_nido")
 out_cluster_cur_sym = as.symbol(out_cluster_cur)
 obj_glut_nido@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_glut_nido@meta.data[,res_to_use_sub], from = names(idents_comb), to = idents_comb)
 
-## Combine with obj_glut
-# md_cur = FetchData(obj_glut_nido, out_cluster_cur) %>%
-#   rename(celltype_n_glut_new = celltype_n_glut_nido) %>%
-#   rownames_to_column()
-
-# md_glut = FetchData(obj_glut, "celltype_n_glut") %>%
-#   rownames_to_column() %>%
-#   left_join(md_unk) %>%
-#   mutate(celltype_n_glut_new = droplevels(if_else(is.na(celltype_n_glut_new), celltype_n_glut, celltype_n_glut_new))) %>%
-#   select(-celltype_n_glut) %>% 
-#   rename(celltype_n_glut = celltype_n_glut_new) %>% 
-#   column_to_rownames()
-# obj_glut = AddMetaData(obj_glut, md_glut)
 ```
 
 ```{r}
-qsave(obj_glut_nido, fname_int_ex)
+qs_save(obj_glut_nido, fname_int_ex, nthreads = 8)
 ```
 
 ### Re-process
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido_filt.qs")
+fname_int_ex = file.path(out_dir, "obj_glutamatergic_nido_filt.qs2")
 rna_dims = 20
-#snames(dims.use) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_glut_nido")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj_glut_nido)[!grepl("Exclude", obj_glut_nido$celltype_n_glut_nido)]
   obj_glut_nido_filt = subset(obj_glut_nido, cells=cells)
 
-  obj_glut_nido_filt <- obj_glut_nido_filt %>%
-    SCTransform(vars.to.regress = "perc_mito") %>% 
-    #SCTransform() %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_glut_nido_filt = obj_glut_nido_filt %>% SCTransform(vars.to.regress = "perc_mito")
 
-  obj_glut_nido_filt = obj_glut_nido_filt %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.3, 1, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  obj_glut_nido_filt = process_rna(obj_glut_nido_filt,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.3, 1, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
   
-  qsave(obj_glut_nido_filt, fname_int_ex)
+  qs_save(obj_glut_nido_filt, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_glut_nido_filt = qread(fname_int_ex)
+  obj_glut_nido_filt = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_glut_nido_filt@meta.data)), value = T)
 ress = grep("pca", ress, value=T)
   walk(ress, function(res) {
@@ -1198,18 +1086,18 @@ ress = grep("pca", ress, value=T)
     print(gg)
   })
 
-DimPlot(obj_glut_nido_filt, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_glut_nido_filt, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_glut_nido_filt, group.by="position", reduction=reduction_cur)
 
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_glut_nido_filt, prefix=paste(cluster_prefix_cur,  "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_glut_nido_filt, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.1")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 1)
 ```
 
 ```{r}
@@ -1220,7 +1108,7 @@ features = c( "SLC17A6", "GAD1", "PVALB", "ALDH1A2", "CDH9", "DPP6", "ZNF385B", 
 )
 
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   DefaultAssay(obj_glut_nido_filt) = "SCT"
   walk(features, function(feat) {
     gg = FeaturePlot_scCustom(obj_glut_nido_filt, features=feat, reduction=reduction) + coord_equal()
@@ -1232,7 +1120,7 @@ if (redo_plot) {
 ```
 
 ```{r}
-table(FetchData(obj_glut_nido_filt, c("assignment", res_to_use_sub)))
+table(FetchData(obj_glut_nido_filt, c("individual", res_to_use_sub)))
 ```
 
 ```{r fig.height = 8}
@@ -1265,7 +1153,15 @@ idents_comb = c(`0`="Glut-HVC-1",
                 `18`="Glut-Pre-2",
                 `19`="Glut-Nido-2",
                 `20`="Glut-NC-4",
-                `21`="Glut-Nido-3",
+                ## Glut-Nido-3 excluded as an artifact (manuscript revision, 2026-08-13): it behaves
+                ## as a label-transfer sink in xenium_label_transfer.qmd (co-expresses SLC17A6 and
+                ## GAD1 in 23% of its cells even in the lowest library-size quartile, vs a 0.9%
+                ## baseline at that depth -- see that notebook's `exclude_labels` chunk, which
+                ## already excludes it from the reference for the same reason). Dropped here at
+                ## source instead of only downstream, so every consumer of `cluster`/`celltype`
+                ## gets the same reference. Glut-Nido-2 was tested there too and is NOT an artifact
+                ## by the same test -- do not extend this to it without separate evidence.
+                `21`="Exclude",
                 `22`="Glut-NC-1",
                 `23`="Exclude",
                 `24`="Exclude",
@@ -1287,7 +1183,7 @@ gg
 ```
 
 ```{r}
-qsave(obj_glut_nido_filt, fname_int_ex)
+qs_save(obj_glut_nido_filt, fname_int_ex, nthreads = 8)
 
 ```
 
@@ -1299,53 +1195,41 @@ dir.create(gaba_dir)
 ```
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_gabaergic.qs")
-dims.use = 10
-names(dims.use_list) = map_chr(dims.use_list, max)
+fname_int_ex = file.path(out_dir, "obj_gabaergic.qs2")
+## This block set `dims.use = 10`, but nothing read it: the old call was
+## `seurat_find_clusters(dims.use = 1:rna_dims, ...)`, and `rna_dims` was not set here either, so
+## the block ran on whatever the previous block left behind -- 20, from obj_glutamatergic_nido_filt.
+## Made explicit at 20 to preserve what the notebook actually did. **If 10 was the intent, this is
+## the line to change**, and the GABA subclustering below will change with it.
+rna_dims = 20
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[grepl("GABA", obj$celltype) ]
   obj_gaba = subset(obj, cells=cells)
 
-  obj_gaba <- obj_gaba %>%
-    SCTransform(vars.to.regress="perc_mito") %>% 
-    # NormalizeData(verbose = F) %>%
-    # FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
-    # ScaleData(verbose = T) %>%
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_gaba = obj_gaba %>% SCTransform(vars.to.regress = "perc_mito")
 
-  # obj_gaba <- IntegrateLayers(object = obj_gaba, 
-  #                        method = HarmonyIntegration, 
-  #                        orig.reduction = "pca", 
-  #                        new.reduction = 'pca_harmony', verbose = FALSE)
-  
-  obj_gaba = obj_gaba %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.1, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  obj_gaba = process_rna(obj_gaba,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.1, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
 
-  qsave(obj_gaba, fname_int_ex)
+  qs_save(obj_gaba, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_gaba = qread(fname_int_ex)
+  obj_gaba = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_gaba@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -1354,24 +1238,24 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_gaba@meta.data)), value = T)
     print(gg)
   })
 
-DimPlot(obj_gaba, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_gaba, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_gaba, group.by="position", reduction=reduction_cur)
 
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_gaba, prefix=paste(cluster_prefix_cur, "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_gaba, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.5")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.5)
 ```
 
 ```{r}
 if (redo_plot) {
   
-  reduction = "umap_rna"
+  reduction = reduction_cur
   features = c("nCount_RNA", "nFeature_RNA", "SPEF2", "SLC17A6", "SLC17A7", "SLC17A8", "GAD1", "SLC1A2",  "MBP", "PDGFRA",
                "NECTIN3", "SOX4",
                "CXCR4", # CR
@@ -1412,44 +1296,36 @@ obj_gaba = subset(obj_gaba, cells=cells)
 ### Re process
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_gabaergic_filt.qs")
+fname_int_ex = file.path(out_dir, "obj_gabaergic_filt.qs2")
 rna_dims = 10
-names(dims.use_list) = map_chr(dims.use_list, max)
 cluster_prefix_cur =  str_interp("${cluster_prefix}_gaba")
 
-redo = F
+redo = T
 if (redo) {
 
-   obj_gaba <- obj_gaba %>%
-    SCTransform(vars.to.regress = "perc_mito") %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
-  obj_gaba = obj_gaba %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.1, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+   ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_gaba = obj_gaba %>% SCTransform(vars.to.regress = "perc_mito")
+
+  obj_gaba = process_rna(obj_gaba,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.1, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
   
   
  
-  qsave(obj_gaba, fname_int_ex)
+  qs_save(obj_gaba, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_gaba = qread(fname_int_ex)
+  obj_gaba = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_gaba@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -1458,23 +1334,22 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_gaba@meta.data)), value = T)
     print(gg)
   })
 
-DimPlot(obj_gaba, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_gaba, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_gaba, group.by="position", reduction=reduction_cur)
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_gaba, prefix=paste(cluster_prefix_cur, "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_gaba, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.7")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.7)
 ```
 
 ```{r}
 if (redo_plot) {
-  #obj_gaba = RunALRA(obj_gaba, assay="RNA")
-  reduction = "umap_rna"
+  reduction = reduction_cur
   features = c("nCount_RNA", "nFeature_RNA", "SPEF2", "SLC17A6", "SLC17A7", "SLC17A8", "GAD1", "SLC1A2",  "MBP", "PDGFRA", 
                "NECTIN3", "SOX4",
                "CXCR4", # CR
@@ -1528,7 +1403,7 @@ obj_gaba@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_gaba@meta.data[,
 ```
 
 ```{r}
-qsave(obj_gaba, fname_int_ex)
+qs_save(obj_gaba, fname_int_ex, nthreads = 8)
 ```
 
 ## Non-neuronal
@@ -1539,45 +1414,38 @@ dir.create(nn_dir)
 ```
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_nonneuronal.qs")
+fname_int_ex = file.path(out_dir, "obj_nonneuronal.qs2")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
   cells = Cells(obj)[!grepl("GABA|Glut", obj$celltype)]
   obj_nn = subset(obj, cells=cells)
   
-  obj_nn = obj_nn %>%
-    SCTransform(vars.to.regress="perc_mito") %>% 
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
-  obj_nn = obj_nn %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.1, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_nn = obj_nn %>% SCTransform(vars.to.regress = "perc_mito")
+
+  obj_nn = process_rna(obj_nn,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.1, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
   
 
   
-  qsave(obj_nn, fname_int_ex)
+  qs_save(obj_nn, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_nn = qread(fname_int_ex)
+  obj_nn = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_nn@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -1587,23 +1455,23 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_nn@meta.data)), value = T)
   })
 
 
-DimPlot(obj_nn, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_nn, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_nn, group.by="position", reduction=reduction_cur)
 
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_nn, prefix=paste(cluster_prefix_cur, "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_nn, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.8")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.8)
 ```
 
 ```{r}
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   features = c("nCount_RNA", "nFeature_RNA", "SLC17A6", "GAD1", "SLC1A2", "CSF1R", "MBP", "PLP1",
                "PDGFRA", "NECTIN3", "SOX4", "FLI1", "SPEF2", "RGS5", "NR2E1", "EOMES", "NEUROD1", "NEUROG1"
   )
@@ -1629,40 +1497,33 @@ obj_nn_filt = subset(obj_nn, cells=cells)
 ### Re-process
 
 ```{r}
-fname_int_ex = file.path(out_dir, "obj_nonneuronal_filt.qs")
+fname_int_ex = file.path(out_dir, "obj_nonneuronal_filt.qs2")
 rna_dims = 10
 cluster_prefix_cur =  str_interp("${cluster_prefix}_nn")
 
-redo = F
+redo = T
 if (redo) {
-  obj_nn_filt = obj_nn_filt %>%
-    SCTransform(vars.to.regress = "perc_mito") %>%
-    RunPCA(verbose = T) %>%
-    RunUMAP(  
-      reduction = "pca",
-      dims = 1:rna_dims,
-      reduction.name = "umap_rna",
-      verbose = TRUE
-    )
-  
-  obj_nn_filt = obj_nn_filt %>% 
-    seurat_find_clusters(dims.use=1:rna_dims, 
-                         ress = seq(.1, .8, .1), 
-                         reduction="pca",
-                         algorithm = 2,
-                         graph.name = NULL,
-                         cluster_prefix = paste(cluster_prefix_cur, "pca", sep="_"), 
-                         assay="SCT")
+  ## SCTransform before process_rna(): the subset inherits its parent's SCT assay, which
+  ## check_normalization_needed() would accept, leaving PCA on a model fitted to other cells.
+  obj_nn_filt = obj_nn_filt %>% SCTransform(vars.to.regress = "perc_mito")
 
-  qsave(obj_nn_filt, fname_int_ex)
+  obj_nn_filt = process_rna(obj_nn_filt,
+                   cluster_prefix = cluster_prefix_cur,
+                   rna_dims_list = rna_dims,
+                   resolutions = seq(.1, .8, .1),
+                   algorithm = 2,
+                   run_sct = TRUE,
+                   run_parallel = FALSE)
+
+  qs_save(obj_nn_filt, fname_int_ex, nthreads = 8)
   
 } else {
-  obj_nn_filt = qread(fname_int_ex)
+  obj_nn_filt = qs_read(fname_int_ex, nthreads = 8)
 }
 ```
 
 ```{r}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 ress = grep(cluster_prefix_cur, unique(colnames(obj_nn_filt@meta.data)), value = T)
   walk(ress, function(res) {
     print(res)
@@ -1671,22 +1532,22 @@ ress = grep(cluster_prefix_cur, unique(colnames(obj_nn_filt@meta.data)), value =
     print(gg)
   })
 
-DimPlot(obj_nn_filt, group.by="assignment", reduction=reduction_cur)
+DimPlot(obj_nn_filt, group.by="individual", reduction=reduction_cur)
 DimPlot(obj_nn_filt, group.by="position", reduction=reduction_cur)
 ```
 
 ```{r fig.height=10}
-ct_res = clustree::clustree(obj_nn_filt, prefix=paste(cluster_prefix_cur, "pca.", sep="_"), node_colour = "sc3_stability")
+ct_res = clustree::clustree(obj_nn_filt, prefix=cluster_name(cluster_prefix_cur, rna_dims, ""), node_colour = "sc3_stability")
 ct_res
 ```
 
 ```{r}
-res_to_use_sub = str_interp("${cluster_prefix_cur}_pca.0.6")
+res_to_use_sub = cluster_name(cluster_prefix_cur, rna_dims, 0.6)
 ```
 
 ```{r}
 if (redo_plot) {
-  reduction = "umap_rna"
+  reduction = reduction_cur
   features = c("nCount_RNA", "nFeature_RNA", "SLC17A6", "GAD1", "SLC1A2", "CSF1R", "MBP", "PLP1",
                "PDGFRA", "NECTIN3", "SOX4", "FLI1", "SPEF2", "RGS5", "NR2E1", "LUM", "SOX6", "PAX6", "NEUROD1", "NEUROG1", "EOMES"
   )
@@ -1726,7 +1587,7 @@ obj_nn_filt@meta.data[,out_cluster_cur] <- plyr::mapvalues(x = obj_nn_filt@meta.
 ```
 
 ```{r}
-qsave(obj_nn_filt, fname_int_ex)
+qs_save(obj_nn_filt, fname_int_ex, nthreads = 8)
 ```
 
 ## Add cluster info to main
@@ -1747,9 +1608,9 @@ md = map(seq_along(obj_list_sub), function(i) {
 }) %>% bind_rows()
 
 table(md[,final_cluster])
-table(md %>% dplyr::select(assignment, one_of(final_cluster)))
+table(md %>% dplyr::select(individual, one_of(final_cluster)))
 
-tab = table(md %>% dplyr::select(assignment, one_of(final_cluster)))
+tab = table(md %>% dplyr::select(individual, one_of(final_cluster)))
 tab_prop = sweep(tab, 1, STATS = rowSums(tab), "/")
 tab
 round(tab_prop, 2)
@@ -1792,19 +1653,23 @@ obj_filt$cluster = droplevels(obj_filt$cluster)
 
 ```{r}
 rna_dims = 40
-obj_filt = obj_filt %>%
-  SCTransform(vars.to.regress = "perc_mito") %>% 
-  RunPCA(verbose = T) %>%
-  RunUMAP(  
-    reduction = "pca",
-    dims = 1:rna_dims,
-    reduction.name = "umap_rna",
-    verbose = TRUE
-  )
+obj_filt = obj_filt %>% SCTransform(vars.to.regress = "perc_mito")
+
+## run_clusters = FALSE: this block exists to redraw the final object on a 40-dim embedding, and
+## the clustering it is coloured by was already fixed above. cluster_prefix is still required, but
+## nothing is written under it.
+obj_filt = process_rna(obj_filt,
+                       cluster_prefix = cluster_prefix,
+                       rna_dims_list = rna_dims,
+                       algorithm = 2,
+                       run_sct = TRUE,
+                       run_parallel = FALSE,
+                       run_clusters = FALSE)
+reduction_cur = umap_name(rna_dims)
 ```
 
 ```{r fig.height=15, fig.width=15}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 FeaturePlot_scCustom(obj_filt, 
             features=c("MAFB", "EMX2", "SIX2", "NDNF"), 
             reduction=reduction_cur)
@@ -1815,38 +1680,16 @@ FeaturePlot_scCustom(obj_filt,
 ```
 
 ```{r fig.height = 10}
-reduction_cur = "umap_rna"
+reduction_cur = umap_name(rna_dims)
 DimPlot(obj_filt, group.by=final_cluster, reduction=reduction_cur, label=T)
 DimPlot(obj_filt, group.by="position", reduction=reduction_cur, label=T)
-DimPlot(obj_filt, group.by="assignment", reduction=reduction_cur, label=F)
+DimPlot(obj_filt, group.by="individual", reduction=reduction_cur, label=F)
 ```
 
 ## Save object
 
 ```{r}
-qsave(obj_filt, file = out_fname)
-SaveH5Seurat(obj_filt, out_h5_fname, overwrite = T)
+qs_save(obj_filt, file = out_fname, nthreads = 8)
 ```
 
 ## Write out cell barcodes
-
-```{r}
-# counts_dir = "/ssd/brad/multiome/%s/%s/outs/seurat_cluster_barcodes.txt"
-# md = FetchData(obj_filt, c(final_cluster, "well", "position")) %>%
-#   rownames_to_column() %>%
-#   left_join(aggr_params %>% select(well, data_subdir, sample_to_process))
-# 
-# samples_to_process = aggr_params$sample_to_process
-# data_subdirs = aggr_params$data_subdir
-# walk(1:nrow(aggr_params), function(i) {
-#   stp = aggr_params$sample_to_process[i]
-#   dsd = aggr_params$data_subdir[i]
-#   aggr_params_cur = aggr_params %>% filter(sample_to_process==stp, data_subdir==dsd)
-#   barcode_fname = sprintf(counts_dir, aggr_params_cur$data_subdir, aggr_params_cur$sample_to_process)
-#   md_cur = md %>% filter(data_subdir == dsd, sample_to_process==stp ) %>%
-#     select(rowname, cluster) %>%
-#     mutate(rowname = str_remove(rowname, "-[0-9]"))
-#   write_delim(md_cur, barcode_fname, col_names = F)
-# })
-
-```

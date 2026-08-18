@@ -1,0 +1,234 @@
+---
+title: "Hybrid division-based naming for glutamatergic clusters"
+format: html
+editor: source
+---
+
+`exploratory/apply_composite_labels.qmd` names every glutamatergic cluster after its specific chicken-integration
+match (`Ex_DACH2_MGAT4C` -> `Glut-DACH2_MGAT4C`, etc.). That implies a specific cross-species
+correspondence for every cluster, which is more than the data actually supports for most of them
+(moderate confidence, one winner out of four methods that often disagree) -- and is flatly wrong for
+the song nuclei, which are evolutionarily novel structures with no real chicken counterpart to begin
+with. This notebook is a deliberately weaker claim: keep only the three excitatory major divisions
+that hold up across birds (`DACH2`, `SATB2`, `CACNA1H`), hand-label the song-region clusters by their
+own anatomy/projection evidence rather than any chicken match, and leave every other cluster a bare
+numbered member of its division rather than implying a specific chicken identity it doesn't have good
+support for.
+
+**This is the production cluster-filtering and naming notebook for the glutamatergic clusters.**
+It is the single place where the cluster exclusions (`excluded_clusters`) and the published cluster
+labels (`celltype_hybrid`) are defined; everything downstream -- `snrna/trees/celltypes_hclust_*_hybrid.qmd`,
+`snrna/reduction_viz/combined_all_umap_hybrid.R`, `snrna/deg/dotplot_manual_markers_hybrid.qmd`,
+`snrna/integration/colquitt2021_label_transfer.qmd` -- reads its `obj_hybrid_labels.qs2`. The other
+notebooks under `snrna/naming/exploratory/` are the exploratory work that led here and are **not**
+production: nothing reads their outputs, and they are kept only as a record of the reasoning.
+
+Independent of the preprocessing notebook, by the same convention: reads the main clustered object
+(`snrna/clustering/snrna_seurat_cellbender_preprocess/obj_clustered.qs2`) read-only and writes its
+own copy, never writing back to the canonical object.
+
+## The rules, as given
+
+- **Major division is kept, specific chicken gene match is dropped.** `DACH2`, `SATB2`, `CACNA1H`
+  are the three excitatory subclass markers reported to hold across birds; everything past that
+  (which specific chicken population a cluster's `top_rank_agg` happened to win) is dropped.
+- **Song-region clusters (HVC, RA, LMAN) are hand-labeled from known anatomy/projections, not from
+  the chicken match**, since these are the clusters where the chicken correspondence is weakest to
+  begin with (see the QC section below -- confirmed directly, not assumed):
+  - `Glut-HVC-1` -> `Glut-DACH2-HVCra` (RA-projecting)
+  - `Glut-HVC-1a` -> `Glut-DACH2-HVCra-Pre` (a distinct sub-label for this HVC-1 subtype, not merged
+    into HVCra, per direct instruction)
+  - `Glut-HVC-2` -> `Glut-DACH2-HVCx` (Area X-projecting)
+  - `Glut-RA` -> `Glut-CACNA1H-RA`
+  - `Glut-LMAN-1` -> `Glut-DACH2-LMANsh` (shelf)
+  - `Glut-LMAN-2` -> `Glut-DACH2-LMANco` (core)
+- **Every other glutamatergic cluster gets `Glut-<division>-<n>`**, `n` a plain sequential index
+  within its division (order: original cluster label, ascending -- a bookkeeping choice, not a
+  biological claim; documented so it can be re-ordered if that turns out to matter).
+- **`Glut-Nido-1` keeps folding into `Glut-NC-1`'s own result** (the same population, confirmed in
+  `exploratory/apply_composite_labels.qmd`), so it takes whatever number `Glut-NC-1` lands on rather than being
+  numbered independently.
+- **`GABA-Pre` -> `GABA-Im`**, matching the immature-interneuron developmental-stage relabel already
+  applied to its GABAergic-side counterpart in `exploratory/apply_composite_labels.qmd`, and to `Glut-Im` here.
+- **Untouched**: `Glut-Nido-2` (`Glut-GABA`, the dual-transmitter override -- not a single division to
+  begin with), the three Glut precursor clusters (`Glut-NSC`/`Glut-NB`/`Glut-Im`, developmental-stage
+  labels independent of this scheme), the rest of the GABAergic clusters (`DACH2`/`SATB2`/`CACNA1H`
+  are excitatory-subclass markers, not applicable to them), and all non-neuronal clusters.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(knitr)
+```
+
+## Parameters
+
+```{r}
+#| label: params
+in_fname <- here::here("snrna/clustering/snrna_seurat_cellbender_preprocess",
+                       "obj_clustered.qs2")
+composite_fname <- here::here("snrna/integration/composite_gg_adult", "composite_calls_summary.csv")
+cluster_col <- "cluster"
+
+out_dir <- here::here("snrna/naming", "hybrid_division_naming")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+lookup_fname <- file.path(out_dir, "hybrid_label_lookup.csv")
+obj_out_fname <- file.path(out_dir, "obj_hybrid_labels.qs2")
+
+## Confirmed artifacts, dropped upstream/elsewhere of any naming exercise. Glut-Arco-1 was excluded
+## here briefly by mistake (meant to be Glut-Arco-4, already covered) and has been brought back into
+## the generic CACNA1H pool below.
+excluded_clusters <- c("Glut-Nido-3", "Glut-Arco-4")
+
+## Hand-labeled from anatomy/projection evidence, not from the chicken match -- see the QC section
+## for the confirmed mismatch between these and each cluster's own top_rank_agg.
+song_region_overrides <- c(
+  "Glut-HVC-1"  = "Glut-DACH2-HVCra",
+  "Glut-HVC-1a" = "Glut-DACH2-HVCra-Pre",
+  "Glut-HVC-2"  = "Glut-DACH2-HVCx",
+  "Glut-RA"     = "Glut-CACNA1H-RA",
+  "Glut-LMAN-1" = "Glut-DACH2-LMANsh",
+  "Glut-LMAN-2" = "Glut-DACH2-LMANco"
+)
+
+## Developmental-stage labels: the Glut side already established in exploratory/apply_composite_labels.qmd,
+## carried over unchanged; GABA-Pre -> GABA-Im added here to match, on the GABAergic side.
+precursor_overrides <- c("Glut-Pre-1" = "Glut-NSC", "Glut-Pre-2" = "Glut-NB", "Glut-Pre-3" = "Glut-Im",
+                         "GABA-Pre" = "GABA-Im")
+
+## The dual-transmitter override, also carried over unchanged.
+nido2_override <- c("Glut-Nido-2" = "Glut-GABA")
+
+## Nido-1 is the same population as NC-1 (confirmed in exploratory/apply_composite_labels.qmd via their shared,
+## independently-arrived-at top_rank_agg winner) -- it takes NC-1's own generic number rather than
+## being numbered on its own.
+fold_targets <- c("Glut-Nido-1" = "Glut-NC-1")
+```
+
+```{r}
+#| label: load
+obj <- qs_read(in_fname, nthreads = 8)
+composite <- read_csv(composite_fname, show_col_types = FALSE)
+stopifnot(setequal(composite$query, levels(factor(obj@meta.data[[cluster_col]]))))
+```
+
+## Major division per cluster
+
+```{r}
+#| label: division
+divisions <- c("DACH2", "SATB2", "CACNA1H")
+
+## Division read directly off each cluster's own top_rank_agg winner (Ex_<division>_<gene> ->
+## <division>) -- the same field apply_composite_labels.qmd used for the full composite name, just
+## truncated to its first token. Not re-derived some other way, so this can't silently drift from
+## what that notebook's own eligible-cluster computation saw.
+glut_division <- composite %>%
+  filter(grepl("^Glut", query)) %>%
+  transmute(cluster = query, division = sub("_.*", "", sub("^Ex_", "", top_rank_agg)))
+
+kable(glut_division %>% filter(!division %in% divisions),
+      caption = paste("Glut clusters whose own top_rank_agg winner is NOT one of DACH2/SATB2/CACNA1H",
+                      "-- expected here only for clusters excluded, overridden, or precursor-staged",
+                      "below (checked explicitly in the next chunk), not silently dropped."))
+```
+
+```{r}
+#| label: division-check
+non_division <- glut_division %>% filter(!division %in% divisions) %>% pull(cluster)
+unexplained <- setdiff(non_division, c(excluded_clusters, names(song_region_overrides),
+                                       names(precursor_overrides), names(nido2_override),
+                                       names(fold_targets)))
+if (length(unexplained) > 0) {
+  stop("Glut cluster(s) with a non-DACH2/SATB2/CACNA1H top_rank_agg and no override to explain it: ",
+       paste(unexplained, collapse = ", "))
+}
+cat("All", length(non_division), "off-division clusters are accounted for by an exclusion, hand-label,",
+   "precursor stage, or fold target above -- none silently miscategorized.\n")
+```
+
+**Confirmed, not assumed**: the chicken match itself disagrees with the hand-labels below for two of
+the six song-region clusters -- `Glut-HVC-1`'s own `top_rank_agg` is `Ex_SATB2_SOX6` (not DACH2), and
+`Glut-RA`'s is `Ex_KIAA1217` (not CACNA1H at all, moderate confidence). That is exactly the kind of
+disagreement this notebook exists to route around for the song system specifically: these are
+evolutionarily novel structures, so a weak or wrong single-species match is expected, not a reason to
+second-guess the anatomy/projection evidence used to hand-label them instead.
+
+## Build the hybrid labels
+
+```{r}
+#| label: build-labels
+all_clusters <- levels(factor(obj@meta.data[[cluster_col]]))
+glut_clusters <- all_clusters[grepl("^Glut", all_clusters)]
+
+hand_labeled <- c(song_region_overrides, precursor_overrides, nido2_override)
+
+## Generic pool: every Glut cluster not excluded, not hand-labeled, not itself a fold source (Nido-1
+## is assigned after, from its fold target's own result).
+generic_pool <- setdiff(glut_clusters, c(excluded_clusters, names(hand_labeled), names(fold_targets)))
+
+generic <- glut_division %>%
+  filter(cluster %in% generic_pool) %>%
+  ## Every member of generic_pool must resolve to one of the three real divisions -- the
+  ## division-check chunk above already guarantees this for anything NOT excluded/overridden, and
+  ## everything excluded/overridden was just removed from generic_pool, so this should never fire;
+  ## kept as a hard stop rather than a silent NA if that invariant is ever broken by a future edit.
+  { stopifnot(all(.$division %in% divisions)); . } %>%
+  arrange(division, cluster) %>%
+  group_by(division) %>%
+  mutate(new_label = paste0("Glut-", division, "-", row_number())) %>%
+  ungroup() %>%
+  select(cluster, new_label)
+
+fold_labels <- tibble(
+  cluster = names(fold_targets),
+  new_label = generic$new_label[match(fold_targets, generic$cluster)]
+)
+stopifnot(!anyNA(fold_labels$new_label))
+
+hybrid_lookup <- bind_rows(
+  generic,
+  fold_labels,
+  tibble(cluster = names(hand_labeled), new_label = unname(hand_labeled)),
+  tibble(cluster = excluded_clusters, new_label = NA_character_)
+) %>%
+  ## Non-neuronal and (most) GABAergic clusters are untouched by this scheme -- carried through as-is
+  ## rather than silently dropped from the lookup, so every cluster in the object has exactly one row
+  ## here. GABA-Pre is excluded from this bucket: it already got its own row above via
+  ## hand_labeled/precursor_overrides (-> GABA-Im), and would otherwise also land here unchanged,
+  ## creating a second, conflicting row for the same cluster.
+  bind_rows(tibble(cluster = setdiff(all_clusters, c(glut_clusters, names(hand_labeled))),
+                   new_label = setdiff(all_clusters, c(glut_clusters, names(hand_labeled)))))
+
+stopifnot(setequal(hybrid_lookup$cluster, all_clusters), !anyDuplicated(hybrid_lookup$cluster))
+
+kable(hybrid_lookup %>% arrange(cluster), caption = "Full hybrid-scheme lookup, one row per cluster")
+```
+
+```{r}
+#| label: apply
+write_csv(hybrid_lookup, lookup_fname)
+message("Wrote ", lookup_fname)
+
+obj$celltype_hybrid <- hybrid_lookup$new_label[match(obj@meta.data[[cluster_col]], hybrid_lookup$cluster)]
+qs_save(obj, obj_out_fname, nthreads = 8)
+message("Wrote ", obj_out_fname)
+```
+
+## Sanity check: do the three divisions actually separate cleanly?
+
+```{r}
+#| label: division-dotplot
+Idents(obj) <- "celltype_hybrid"
+glut_idents <- sort(na.omit(unique(hybrid_lookup$new_label[hybrid_lookup$cluster %in% glut_clusters])))
+DotPlot(subset(obj, idents = glut_idents), features = divisions, assay = "SCT") +
+  RotatedAxis() +
+  labs(title = "DACH2 / SATB2 / CACNA1H expression across hybrid-scheme Glut labels")
+```
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

@@ -1,0 +1,782 @@
+---
+title: "Apply composite chicken-integration labels"
+format: html
+editor: source
+---
+
+Applies the real cross-species integration (`snrna/integration/composite_gg_adult`, run directly
+against this project's own reference object -- not the self-generated `Ex_`-style aliases from
+`glut_ex_style_naming.qmd`, which this supersedes for every cluster confidently matched here) as the
+new naming for glutamatergic clusters, per specific rules. Independent of the preprocessing notebook
+by the same convention as the other naming notebooks: reads the backup object read-only, writes its
+own copy, never touches the canonical file.
+
+**Confirmed before anything else**: `composite_calls_summary.csv`'s `query` column is an exact 1:1
+match to this backup object's `cluster` levels (no rows extra on either side), so the integration was
+run against this same object and the lookup below can join on `cluster` directly.
+
+**Later additions to the rules below, in the order they came in:**
+- `Glut-Pre-1/2/3` are no longer left unchanged -- renamed to the developmental stage they actually
+  represent (`Glut-NSC` -> `Glut-NB` -> `Glut-Im`), not a chicken correspondence.
+- `GABA-Pre` reverted to unchanged after initially being relabelled like every other GABA cluster
+  (the same "leave the precursor alone" treatment `Glut-Pre-*` already had, restored) -- then later
+  renamed again, this time to `GABA-Im`, matching the immature-interneuron developmental stage
+  `Glut-Im` already uses on the Glut side, rather than staying an unchanged "Pre" label.
+- `Glut-Arco-4` dropped as a confirmed artifact (elevated mito/complexity relative to its Arco
+  siblings; see the QC section below), joining `Glut-Nido-3`.
+- Every disambiguated cluster now takes a real distinguishing gene instead of a bare `-1`/`-2`
+  wherever `naming_filters()` found one, via a nested pseudobulk DE within just that collision
+  group -- see *A second disambiguation strategy* below for a specificity-score cross-check on
+  these picks, and *Where are the DE results stored* for the actual per-gene tables.
+- `_like_` dropped from the GABA-side names (Zaremba's ganglionic-eminence-of-origin naming,
+  `Inh_LGE_like_FOXP2` -> `GABA-LGE_FOXP2`) -- readability only, not a change in which chicken
+  population a cluster was matched to.
+- The five (now more) pseudobulk DESeq2 fits are cached (`redo$disambiguate`), since quarto
+  re-executes the whole document on every render and this is the slow part by a wide margin.
+
+## The rules, as given, and what they mean concretely
+
+- **Song-region clusters (HVC, RA, LMAN) keep their existing region-based names.** These are
+  genuinely region-specific song nuclei; no chicken correspondence is substituted for them, matched
+  or not.
+- **`Glut-Pre-1/2/3` stay exactly as they are**, regardless of what the composite calls for them
+  (some are high-confidence, e.g. `Glut-Pre-2` -> `Ex_Pre_KCNH7` at 0.69, but they are precursor
+  populations and out of scope here either way).
+- **`Glut-Nido-1` folds into `Glut-NC-1`, and `Glut-NC-1` itself now also takes its own composite
+  name** (confirmed: rename `Glut-NC-1` -> `Glut-DACH2_MGAT4C`). Both clusters' top composite call is
+  `Ex_DACH2_MGAT4C` (`Glut-NC-1` at confidence 0.465, `Glut-Nido-1` at 0.539) -- the integration found
+  them to be the same chicken-matched population independently of the fold instruction. Because
+  `Glut-NC-1` is no longer exempted, it re-enters the general eligible pool below, where it now
+  collides with `Glut-NR-3` (also `Ex_DACH2_MGAT4C`) and needs the same numeric-suffix treatment as
+  the Arco trio -- so the fold target is computed programmatically (whatever `Glut-NC-1` ends up
+  named after de-duplication) rather than hardcoded, so the two stay in sync if the composite table
+  or the suffix order ever changes.
+- **`Glut-Nido-2` becomes `Glut-GABA`** -- a standalone label, not derived from the composite call at
+  all. Independently consistent with the composite result: its own top calls are barely above
+  chance (confidence 0.264) and split between an excitatory and an *inhibitory* chicken type
+  (`Ex_DACH2_MGAT4C` vs `Inh_LGE_like_FOXP1_DGKH`) with zero of the four underlying methods agreeing
+  with each other -- exactly what a real dual-transmitter population that matches no single-identity
+  reference type would look like.
+- **`Glut-Nido-3` is untouched** -- already excluded upstream as a confirmed artifact (the
+  manuscript-revision fix in `snrna_seurat_cellbender_preprocess.qmd`); this notebook does not
+  reintroduce it via a composite label. Its own composite call is incidentally the weakest in the
+  whole glutamatergic set (confidence 0.141), which is further consistent with that decision but was
+  not the basis for it.
+- **Every remaining glutamatergic cluster (Arco, NC, NR, now including NC-1) takes its
+  `top_rank_agg` composite call**, prefix swapped from `Ex_` to `Glut-` (literal substitution, e.g.
+  `Ex_CACNA1H_LHX9` -> `Glut-CACNA1H_LHX9`) -- `top_rank_agg` because it is the rank-aggregation
+  consensus across all four underlying methods (gsi, samap, saturn, cca), with its own dedicated
+  score/margin columns immediately following it, whereas `top_borda`/`top_zaremba` are single-method
+  comparisons shown alongside it. Where more than one cluster shares the same winner, a `_1`/`_2`/...
+  suffix is appended, ordered by the original cluster's own label, so distinct populations the
+  notebook's own clustering resolved are not collapsed into one name just because Zaremba's chicken
+  atlas did not resolve a matching split. Two such collisions this time: `Ex_CACNA1H_LHX9`
+  (`Glut-Arco-1/3/5`) and, newly, `Ex_DACH2_MGAT4C` (`Glut-NC-1`/`Glut-NR-3`, now that NC-1 is no
+  longer exempted).
+- **GABA clusters get the identical treatment, except `GABA-Pre`**, exempted from the composite match
+  and renamed `GABA-Im` instead (same exemption as `Glut-Pre-*`, same developmental-stage relabel as
+  `Glut-Im`) -- which also means `GABA-7` is no longer part of a collision, since `GABA-Pre` was its
+  only `Inh_MGE_like_ST18` partner, and gets the clean unsuffixed name.
+- **`Glut-Arco-4` is dropped** -- excluded the same way `Glut-Nido-3` already is, not merely left
+  unlabelled. Consistent with the QC check below (elevated mito and complexity relative to its Arco
+  siblings, though not a dramatic outlier) and with the Xenium evidence that Arco-1/3/5 occupy
+  distinct spatial territory (below), which argues the *opposite* of Arco-4's problem: those three
+  are being kept apart precisely because they are real, distinct populations, not folded together
+  just because one chicken cluster matched all three.
+- **Every remaining duplicate-winner group gets a marker-based disambiguator, not a bare number.**
+  Where the composite integration assigns the same chicken population to more than one of this
+  project's own clusters, that is chicken's resolution running out, not evidence the clusters are
+  the same thing -- confirmed directly for the Arco trio by the Xenium spatial result. So each
+  group (Arco-1/3/5 on `Ex_CACNA1H_LHX9`; `Glut-NC-1`+folded-`Glut-Nido-1`/`Glut-NR-3` on
+  `Ex_DACH2_MGAT4C`; three GABA pairs) gets its own nested pseudobulk DE -- the same
+  `cluster_de()`/`select_naming_genes()` machinery as `glut_ex_style_naming.qmd`, restricted to just
+  that group's own clusters -- to find a gene that tells its members apart, appended after a dash
+  (`Glut-CACNA1H_LHX9-<gene>`). A numeral is the fallback only where no marker clears
+  `naming_filters()`, not the default.
+- **Pseudobulk here uses `sample_name` + `assignment`, not `individual`.** This backup object
+  predates the souporcell reprocessing (no `individual`/`batch` columns), and the earlier notebooks
+  in this session refused to substitute anything for that reason -- raw `assignment` alone is a
+  *per-library* souporcell index, so the same value in two different libraries is two different
+  birds, and pooling on it directly would silently mix animals. Qualifying it by library first
+  (`replicate_lib = paste(sample_name, assignment)`) is what makes using it here valid: within one
+  library, distinct `assignment` values are genuinely distinct known birds (that library's own
+  souporcell run), which is exactly the biological-replicate structure pseudobulk DE needs. Built
+  once, below, and used for every group.
+- **Non-neuronal clusters (Astro, Oligo, OPC, Micro, Endo, Epen) are untouched.**
+
+## Packages
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(knitr)
+
+source(here::here("scripts/cluster_curation.R"))
+source(here::here("scripts/cluster_naming.R"))
+
+## Excludes annotation placeholders (`^LOC[0-9]` NCBI-style loci, `^nbis-`/`-gr[0-9]+$` NBIS-pipeline
+## loci -- which is also every chrM gene in this genome's annotation, confirmed directly by filtering
+## `GTF_LONSTR_BIOTYPE`'s transcripts to `seqnames == "chrM"`: all 37 get one of these placeholder IDs,
+## none a real symbol) and ribosomal protein genes (`^RP[SL][0-9]`/`^MRP[SL][0-9]`, 146 genes, checked
+## to spare the `RPS6K*` kinase family) from candidacy as a *naming* gene -- used both for the
+## DESeq2-based disambiguation below and the specificity-score cross-check, so a housekeeping or
+## contamination-associated gene cannot become a cluster's name via either route.
+is_named_gene <- function(gene) {
+  !grepl("^LOC[0-9]", gene) & !grepl("^nbis-", gene, ignore.case = TRUE) & !grepl("-gr[0-9]+$", gene) &
+    !grepl("^RP[SL][0-9]+[A-Z]?[0-9]?$", gene) & !grepl("^MRP[SL][0-9]+[A-Z]?[0-9]?$", gene)
+}
+```
+
+## Parameters
+
+```{r}
+#| label: params
+## EXPLORATORY -- not production. See ../README.md; the production filtering and naming live in
+## ../hybrid_division_naming.qmd.
+## The main clustered object -- the same one the composite integration was run against (confirmed
+## 1:1 against composite_calls_summary.csv$query below). Read-only, never written back to.
+in_fname <- here::here("snrna/clustering/snrna_seurat_cellbender_preprocess",
+                       "obj_clustered.qs2")
+composite_fname <- here::here("snrna/integration/composite_gg_adult", "composite_calls_summary.csv")
+cluster_col <- "cluster"
+
+out_dir <- here::here("snrna/naming/exploratory", "apply_composite_labels")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+lookup_fname <- file.path(out_dir, "composite_label_lookup.csv")
+obj_out_fname <- file.path(out_dir, "obj_composite_labels.qs2")
+disambig_cache_fname <- file.path(out_dir, "disambiguation_cache.qs2")
+
+## quarto re-executes the whole document on every render (no chunk caching configured), and the
+## disambiguation step below is five separate pseudobulk DESeq2 fits over the full gene set --
+## the actual slow part of this notebook by a wide margin. Cached manually rather than via
+## knitr's `cache: true`: that cache invalidates on the chunk's own code text (or explicit
+## `cache.extra`), not on upstream objects like `obj` or `composite` changing, which would risk a
+## silently stale result exactly where wrongness is hardest to notice (a label that looks fine but
+## was disambiguated against last week's data). A `redo` flag makes the recompute decision
+## explicit instead, matching the convention already used elsewhere in this project
+## (snrna_souporcell_clustering.qmd, zaremba_naming_validation.qmd, ...).
+redo <- list(disambiguate = FALSE)
+
+## Excluded regardless: confirmed artifacts, dropped upstream of any naming exercise.
+excluded_clusters <- c("Glut-Nido-3", "Glut-Arco-4")
+song_region_clusters <- c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-RA")
+## Developmental-stage renames, not "unchanged" -- NSC -> NB -> Im is the maturation order the old
+## Pre-1/2/3 numbering never made explicit. precursor_clusters (the original names) is still what
+## excludes these from composite eligibility below; precursor_overrides is the label they land on.
+precursor_overrides <- c("Glut-Pre-1" = "Glut-NSC", "Glut-Pre-2" = "Glut-NB", "Glut-Pre-3" = "Glut-Im")
+precursor_clusters <- names(precursor_overrides)
+gaba_precursor_overrides <- c("GABA-Pre" = "GABA-Im")
+gaba_precursor_clusters <- names(gaba_precursor_overrides)
+## Glut-Nido-1's target is filled in below, once Glut-NC-1's own composite-derived name is known --
+## NC-1 is no longer exempted, so it is not necessarily still called "Glut-NC-1" itself.
+nido2_override <- c("Glut-Nido-2" = "Glut-GABA")
+
+## naming_filters() for the within-group disambiguation DE, below. max_genes = 1: the point is one
+## short, readable disambiguator per cluster, not a full combination name.
+disambig_filters <- naming_filters(max_genes = 1)
+```
+
+## Load
+
+```{r}
+#| label: load
+stopifnot(file.exists(in_fname), file.exists(composite_fname))
+obj <- qs_read(in_fname, nthreads = 8)
+composite <- read_csv(composite_fname, show_col_types = FALSE)
+
+stopifnot(
+  "composite_calls_summary.csv$query is not an exact match to the object's cluster levels" =
+    setequal(composite$query, levels(factor(obj@meta.data[[cluster_col]])))
+)
+
+## Library-qualified souporcell assignment -- see the prose note above for why raw `assignment`
+## alone is not safe to pool across libraries. Built once here, used by every within-group
+## disambiguation DE call below.
+obj$replicate_lib <- paste(obj$sample_name, obj$assignment, sep = "_")
+```
+
+## Build the lookup
+
+```{r}
+#| label: lookup
+all_clusters <- levels(factor(obj@meta.data[[cluster_col]]))
+gaba_clusters <- all_clusters[grepl("^GABA", all_clusters)]
+nonneuronal_clusters <- setdiff(
+  all_clusters,
+  c(all_clusters[grepl("^Glut", all_clusters)], gaba_clusters)
+)
+
+## Shared logic for both the Glut and GABA sides: strip the chicken-side prefix, swap in this
+## project's own prefix, and suffix any winner shared by more than one of *this eligible set's*
+## clusters (a shared winner against something exempted elsewhere is not a naming collision, since
+## the exempted cluster never takes the composite string at all).
+## body_cleanup runs *before* duplicate detection, not after -- so if a cleanup ever collapsed two
+## distinct raw chicken calls into the same cleaned string, that would correctly be caught as a
+## collision needing disambiguation, rather than silently missed because the check ran on the
+## pre-cleanup string.
+assign_composite_names <- function(composite, eligible_clusters, old_prefix, new_prefix,
+                                   body_cleanup = identity) {
+  elig <- composite %>%
+    dplyr::filter(query %in% eligible_clusters) %>%
+    dplyr::transmute(cluster = query, body = body_cleanup(sub(paste0("^", old_prefix), "", top_rank_agg)),
+                     confidence, confidence_tier)
+  dup <- elig %>% dplyr::count(body) %>% dplyr::filter(n > 1) %>% dplyr::pull(body)
+  elig %>%
+    dplyr::arrange(body, cluster) %>%
+    dplyr::group_by(body) %>%
+    dplyr::mutate(
+      suffix = dplyr::if_else(body %in% dup, paste0("_", dplyr::row_number()), ""),
+      new_label = paste0(new_prefix, body, suffix)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(cluster, new_label, confidence, confidence_tier)
+}
+
+## Both Nido-1 and Nido-2 are excluded here regardless of what their final labels turn out to be --
+## Nido-1's target is derived from Glut-NC-1's own result below, not computed independently, so it
+## must not also get a composite name of its own here (that would create a second, conflicting row
+## for the same cluster and trip the "exactly once" check further down).
+glut_eligible <- setdiff(
+  all_clusters[grepl("^Glut", all_clusters)],
+  c(song_region_clusters, precursor_clusters, "Glut-Nido-1", names(nido2_override), excluded_clusters)
+)
+glut_named <- assign_composite_names(composite, glut_eligible, "Ex_", "Glut-")
+
+gaba_eligible <- setdiff(gaba_clusters, gaba_precursor_clusters)
+## "_like_" dropped from Zaremba's ganglionic-eminence-of-origin naming (Inh_LGE_like_FOXP2 ->
+## LGE_FOXP2, etc.) -- a readability call, not a change in which chicken population each cluster
+## was actually matched to.
+gaba_named <- assign_composite_names(composite, gaba_eligible, "Inh_", "GABA-",
+                                     body_cleanup = function(x) gsub("_like_", "_", x))
+
+## Replace the bare numeric suffix with a real distinguishing gene, wherever one clears
+## naming_filters() -- a shared chicken match is chicken's resolution running out, not evidence the
+## clusters are the same population (confirmed directly for Arco-1/3/5 by the Xenium spatial
+## result), so "_1"/"_2" is a fallback here, not the intended final name.
+##
+## Returns list(named, de_tables): `de_tables` is the full per-gene cluster_de() output for every
+## collision group, keyed by the shared composite body (e.g. "Glut-CACNA1H_LHX9") -- previously
+## computed inside this function's loop, used once by select_naming_genes(), and discarded, so
+## there was nowhere to go look at *why* a cluster got the gene it did, or why one got nothing
+## (e.g. Glut-Arco-1). Kept now specifically so that question has an answer.
+disambiguate_with_markers <- function(obj, cluster_col, named, filters, replicate_col = "replicate_lib") {
+  base_body <- sub("_[0-9]+$", "", named$new_label)
+  dup_bodies <- unique(base_body[duplicated(base_body) | duplicated(base_body, fromLast = TRUE)])
+  named$marker_disambiguated <- FALSE
+  de_tables <- list()
+
+  for (b in dup_bodies) {
+    grp_clusters <- named$cluster[base_body == b]
+    cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% grp_clusters]
+    obj_grp <- subset(obj, cells = cells)
+    obj_grp@meta.data[[cluster_col]] <- droplevels(factor(obj_grp@meta.data[[cluster_col]]))
+    DefaultAssay(obj_grp) <- "SCT"
+    de_grp <- cluster_de(obj_grp, cluster_col, replicate_col = replicate_col)
+    de_tables[[b]] <- de_grp
+    ## Placeholder/mitochondrial/ribosomal genes excluded from candidacy here, not only in the
+    ## specificity-score cross-check below -- a real miss the first time round: AZ255-gr01 (a
+    ## mitochondrial gene, see *A second disambiguation strategy*) had cleared naming_filters() and
+    ## become Glut-Arco-3's actual DESeq2-picked name before this exclusion existed.
+    excl <- unique(de_grp$feature)[!is_named_gene(unique(de_grp$feature))]
+    nm_grp <- select_naming_genes(de_grp, filters = filters, exclude_genes = excl)
+
+    for (cl in grp_clusters) {
+      gene <- nm_grp$naming_genes[nm_grp$cluster == cl]
+      row <- which(named$cluster == cl)
+      if (length(gene) == 1 && !is.na(gene)) {
+        named$new_label[row] <- paste0(b, "_", gene)
+        named$marker_disambiguated[row] <- TRUE
+      }
+    }
+  }
+  list(named = named, de_tables = de_tables)
+}
+
+## The five pseudobulk DESeq2 fits, cached: see the note on `redo` in the params chunk. A bare
+## file-existence check would happily hand back a stale result if the exclusion lists ever change
+## (e.g. Glut-Arco-4 un-dropped) without redo$disambiguate being flipped -- exactly the silent-
+## staleness failure mode knitr's own cache was rejected for above, so this cache is not exempt
+## from the same check: it also stores which *input* clusters it was computed over and refuses
+## itself if that no longer matches.
+## Two distinct ways this cache can be stale, checked separately: the *input* changed (cluster
+## sets differ -- guarded before), or the *schema* changed (an older cache predates a field the
+## current code now expects to read, e.g. de_tables, added after some caches already existed).
+## The second one bit immediately: an old cache validated on cluster sets alone, silently handed
+## back a NULL de_tables, and the first read of it errored several chunks later with
+## "no applicable method for 'filter' applied to ... NULL" -- a schema check catches this at the
+## cache itself instead of wherever the missing field happens to first get used.
+required_fields <- c("glut_named", "gaba_named", "de_tables", "glut_clusters", "gaba_clusters")
+cache_valid <- FALSE
+if (!redo$disambiguate && file.exists(disambig_cache_fname)) {
+  cached <- qs_read(disambig_cache_fname, nthreads = 8)
+  schema_ok <- all(required_fields %in% names(cached))
+  cache_valid <- schema_ok &&
+    setequal(cached$glut_clusters, glut_named$cluster) &&
+    setequal(cached$gaba_clusters, gaba_named$cluster)
+  if (!schema_ok) {
+    warning("Disambiguation cache predates a field the current code expects (",
+            paste(setdiff(required_fields, names(cached)), collapse = ", "), ") -- recomputing.",
+            call. = FALSE)
+  } else if (!cache_valid) {
+    warning("Disambiguation cache does not match the current eligible cluster sets -- recomputing.",
+            call. = FALSE)
+  }
+}
+
+if (cache_valid) {
+  glut_named <- cached$glut_named
+  gaba_named <- cached$gaba_named
+  de_tables <- cached$de_tables
+} else {
+  glut_clusters_in <- glut_named$cluster
+  gaba_clusters_in <- gaba_named$cluster
+  glut_result <- disambiguate_with_markers(obj, cluster_col, glut_named, disambig_filters)
+  gaba_result <- disambiguate_with_markers(obj, cluster_col, gaba_named, disambig_filters)
+  glut_named <- glut_result$named
+  gaba_named <- gaba_result$named
+  ## Keyed by collision group (e.g. "Glut-CACNA1H_LHX9"), one full gene x cluster DE table each --
+  ## this is where they live now; previously nowhere, discarded inside the function that computed
+  ## them. Read this to see *why* a cluster got the gene it did, or why one (Glut-Arco-1) got none.
+  de_tables <- c(glut_result$de_tables, gaba_result$de_tables)
+  qs_save(list(glut_named = glut_named, gaba_named = gaba_named, de_tables = de_tables,
+              glut_clusters = glut_clusters_in, gaba_clusters = gaba_clusters_in),
+          disambig_cache_fname, nthreads = 8)
+}
+```
+
+### Where are the DE results stored?
+
+In `de_tables` (in-session) and in `disambig_cache_fname` on disk (`disambiguation_cache.qs2`,
+loaded via `qs2::qs_read()`) -- a named list, one entry per collision group, each the full
+`cluster_de()` output (every gene x every cluster in that group: `logFC`, `padj`, `pct_in`,
+`pct_out`). Before this change they were computed inside `disambiguate_with_markers()`'s loop, fed
+straight into `select_naming_genes()`, and discarded -- nothing to go back and look at. Example,
+Glut-Arco-1's own group, to see why nothing cleared `naming_filters()` for it specifically:
+
+```{r}
+#| label: de-tables-example
+de_tables[["Glut-CACNA1H_LHX9"]] %>%
+  filter(cluster == "Glut-Arco-1") %>%
+  arrange(padj) %>%
+  head(10) %>%
+  kable(digits = 3, caption = "Glut-Arco-1's own top candidates by padj, none clearing naming_filters()")
+```
+
+```{r}
+#| label: disambig-report
+
+kable(bind_rows(glut_named, gaba_named) %>% filter(grepl("_[0-9]+$", new_label) | marker_disambiguated) %>%
+        select(cluster, new_label, marker_disambiguated, confidence_tier),
+      caption = paste(
+        "Every cluster that started in a collision group: marker_disambiguated = TRUE means a real",
+        "gene replaced the numeral; FALSE means no marker cleared naming_filters() and the numeric",
+        "fallback stands."
+      ))
+
+## Glut-Nido-1's fold target: whatever Glut-NC-1 itself was just assigned (now possibly a
+## marker-disambiguated name, not a hardcoded string) -- keeps the two in sync if the composite
+## table, the suffix/marker choice, or NC-1's own exemption ever changes again.
+nc1_new_label <- glut_named$new_label[glut_named$cluster == "Glut-NC-1"]
+stopifnot("Glut-NC-1 not found in glut_named -- check glut_eligible" = length(nc1_new_label) == 1)
+manual_overrides <- c("Glut-Nido-1" = nc1_new_label, nido2_override)
+
+lookup <- bind_rows(
+  tibble(cluster = song_region_clusters, new_label = song_region_clusters, reason = "song region, unchanged"),
+  tibble(cluster = names(precursor_overrides), new_label = unname(precursor_overrides),
+         reason = "developmental stage (NSC -> NB -> Im), manual override"),
+  tibble(cluster = names(gaba_precursor_overrides), new_label = unname(gaba_precursor_overrides),
+         reason = "developmental stage (immature interneuron, matches Glut-Im), manual override"),
+  tibble(cluster = excluded_clusters, new_label = NA_character_, reason = "already excluded upstream (confirmed artifact)"),
+  tibble(cluster = names(manual_overrides), new_label = unname(manual_overrides), reason = "manual override"),
+  glut_named %>%
+    mutate(reason = if_else(marker_disambiguated,
+                            paste0("composite top_rank_agg, disambiguated by own marker (", confidence_tier, ", conf=", confidence, ")"),
+                            paste0("composite top_rank_agg (", confidence_tier, ", conf=", confidence, ")"))) %>%
+    select(cluster, new_label, reason),
+  gaba_named %>%
+    mutate(reason = if_else(marker_disambiguated,
+                            paste0("composite top_rank_agg, disambiguated by own marker (", confidence_tier, ", conf=", confidence, ")"),
+                            paste0("composite top_rank_agg (", confidence_tier, ", conf=", confidence, ")"))) %>%
+    select(cluster, new_label, reason),
+  tibble(cluster = nonneuronal_clusters, new_label = nonneuronal_clusters, reason = "non-neuronal, unchanged")
+) %>%
+  arrange(cluster)
+
+stopifnot(
+  "lookup does not cover every cluster in the object exactly once" =
+    setequal(lookup$cluster, all_clusters) && !anyDuplicated(lookup$cluster)
+)
+
+kable(lookup, caption = "Full old -> new label lookup, with the reason for every row")
+```
+
+## Where clusters merge, and where names are newly ambiguous or newly shared
+
+```{r}
+#| label: merges
+## The fold: which original clusters now share one label.
+lookup %>%
+  filter(!is.na(new_label)) %>%
+  count(new_label, name = "n_clusters") %>%
+  filter(n_clusters > 1) %>%
+  left_join(lookup %>% filter(!is.na(new_label)) %>% group_by(new_label) %>%
+              summarise(from = paste(cluster, collapse = ", "), .groups = "drop"),
+            by = "new_label") %>%
+  kable(caption = paste(
+    "Labels now shared by more than one original cluster. Expected: only the Glut-NC-1/Glut-Nido-1",
+    "fold. The Arco trio and NC-1/NR-3 collisions should each appear as their own distinct",
+    "marker- (or, failing that, numeral-) disambiguated labels here, never merged into one shared",
+    "string -- a shared name for any of those would mean the disambiguation step missed a collision."
+  ))
+
+## Which collisions still fall back to a bare numeral -- i.e. no marker cleared naming_filters()
+## for at least one member of that group. Not necessarily a problem (a real absence of a
+## distinguishing gene is itself informative), but worth knowing before trusting the name as more
+## than a positional tag.
+lookup %>%
+  filter(grepl("_[0-9]+$", new_label)) %>%
+  kable(caption = "Clusters still on a numeric fallback -- no marker distinguished them from their group")
+```
+
+## A second disambiguation strategy: a specificity score, not a significance test
+
+`disambiguate_with_markers()` above picks a gene by clearing `naming_filters()` on `cluster_de()`'s
+pseudobulk padj/logFC -- a real hypothesis test, but one with as few as 2-3 replicates per cluster in
+some of these groups, so a real distinguishing gene can fail to reach significance purely from
+underpowered replication (`Glut-Arco-1`, with no marker at all, is the case to watch). `stats.R`'s
+`calc_gene_specificity()` (Yanai et al. 2005's tissue-specificity index) is a genuinely different
+kind of check: no p-value, no dispersion model, no replicate structure at all -- just how
+concentrated a gene's mean expression is on one cluster among the group, computed directly from
+average expression. It cannot replace the DESeq2 pick as the basis for a real claim (a specificity
+score with no test behind it will always find *a* top gene, whether or not the difference is real),
+but it is not gated by the same statistical power problem, so it is used here only as a cross-check --
+agreement with the DESeq2 pick is reassuring, and a candidate where DESeq2 found nothing at all is a
+lead worth a closer look, not an answer to substitute in silently.
+
+**The first version of this had no detection-rate floor, and the result was unusable rather than
+merely noisy**: every 2-cluster group's top candidate scored exactly 0.698 and every 3-cluster
+group's exactly 1.102, regardless of which gene or which cluster -- the tell that the score had
+saturated at its theoretical maximum (`log(n_clusters)`), which any gene detected in a single cell
+of one cluster and nowhere else reaches by chance, because the score has no term for how many
+cells support the pattern. Confirmed directly: `Glut-Arco-1`'s "winner" was detected in 1 of 1168
+cells. `pct_min` below (mirroring `naming_filters()`'s own `pct_in_min`) excludes a gene from
+ranking in a cluster unless it clears a real detection-rate floor there, which is what makes the
+comparison below meaningful rather than a list of sequencing noise.
+
+With the floor in place, the top candidates were real signal but still frequently unnamed
+annotation placeholders (`LOC110472734`, `nbis-12`) -- not useful as a label even though the
+detection rate behind them is genuine. `is_named_gene()` (defined in the `packages` chunk, so both
+this cross-check and the DESeq2 disambiguation above can share one definition) excludes the three
+placeholder patterns confirmed directly against this genome's annotation (`^LOC[0-9]` NCBI-style
+loci, 3737 of 15523 genes; `^nbis-` NBIS-pipeline-annotated loci/pseudogenes, 45 genes; `-gr[0-9]+$`
+a handful of uncharacterized `AZ255-gr01/02`-style entries) -- checked to not collide with real gene
+symbols that happen to contain hyphens or digits (`NKX2-1`, `TRNAQ-CUG`, etc. all pass through
+untouched).
+
+`Glut-Arco-3`'s remaining top candidates after that filter were still dominated by housekeeping
+genes (`ACTB`, `LDHB`, `UBB`, `HSPA8`...), which lines up with a real finding from the QC section
+below: this cluster's %mito (0.65%) sits between the clean Arco clusters (0.05-0.08%) and the two
+excluded artifact clusters (0.80%, 1.09%), and its pseudobulk profile correlates with both excluded
+clusters more than the other Arco clusters do -- consistent with ambient/mitochondrial contamination
+diluting real signal with generic "stressed cell" expression. `is_named_gene()` also excludes
+ribosomal protein genes (`^RP[SL][0-9]` cytoplasmic and `^MRP[SL][0-9]` mitochondrial-ribosomal,
+146 genes total -- checked to spare the `RPS6K*` kinase family, which the naive prefix would have
+caught).
+
+**The placeholder filter was added here first, and only here, which was a real miss**: this same
+`Glut-Arco-3` had already been named `Glut-CACNA1H_LHX9_AZ255-gr01` by the DESeq2 disambiguation
+step above, unaffected by any of this, because `disambiguate_with_markers()` did not exclude
+placeholder genes at all. `AZ255-gr01` is not just an uncharacterized locus -- it is a mitochondrial
+gene: this genome's chrM annotation (`config/paths.R`'s `GTF_LONSTR_BIOTYPE`, confirmed directly by
+filtering `annotation_trans` to `seqnames == "chrM"`) gives every one of its 37 genes an anonymous
+`nbis-#`/`AZ255-gr##`/`AZ255-gt##` placeholder ID rather than a real symbol, so the DESeq2 step had
+picked a mitochondrial gene as `Glut-Arco-3`'s distinguishing "marker" -- exactly the kind of
+contamination signal this whole line of investigation was trying to get out from under, not
+independent confirmation that it was real. Fixed by passing `is_named_gene()` as `exclude_genes` into
+`select_naming_genes()` inside `disambiguate_with_markers()` itself (see the `lookup` chunk above),
+not only into this cross-check -- so a placeholder/mito/ribosomal gene can no longer become a
+cluster's actual name via either route.
+
+```{r}
+#| label: specificity-score
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
+
+## AverageExpression, not AggregateExpression -- this wants mean normalized expression per
+## cluster (the scale calc_gene_specificity() expects), not the pseudobulk count sums DESeq2 needs.
+##
+## A detection-rate floor turned out not to be optional. The very first run of this (no floor)
+## picked LOC116184446 for Glut-Arco-1 with specificity 0.698 -- checked directly against the
+## object: that gene is detected in 1 of 1168 Arco-1 cells (mean expression 0.00086). The score has
+## no term for how *many* cells support a gene's apparent specificity, so a gene hit in a single
+## cell purely by chance and absent everywhere else scores at the theoretical maximum
+## (log(n_clusters)), identical for every group of a given size regardless of which gene or
+## cluster -- which is exactly the pattern that showed up (every 2-cluster group scoring 0.698,
+## every 3-cluster group 1.102) and is what gave this away as noise rather than signal. pct_min
+## mirrors naming_filters()'s own pct_in_min for the same reason it exists there.
+specificity_candidates <- function(obj, cluster_col, clusters_in_group, assay = "SCT", top_n = 3,
+                                   pct_min = 25) {
+  cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% clusters_in_group]
+  obj_grp <- subset(obj, cells = cells)
+  obj_grp@meta.data[[cluster_col]] <- droplevels(factor(obj_grp@meta.data[[cluster_col]]))
+  avg <- as.matrix(AverageExpression(obj_grp, assays = assay, group.by = cluster_col, layer = "data")[[assay]])
+  avg <- avg[is_named_gene(rownames(avg)), , drop = FALSE]
+
+  detect <- GetAssayData(obj_grp, assay = assay, layer = "counts") > 0
+  groups_f <- obj_grp@meta.data[[cluster_col]]
+  pct_in <- sapply(levels(groups_f), function(cl) Matrix::rowMeans(detect[, groups_f == cl, drop = FALSE])) * 100
+  pct_in <- pct_in[rownames(avg), colnames(avg)]
+
+  spec <- t(apply(avg, 1, calc_gene_specificity))
+  colnames(spec) <- colnames(avg)
+  spec[pct_in < pct_min] <- -Inf # excluded from ranking, not scored down -- avoids a false "tie"
+
+  map_dfr(colnames(spec), function(cl) {
+    ord <- order(spec[, cl], decreasing = TRUE)[seq_len(min(top_n, nrow(spec)))]
+    tibble(cluster = cl, gene = rownames(spec)[ord], specificity = spec[ord, cl],
+          pct_in_cluster = pct_in[ord, cl]) %>%
+      dplyr::filter(is.finite(specificity)) # no candidate cleared pct_min for this cluster
+  })
+}
+
+## Groups reused directly from de_tables (cluster_de()'s own `cluster` column enumerates exactly
+## that group's members) rather than re-listed by hand, so this cannot silently drift from what
+## disambiguate_with_markers() actually ran on.
+disambig_groups <- map(de_tables, ~ unique(.x$cluster))
+
+specificity_results <- imap_dfr(disambig_groups, function(clusters, grp) {
+  specificity_candidates(obj, cluster_col, clusters) %>% mutate(group = grp)
+})
+
+top_specificity <- specificity_results %>%
+  group_by(group, cluster) %>%
+  slice_max(specificity, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+comparison <- bind_rows(glut_named, gaba_named) %>%
+  filter(cluster %in% top_specificity$cluster) %>%
+  transmute(cluster, deseq2_label = new_label, deseq2_gene = sub(".*_", "", new_label)) %>%
+  left_join(top_specificity, by = "cluster")
+
+kable(comparison, digits = 3, caption = paste(
+  "DESeq2 pick vs. specificity-score top candidate, per disambiguated cluster. Agreement is a",
+  "cross-check, not new evidence on its own; disagreement -- or a specificity candidate where the",
+  "DESeq2 column is still a bare numeral -- is what is worth reading closely."
+))
+```
+
+```{r}
+#| label: apply
+write_csv(lookup, lookup_fname)
+message("Wrote ", lookup_fname)
+
+obj$celltype_composite <- lookup$new_label[match(obj@meta.data[[cluster_col]], lookup$cluster)]
+
+## Cells whose cluster was already excluded (Glut-Nido-3) get NA here, not a stale label --
+## consistent with "already excluded", not silently re-included under a new name.
+tibble(
+  n_cells_total = ncol(obj),
+  n_cells_labelled = sum(!is.na(obj$celltype_composite)),
+  n_cells_excluded_artifact = sum(obj@meta.data[[cluster_col]] %in% excluded_clusters)
+) %>%
+  kable(caption = "Coverage of the new label")
+
+qs_save(obj, obj_out_fname, nthreads = 8)
+message("Wrote ", obj_out_fname)
+```
+
+## Dotplot: do the label genes actually look enriched where they name?
+
+The point of this plot is to catch a labelling mistake, not to admire the labels: a gene pulled out
+of `top_rank_agg` should show up as visibly higher in the row it names than everywhere else. Rows are
+the *original* cluster identities (not the new composite label) so genes line up against a fixed,
+familiar y-axis; columns are every distinct gene mentioned in any new label, ordered by which cluster
+they name.
+
+```{r}
+#| label: label-genes
+## Genes embedded in the new labels -- parsed the same way the labels themselves were built, not
+## re-derived some other way, so this plot tests the actual rename rather than a re-interpretation
+## of it. Manual overrides (Glut-GABA) and unchanged labels (song region, precursor, non-neuronal,
+## the merge target's own pre-image) contribute no genes.
+## Every gene-to-gene delimiter within a label is "_" (only the category prefix, e.g. "Glut-",
+## keeps a hyphen) -- split on "_" alone, joining both multiple genes within one composite call
+## (e.g. DACH2_MGAT4C) and the disambiguator (usually a real gene too, e.g. ...LHX9_NDNF, not the
+## bare digit it would have been before the marker-analysis step). A label with no disambiguator
+## collision has no trailing "_<token>" at all and is unaffected. A leftover pure-numeral token
+## (only possible if a group's fallback stayed a bare number) is filtered out explicitly rather
+## than warned about as a missing gene, since it never was one.
+label_genes <- lookup %>%
+  filter(cluster %in% c(glut_named$cluster, gaba_named$cluster)) %>%
+  mutate(body = sub("^(Glut|GABA)-", "", new_label)) %>%
+  separate_rows(body, sep = "_") %>%
+  filter(!grepl("^[0-9]+$", body)) %>%
+  distinct(cluster, gene = body)
+
+genes_present <- intersect(unique(label_genes$gene), rownames(obj))
+genes_missing <- setdiff(unique(label_genes$gene), rownames(obj))
+if (length(genes_missing) > 0) {
+  warning("Label genes not found in the object, dropped from the plot: ", paste(genes_missing, collapse = ", "),
+          call. = FALSE)
+}
+
+## Row order: Glut clusters (song region first, then the composite-named ones grouped by which gene
+## they were named for, then Nido/Pre), then GABA the same way -- so a gene's "home" row and the
+## rows around it are visually adjacent rather than in whatever order factor() happened to produce.
+glut_order <- c(song_region_clusters, precursor_clusters,
+                glut_named %>% arrange(new_label) %>% pull(cluster),
+                "Glut-Nido-1", "Glut-Nido-2")
+gaba_order <- gaba_named %>% arrange(new_label) %>% pull(cluster)
+plot_clusters <- intersect(c(glut_order, gaba_order), all_clusters) # excludes Glut-Nido-3
+
+obj_plot <- subset(obj, cells = colnames(obj)[obj@meta.data[[cluster_col]] %in% plot_clusters])
+obj_plot@meta.data[[cluster_col]] <- factor(obj_plot@meta.data[[cluster_col]], levels = plot_clusters)
+```
+
+```{r}
+#| label: dotplot
+#| fig-width: 16
+#| fig-height: 10
+DotPlot(obj_plot, features = genes_present, group.by = cluster_col, assay = "SCT") +
+  RotatedAxis() +
+  labs(title = "Label genes across Glut and GABA clusters (original cluster identity, pre-relabel)")
+```
+
+Same cells, same genes, same order -- just grouped by the label each cluster actually ends up with,
+so the `Glut-NC-1`/`Glut-Nido-1` fold shows as one row (both were already adjacent above) and every
+disambiguated pair reads by its own gene rather than its original cluster number.
+
+```{r}
+#| label: dotplot-renamed
+#| fig-width: 16
+#| fig-height: 10
+new_label_order <- lookup$new_label[match(plot_clusters, lookup$cluster)]
+new_label_order <- unique(new_label_order[!is.na(new_label_order)])
+obj_plot$celltype_composite <- factor(obj_plot$celltype_composite, levels = new_label_order)
+
+DotPlot(obj_plot, features = genes_present, group.by = "celltype_composite", assay = "SCT") +
+  RotatedAxis() +
+  labs(title = "Label genes across clusters, grouped by the new composite label")
+```
+
+## Question: does `Glut-Arco-4` show anomalous QC, explaining its low-confidence match?
+
+`Glut-Arco-4` got the weakest composite call of anything actually relabelled (confidence 0.19,
+"low" tier) -- a low match could mean either a genuinely novel population with no chicken
+counterpart, or a technically poor cluster the integration correctly struggled to place. This checks
+the latter using the same curation metrics built for `scripts/cluster_curation.R`, against its four
+Arco siblings for reference.
+
+This backup object has no `individual` column (it predates the souporcell reprocessing done earlier
+this session), so `cluster_qc()`'s DE-dependent co-expression/class-panel scoring cannot run here --
+that needs real pseudobulk DE, which needs real biological replicates, and faking one with e.g.
+`sample_name` would pool unresolved birds together and produce a meaningless test (the same
+limitation already documented in `glut_ex_style_naming.qmd`). It is not needed for this question
+regardless: "does this cluster look anomalous" is answered by size, mito, depth, and doublet load,
+none of which depend on DE, so those are computed directly from metadata instead.
+
+```{r}
+#| label: arco4-qc
+arco_cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% paste0("Glut-Arco-", 1:5)]
+qc_arco <- obj@meta.data[arco_cells, ] %>%
+  as_tibble() %>%
+  mutate(cluster = .data[[cluster_col]]) %>%
+  group_by(cluster) %>%
+  summarise(
+    n_cells = n(),
+    median_mito = median(perc_mito, na.rm = TRUE),
+    median_nFeature = median(nFeature_RNA, na.rm = TRUE),
+    frac_df_doublet = mean(DF_class == "Doublet", na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(mito_mad = (median_mito - median(median_mito)) / stats::mad(median_mito))
+
+kable(qc_arco, digits = 2, caption = "QC across the Arco family -- read Glut-Arco-4's row against its four siblings")
+```
+
+```{r}
+#| label: arco4-verdict
+verdict <- qc_arco %>% filter(cluster == "Glut-Arco-4")
+tibble(
+  n_cells_relative = verdict$n_cells / median(qc_arco$n_cells),
+  mito_mad = verdict$mito_mad,
+  frac_df_doublet_relative = verdict$frac_df_doublet / median(qc_arco$frac_df_doublet)
+) %>%
+  kable(digits = 2, caption = paste(
+    "n_cells_relative: this cluster's size relative to the median Arco cluster --",
+    "far below 1 means a small, thin cluster is the more likely explanation for a weak cross-",
+    "species match than a genuinely unmatched population. mito_mad far from 0, or a doublet rate",
+    "well above the sibling median, would point at a technical artefact instead."
+  ))
+```
+
+## Question: does `Glut-Nido-2` form its own cluster against `GABA-1-1`/`GABA-1-2`?
+
+The dual-transmitter hypothesis for `Glut-Nido-2` (the co-expression, depth, and cross-species
+evidence gathered earlier all pointed the same way) makes a specific, checkable prediction: reclustered
+together with genuine GABAergic cells, it should separate out as its own group rather than being
+absorbed into either GABA population -- if it merges into GABA-1-1 or GABA-1-2, that is evidence it
+*is* one of those populations rather than a distinct dual-identity type. `GABA-1-1`/`GABA-1-2`
+specifically because that is what the composite integration's own runner-up call flagged
+(`Inh_LGE_like_FOXP1_DGKH`, an LGE-like inhibitory type) as the closest inhibitory match.
+
+```{r}
+#| label: nido2-recluster
+three_cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% c("Glut-Nido-2", "GABA-1-1", "GABA-1-2")]
+obj_three <- subset(obj, cells = three_cells)
+obj_three@meta.data[[cluster_col]] <- droplevels(factor(obj_three@meta.data[[cluster_col]]))
+
+DefaultAssay(obj_three) <- "RNA"
+obj_three <- obj_three %>%
+  SCTransform(vars.to.regress = "perc_mito") %>%
+  RunPCA(verbose = FALSE) %>%
+  RunUMAP(reduction = "pca", dims = 1:15, reduction.name = "umap_three", verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:15, verbose = FALSE) %>%
+  FindClusters(resolution = 0.3, algorithm = 2, verbose = FALSE)
+
+table(original = obj_three@meta.data[[cluster_col]], recluster = obj_three$seurat_clusters)
+```
+
+```{r}
+#| label: nido2-plot
+#| fig-width: 10
+DimPlot(obj_three, group.by = cluster_col, reduction = "umap_three") + coord_equal() +
+  labs(title = "Original identity")
+DimPlot(obj_three, group.by = "seurat_clusters", reduction = "umap_three", label = TRUE) + coord_equal() +
+  labs(title = "Reclustered together")
+```
+
+```{r}
+#| label: nido2-verdict
+## The check: does any recluster group hold Glut-Nido-2 cells with little admixture from either
+## GABA population, or does Glut-Nido-2 split across groups that are otherwise dominated by
+## GABA-1-1/GABA-1-2 cells?
+tab <- table(original = obj_three@meta.data[[cluster_col]], recluster = obj_three$seurat_clusters)
+comp <- as.data.frame(tab) %>%
+  group_by(recluster) %>%
+  mutate(frac = Freq / sum(Freq)) %>%
+  ungroup() %>%
+  filter(Freq > 0) %>%
+  arrange(recluster, desc(frac))
+kable(comp, digits = 2, caption = paste(
+  "Composition of each recluster group. Glut-Nido-2 forming its own group (frac near 1 for one",
+  "recluster label) supports a distinct population; Glut-Nido-2 spread across groups otherwise",
+  "dominated by GABA-1-1/GABA-1-2 supports it being absorbed into one of them instead."
+))
+```
+
+To pull this onto your own live object once the current preprocessing rerun finishes:
+
+```r
+lookup <- read_csv(here::here("snrna/naming/exploratory/apply_composite_labels", "composite_label_lookup.csv"))
+obj$celltype_composite <- lookup$new_label[match(obj$cluster, lookup$cluster)]
+```
+
+## Session info
+
+```{r}
+#| label: session-info
+sessionInfo()
+```
