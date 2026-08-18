@@ -1,0 +1,42 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.positai
+
+# ---------------------------------------------------------------------------
+# Analysis outputs — regenerate by re-rendering the notebook that writes them.
+# Small text outputs (.csv/.tsv/.md lookup tables, summaries) stay tracked.
+# ---------------------------------------------------------------------------
+
+# Quarto / knitr render artifacts
+*_files/
+*.html
+Rplots.pdf
+
+# Seurat / AnnData / R objects
+*.qs
+*.qs2
+*.rds
+*.RDS
+*.h5ad
+*.h5seurat
+*.h5
+*.loom
+bpcells/
+
+# Figures
+*.png
+*.pdf
+*.svg
+
+# Genome-browser / deeptools tracks and matrices
+*.bw
+*.bigWig
+*.bedGraph
+*.npz
+*.gz
+comparative_genomics/deeptools/output/
+
+# ArchR
+ArchRLogs/
