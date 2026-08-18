@@ -1,7 +1,7 @@
 ```{r}
 library(Seurat)
 library(tidyverse)
-library(qs)
+library(qs2)
 
 library(pvclust)
 library(future)
@@ -14,9 +14,9 @@ library(cowplot)
 library(here)
 plan(sequential)
 set.seed(10)
-source(here::here("scripts/scRNA.R"))
-source(here::here("scripts/stats.R"))
-source(here::here("scripts/common_aesthetics.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
@@ -33,7 +33,7 @@ dist_method = "correlation"
 # Directories 
 ```{r}
 script_name = "celltypes_hclust_glut"
-obj_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs")
+obj_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess", "obj_clustered.qs2")
 
 out_dir = here::here("snrna/trees", script_name)
 out_sub_dir = file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
@@ -42,10 +42,10 @@ dir.create(out_sub_dir)
 
 res_to_use = "cluster"
 
-obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs")
+obj_out_fname = file.path(out_dir, "obj_clustered_glutamatergic.qs2")
 
-data_out_avg_fname = file.path(out_dir, "data_avg.qs")
-data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs")
+data_out_avg_fname = file.path(out_dir, "data_avg.qs2")
+data_out_pv_fname = file.path(out_sub_dir, "pvclust.qs2")
 
 tfs = read_delim(here::here("data/lambert_tfs/tfs.csv")) %>%
   filter(DBD!="Unknown")
@@ -55,7 +55,7 @@ tfs = read_delim(here::here("data/lambert_tfs/tfs.csv")) %>%
 ```{r}
 redo = T
 if (redo) {
-  obj = qread(obj_fname)
+  obj = qs_read(obj_fname)
   idents = FetchData(obj, res_to_use) %>%
     mutate_all(as.factor)
   Idents(obj) = idents[,1]
@@ -65,11 +65,11 @@ if (redo) {
   cells = Cells(obj_sub)[!grepl("/", obj_sub$assignment)]
   obj_sub = subset(obj, cells=cells)
   
-  qsave(obj_sub, obj_out_fname)
+  qs_save(obj_sub, obj_out_fname)
 
 } else {
 
-  obj_sub = qread(obj_out_fname)
+  obj_sub = qs_read(obj_out_fname)
 
 }
 
@@ -134,7 +134,7 @@ Idents(obj_sub) = obj_sub@meta.data[,res_to_use]
 obj_int_avg = AggregateExpression(obj_sub, assays=assay_to_use)
 obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
 colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
-qsave(obj_int_avg1, data_out_avg_fname)
+qs_save(obj_int_avg1, data_out_avg_fname)
 ```
 
 # Cluster, Arco 
@@ -172,7 +172,7 @@ pv = pvclust(as.matrix(obj_int_avg_filt_cur), method.dist = dist_method, method.
 plot(pv)
 
 data_out_pv_fname2 = sub("pvclust", sprintf("pvclust_arco_%s", nsig), data_out_pv_fname)
-qsave(pv, data_out_pv_fname2)
+qs_save(pv, data_out_pv_fname2)
 ```
 ```{r fig.height=10}
 dat = as.matrix(obj_int_avg_filt_cur)
@@ -253,7 +253,7 @@ plot(pv)
 
 
 data_out_pv_fname2 = sub("pvclust", sprintf("pvclust_nido_%s", nsig), data_out_pv_fname)
-qsave(pv, data_out_pv_fname2)
+qs_save(pv, data_out_pv_fname2)
 ```
 
 ```{r fig.height=10}

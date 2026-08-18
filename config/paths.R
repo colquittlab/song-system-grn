@@ -126,6 +126,37 @@ ARCHR_ARROW_DIR <- "~/hdd/rstudio/archr/motor-pathway/archr_motor-pathway_multio
 PIPSEQ_MAFB_EMX2_DIR <- "/hdd/brad/pipseq/260312_chicken_mafb_emx2"
 
 # ---------------------------------------------------------------------------
+# Xenium in situ (adult Bengalese finch brain, 425-gene custom panel Z2XBPV)
+# Run Brainard_KL_052905 (2025-05-29): 2 birds x 5 coronal sections.
+# ---------------------------------------------------------------------------
+
+# Dataset root (as delivered by the collaborator)
+XENIUM_DIR <- "/hdd/brad/xenium/260811_brainard_adult-425g"
+
+# Per-region Xenium Ranger output directories (output-XETG00326__<slide>__<region>__*)
+XENIUM_RAW_DIR <- file.path(XENIUM_DIR, "Xenium Raw Data", "20250529__185810__Brainard_KL_052905")
+
+# Custom panel gene list (columns: Gene, Ensembl ID, Probesets)
+XENIUM_PANEL_CSV <- file.path(XENIUM_DIR, "Z2XBPV_otherBF_Brain_425g_gene_list.csv")
+
+# Post-Xenium H&E images, one pair (20x TIFF + OME-TIFF) per section
+XENIUM_HE_DIR <- file.path(XENIUM_DIR, "Xenium H&E Images")
+
+# Xenium Explorer ROI polygons and per-selection cell statistics
+# (HVC and HVC-surround selections drawn by the collaborator, per section)
+XENIUM_SELECTIONS_DIR <- file.path(XENIUM_DIR, "Xenium Cell Stat and Selection Coordinates CSV")
+
+# Processed Xenium Seurat objects (output of xenium/preprocessing/).
+# Kept off /ssd — the merged ten-section object is several GB.
+XENIUM_PROC_DIR <- "~/hdd/rstudio/xenium/260811_brainard_adult-425g"
+
+# Proseg resegmentation output, one subdirectory per section (output of
+# xenium/preprocessing/hpc_proseg/ — see that directory's README for the
+# SLURM array that produces it). Same layout for the single-section local test
+# (OR52YW26_2_2) and the full ten-section HPC run pulled back via rclone.
+XENIUM_PROSEG_DIR <- file.path(XENIUM_PROC_DIR, "proseg")
+
+# ---------------------------------------------------------------------------
 # Bundled gene lists and ortholog tables (resolved relative to repository root)
 # ---------------------------------------------------------------------------
 

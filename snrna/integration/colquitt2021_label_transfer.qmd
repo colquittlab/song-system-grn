@@ -1,0 +1,502 @@
+---
+title: "Bidirectional label transfer: Colquitt 2021 HVC/RA <-> hybrid-labelled snRNA"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+Seurat label transfer (`FindTransferAnchors` / `TransferData`) between the published Colquitt 2021
+HVC/RA dataset and this project's newly annotated dataset (the hybrid division-based labels from
+`snrna/naming/hybrid_division_naming.qmd`), run **in both directions**: published-as-reference onto
+the new data, and new-data-as-reference onto the published cells. Independent of the naming notebook
+by the same convention used throughout this project: reads its output read-only, writes its own copy.
+
+Running it both ways is what makes the result interpretable rather than suggestive. A one-way
+transfer always returns *some* label for every cell, including for populations the reference never
+sampled, so a confident-looking assignment can be an artifact of the reference having nowhere else to
+put a cell. A correspondence that holds in both directions -- a **reciprocal best match** -- cannot be
+produced that way, so the reciprocal table at the end is the actual result; the two per-direction
+heatmaps are the supporting detail.
+
+The question: do the newly derived hybrid labels -- in particular the song-nucleus labels
+(`Glut-DACH2-HVCra`, `Glut-DACH2-HVCx`, `Glut-CACNA1H-RA`) -- correspond to the populations the
+published dataset already defined (`HVC_Glut-1..5`, `RA_Glut-1..3`)?
+
+## Reference dataset, checked before use
+
+`/mnt/nest/sc_datasets/colquitt_2021/HVC_RA_paper.qs`. Facts below were confirmed directly against
+the object rather than assumed, because several change what the transfer has to do:
+
+- **Format.** The original is `.qs` (old format); this project's environment has `qs2` but not `qs`.
+  Converted once to `.qs2` in place with `~/ssd/rstudio/multiome/convert_qs_to_qs2.R` under the
+  `qs-convert` micromamba env (the same script/env already used for 131 other Seurat objects,
+  0 failures). This notebook reads the `.qs2`.
+- **Seurat version.** The object is version 3.1.2 with old-style `Assay` objects; this project runs
+  Seurat 5.5.0. Passed through `UpdateSeuratObject()` before anything else.
+- **The `RNA` `data` layer holds raw counts, not normalised values.** Confirmed by direct comparison:
+  `identical(data, counts)` was `TRUE`, every value integer, per-cell sums ~1000. Both datasets are
+  therefore explicitly re-normalised below -- taking the stored `data` layer at face value would have
+  fed raw counts into anchor-finding, which fails quietly rather than loudly.
+- **No SCT model.** The `SCT` assay is an old `Assay` without the `SCTModel` that
+  `normalization.method = "SCT"` requires, so the transfer is `LogNormalize`-style on the `RNA` assay
+  of both datasets in both directions.
+- **Contents.** 29,497 cells, both species (`zf` 25,392 / `bf` 4,105), positions `hvc` (23,017) and
+  `ra` (6,480), 31 harmonised cluster labels in `cluster_int_sub2`. All reference cells are used:
+  `cluster_int_sub2` is the cross-species-harmonised labelling, and several clusters have almost no
+  `bf` cells (`RA_Glut-3` has 1), so restricting to the query's own species would gut the very
+  populations of interest.
+
+**The published dataset sampled only HVC and RA.** The new dataset also covers NC, NR, LMAN and
+arcopallium. So the non-song clusters have no true counterpart in the published data, and the
+published data has no counterpart for much of the new dataset -- in *both* directions there are
+populations that must be mismatched. This is the expected, informative outcome for them, and the
+reason the reciprocal criterion below is the one worth reading.
+
+## Query-side gotcha, also checked
+
+The new dataset's `RNA` counts layer is a **BPCells on-disk `IterableMatrix`** (class `RenameDims`),
+not an in-memory sparse matrix -- the preprocessing pipeline wrote it that way. Generic numeric ops
+are undefined on it (the first run of this notebook died on a plain `max()` with
+`invalid 'type' (S4) of argument`), and more importantly `FindTransferAnchors` would otherwise be
+operating against a lazy on-disk matrix. Materialised to a `dgCMatrix` below (~8 s, ~0.7 GB).
+
+## Gene space
+
+The two datasets are annotated to different genomes (zebra finch `taeGut` vs. Bengalese finch
+`lonStrDom`) whose `LOC######` placeholder IDs are **disjoint ID spaces** -- the same `LOC` number
+means unrelated genes across the two, so any `LOC` "match" would be a coincidence of numbering rather
+than homology. Checked directly: the 12,213-gene overlap between the two `RNA` assays contains
+**zero** `LOC` genes already, i.e. it is entirely real gene symbols. `LOC*` is nevertheless filtered
+explicitly (per direct instruction) so this is guaranteed by the code rather than left as a property
+that happened to hold, and asserted below.
+
+The feature set is deliberately **symmetric**: the union of each dataset's own informative genes (the
+published `integrated` assay's 3000 features, and the new dataset's 3000 `SCT` variable features),
+restricted to the shared non-`LOC` space. Using one dataset's variable genes for both directions
+would privilege its notion of what varies, and any asymmetry in the result could then be an artifact
+of feature choice rather than of direction -- which is precisely what the reciprocal comparison is
+supposed to test.
+
+```{r setup}
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(Matrix)
+library(ComplexHeatmap)
+library(circlize)
+library(cowplot)
+library(here)
+set.seed(10)
+theme_set(theme_cowplot())
+options(future.globals.maxSize = 50 * 1e9)
+```
+
+# Parameters
+
+```{r params}
+pub_fname = "/mnt/nest/sc_datasets/colquitt_2021/HVC_RA_paper.qs2"
+new_fname = here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
+
+new_label = "celltype_hybrid"    # this project's new labels
+pub_label = "cluster_int_sub2"   # published harmonised cluster labels
+pub_position = "position2"       # published dissection (hvc / ra)
+
+assay_to_use = "RNA"
+n_dims = 30
+
+script_name = "colquitt2021_label_transfer"
+out_dir = here::here("snrna/integration", script_name)
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+## Anchor-finding is the expensive step, once per direction. Cached manually rather than via knitr's
+## `cache: true`, which invalidates on chunk text rather than on the upstream objects actually
+## changing -- the same silent-staleness reasoning applied to the caches in snrna/naming/exploratory/apply_composite_labels.qmd.
+redo = list(anchors = FALSE)
+
+## Cluster order for figures, identical to celltypes_hclust_all_hybrid.qmd's ct_order so the figures
+## can be read against each other. Excluded/artifact clusters are absent by construction
+## (celltype_hybrid is NA for them and those cells are dropped below).
+ct_order = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+             "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
+             "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
+             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",
+             "Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-CACNA1H-3", "Glut-CACNA1H-4",
+             "Glut-GABA",
+             "Glut-Im", "Glut-NB", "Glut-NSC",
+             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
+             "GABA-3", "GABA-4-1", "GABA-4-2",
+             "GABA-5-1", "GABA-5-2",
+             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-Im",
+             "Astro-1", "Astro-2", "Astro-3", "Epen",
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+
+## Published labels grouped Glut (HVC then RA) -> GABA -> precursor -> non-neuronal, so the block
+## structure is legible rather than alphabetical.
+pub_order = c(paste0("HVC_Glut-", 1:5), paste0("RA_Glut-", 1:3),
+              "GABA-1-1", "GABA-1-2", "GABA-2", "GABA-3", "GABA-4",
+              "GABA-5-1", "GABA-5-2", "GABA-5-3", "GABA-6", "GABA-7", "GABA-8", "GABA-Pre",
+              paste0("Pre-", 1:4),
+              "Astro", "Epen", "Oligo", "OPC", "Micro", "Endo", "Mural", "VLMC", "RBC")
+
+song_hybrid = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
+                "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco")
+```
+
+# Load
+
+```{r load}
+pub = qs_read(pub_fname, nthreads = 8)
+pub = UpdateSeuratObject(pub)
+
+## Published informative gene list captured from the `integrated` assay before anything is dropped.
+## Used only as a feature list -- the integrated assay's batch-corrected values have no counterpart
+## in the new dataset, so they are never used as expression input.
+pub_int_features = rownames(pub[["integrated"]])
+DefaultAssay(pub) = assay_to_use
+
+new = qs_read(new_fname, nthreads = 8)
+new_sct_features = VariableFeatures(new, assay = "SCT")
+## Cells whose cluster was excluded under the hybrid scheme (Glut-Arco-4, Glut-Nido-3: confirmed
+## artifacts) carry NA here -- dropped, matching every other hybrid-labels notebook, rather than
+## transferred onto and then silently reported as an "NA" row.
+new = subset(new, cells = colnames(new)[!is.na(new@meta.data[[new_label]])])
+DefaultAssay(new) = assay_to_use
+
+## BPCells -> in-memory, see the note above.
+counts_mem = as(SeuratObject::LayerData(new, assay = assay_to_use, layer = "counts"), "dgCMatrix")
+SeuratObject::LayerData(new, assay = assay_to_use, layer = "counts") = counts_mem
+rm(counts_mem); gc(verbose = FALSE)
+stopifnot(
+  "new-dataset RNA counts did not materialise to an in-memory sparse matrix" =
+    inherits(SeuratObject::LayerData(new, assay = assay_to_use, layer = "counts"), "dgCMatrix"),
+  "ct_order does not match the hybrid labels present in the new dataset" =
+    setequal(ct_order, unique(new@meta.data[[new_label]])),
+  "pub_order does not cover the published labels present" =
+    setequal(pub_order, unique(pub@meta.data[[pub_label]]))
+)
+
+c(published_cells = ncol(pub), new_cells = ncol(new))
+```
+
+# Shared, symmetric feature space
+
+```{r features}
+shared = intersect(rownames(pub[[assay_to_use]]), rownames(new[[assay_to_use]]))
+shared_noloc = shared[!grepl("^LOC", shared)]
+
+## Union of both datasets' own informative genes -- symmetric by construction, see the note above.
+transfer_features = intersect(union(pub_int_features, new_sct_features), shared_noloc)
+
+tibble(
+  published_genes = nrow(pub[[assay_to_use]]),
+  new_genes = nrow(new[[assay_to_use]]),
+  shared = length(shared),
+  loc_dropped = length(shared) - length(shared_noloc),
+  pub_informative = length(pub_int_features),
+  new_informative = length(new_sct_features),
+  transfer_features = length(transfer_features)
+)
+```
+
+```{r feature-checks}
+stopifnot(
+  "no shared non-LOC genes -- gene symbols are probably not comparable between the two annotations" =
+    length(shared_noloc) > 1000,
+  "too few informative features survive in both datasets to anchor on" =
+    length(transfer_features) > 500,
+  "a LOC gene survived into the transfer feature set" =
+    !any(grepl("^LOC", transfer_features))
+)
+cat(length(transfer_features), "features used for anchor-finding (both directions)\n")
+```
+
+# Normalise
+
+The published `data` layer arrived holding raw counts (confirmed above), so both datasets are
+normalised here with the same method rather than trusting either object's stored state.
+
+```{r normalize}
+pub = NormalizeData(pub, assay = assay_to_use, verbose = FALSE)
+new = NormalizeData(new, assay = assay_to_use, verbose = FALSE)
+
+## Checked rather than assumed, precisely because "data looks populated" turned out to mean nothing
+## here: a log-normalised matrix is non-integer and far smaller in magnitude than its source counts.
+norm_check = function(obj, nm) {
+  d = as(SeuratObject::LayerData(obj, assay = assay_to_use, layer = "data")[, 1:200], "dgCMatrix")
+  cnt = as(SeuratObject::LayerData(obj, assay = assay_to_use, layer = "counts")[, 1:200], "dgCMatrix")
+  tibble(object = nm, data_max = max(d@x), counts_max = max(cnt@x),
+         data_all_integer = all(d@x == round(d@x)))
+}
+norm_summary = bind_rows(norm_check(pub, "published"), norm_check(new, "new"))
+stopifnot(
+  "a `data` layer still looks like raw counts after NormalizeData -- transfer input would be wrong" =
+    !any(norm_summary$data_all_integer)
+)
+norm_summary
+```
+
+# Transfer, both directions
+
+One helper, called twice with the roles swapped, so the two directions cannot drift apart in method
+-- only in which dataset is the reference.
+
+```{r transfer-fn}
+#| message: false
+## Returns a tibble of per-cell predictions for `query_obj`, transferring each column named in
+## `refdata` from `ref_obj`. Anchors cached per direction, with the cache validated against the
+## actual cell sets and feature set rather than just checked for existence -- the failure mode a bare
+## file.exists() would hand back silently.
+run_transfer = function(ref_obj, query_obj, refdata, direction) {
+  cache_fname = file.path(out_dir, sprintf("anchors_%s.qs2", direction))
+
+  cache_ok = FALSE
+  if (!redo$anchors && file.exists(cache_fname)) {
+    cached = qs_read(cache_fname, nthreads = 8)
+    cache_ok = setequal(cached$ref_cells, colnames(ref_obj)) &&
+      setequal(cached$query_cells, colnames(query_obj)) &&
+      setequal(cached$features, transfer_features)
+    if (!cache_ok) {
+      warning("Anchor cache for direction '", direction,
+              "' does not match the current cells / features -- recomputing.", call. = FALSE)
+    }
+  }
+
+  if (cache_ok) {
+    anchors = cached$anchors
+  } else {
+    anchors = FindTransferAnchors(
+      reference = ref_obj, query = query_obj,
+      normalization.method = "LogNormalize",
+      reference.assay = assay_to_use, query.assay = assay_to_use,
+      features = transfer_features,
+      reduction = "pcaproject", dims = 1:n_dims, verbose = FALSE
+    )
+    qs_save(list(anchors = anchors, ref_cells = colnames(ref_obj),
+                 query_cells = colnames(query_obj), features = transfer_features),
+            cache_fname, nthreads = 8)
+  }
+
+  out = tibble(cell = colnames(query_obj))
+  for (nm in names(refdata)) {
+    pred = TransferData(anchorset = anchors,
+                        refdata = ref_obj@meta.data[[refdata[[nm]]]],
+                        weight.reduction = "pcaproject", dims = 1:n_dims, verbose = FALSE)
+    out[[nm]] = pred$predicted.id
+    out[[paste0(nm, "_score")]] = pred$prediction.score.max
+  }
+  out
+}
+```
+
+## Direction 1: published -> new
+
+```{r transfer-fwd}
+#| message: false
+fwd = run_transfer(pub, new,
+                   refdata = list(pred_pub_cluster = pub_label, pred_pub_position = pub_position),
+                   direction = "pub_to_new") %>%
+  mutate(own_label = new@meta.data[[new_label]][match(cell, colnames(new))],
+         position = new$position[match(cell, colnames(new))])
+write_csv(fwd, file.path(out_dir, "predictions_pub_to_new.csv"))
+head(fwd)
+```
+
+## Direction 2: new -> published
+
+```{r transfer-rev}
+#| message: false
+rev_ = run_transfer(new, pub,
+                    refdata = list(pred_new_label = new_label),
+                    direction = "new_to_pub") %>%
+  mutate(own_label = pub@meta.data[[pub_label]][match(cell, colnames(pub))],
+         species = pub$species[match(cell, colnames(pub))],
+         position = pub@meta.data[[pub_position]][match(cell, colnames(pub))])
+write_csv(rev_, file.path(out_dir, "predictions_new_to_pub.csv"))
+head(rev_)
+```
+
+```{r save-objects}
+new$pred_pub_cluster = fwd$pred_pub_cluster[match(colnames(new), fwd$cell)]
+new$pred_pub_cluster_score = fwd$pred_pub_cluster_score[match(colnames(new), fwd$cell)]
+new$pred_pub_position = fwd$pred_pub_position[match(colnames(new), fwd$cell)]
+pub$pred_new_label = rev_$pred_new_label[match(colnames(pub), rev_$cell)]
+pub$pred_new_label_score = rev_$pred_new_label_score[match(colnames(pub), rev_$cell)]
+
+qs_save(new, file.path(out_dir, "obj_new_predicted.qs2"), nthreads = 8)
+qs_save(pub, file.path(out_dir, "obj_pub_predicted.qs2"), nthreads = 8)
+```
+
+# Per-direction composition
+
+```{r composition-fn}
+## Row-normalised composition matrix: each row is one source cluster's cells distributed over the
+## labels they were predicted as, so rows sum to 1 and read as "what this cluster looks like",
+## independent of cluster size.
+composition = function(df, from_col, to_col, from_order, to_order) {
+  m = df %>%
+    count(.data[[from_col]], .data[[to_col]]) %>%
+    pivot_wider(names_from = all_of(to_col), values_from = n, values_fill = 0) %>%
+    column_to_rownames(from_col) %>%
+    as.matrix()
+  m = m[intersect(from_order, rownames(m)), , drop = FALSE]
+  m = m[, intersect(to_order, colnames(m)), drop = FALSE]
+  sweep(m, 1, rowSums(m), FUN = "/")
+}
+
+comp_heatmap = function(m, row_title, column_title, fname) {
+  scale_factor = 0.16
+  hm = Heatmap(m, name = "frac of\nsource cluster",
+               cluster_rows = FALSE, cluster_columns = FALSE,
+               col = colorRamp2(seq(0, 1, length.out = 9),
+                                scales::brewer_pal(palette = "Greys")(9)),
+               border = TRUE, border_gp = gpar(lwd = 0.5),
+               height = unit(nrow(m) * scale_factor, "in"),
+               width = unit(ncol(m) * scale_factor, "in"),
+               row_names_gp = gpar(fontsize = 6), column_names_gp = gpar(fontsize = 6),
+               row_title = row_title, row_title_gp = gpar(fontsize = 8),
+               column_title = column_title, column_title_gp = gpar(fontsize = 8))
+  draw(hm)
+  pdf(file.path(out_dir, fname),
+      height = nrow(m) * scale_factor + 3, width = ncol(m) * scale_factor + 3)
+  draw(hm)
+  dev.off()
+  invisible(hm)
+}
+```
+
+```{r composition-fwd}
+#| fig-width: 10
+#| fig-height: 9
+m_fwd = composition(fwd, "own_label", "pred_pub_cluster", ct_order, pub_order)
+comp_heatmap(m_fwd, "hybrid label (new dataset)", "predicted Colquitt 2021 label",
+             "composition_pub_to_new.pdf")
+```
+
+```{r composition-rev}
+#| fig-width: 11
+#| fig-height: 8
+m_rev = composition(rev_, "own_label", "pred_new_label", pub_order, ct_order)
+comp_heatmap(m_rev, "Colquitt 2021 label", "predicted hybrid label (new dataset)",
+             "composition_new_to_pub.pdf")
+```
+
+# Reciprocal best match
+
+The actual result. For each hybrid cluster, its top predicted published label; for each published
+cluster, its top predicted hybrid label; and whether the two agree. `reciprocal = TRUE` means the
+pair is each other's top match in both directions -- a correspondence a one-way transfer cannot
+manufacture, since every cell gets assigned something regardless.
+
+```{r reciprocal}
+top_fwd = fwd %>%
+  count(own_label, pred_pub_cluster) %>%
+  group_by(own_label) %>%
+  mutate(frac_fwd = n / sum(n)) %>%
+  slice_max(frac_fwd, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(hybrid_label = own_label, pub_match = pred_pub_cluster, frac_fwd,
+            n_new_cells = n)
+
+top_rev = rev_ %>%
+  count(own_label, pred_new_label) %>%
+  group_by(own_label) %>%
+  mutate(frac_rev = n / sum(n)) %>%
+  slice_max(frac_rev, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(pub_label = own_label, hybrid_match = pred_new_label, frac_rev,
+            n_pub_cells = n)
+
+mean_scores = fwd %>%
+  group_by(own_label) %>%
+  summarise(mean_score_fwd = mean(pred_pub_cluster_score), .groups = "drop")
+
+reciprocal = top_fwd %>%
+  left_join(top_rev, by = c("pub_match" = "pub_label")) %>%
+  left_join(mean_scores, by = c("hybrid_label" = "own_label")) %>%
+  mutate(reciprocal = !is.na(hybrid_match) & hybrid_match == hybrid_label,
+         hybrid_label = factor(hybrid_label, levels = ct_order)) %>%
+  arrange(desc(reciprocal), hybrid_label) %>%
+  select(hybrid_label, pub_match, frac_fwd, hybrid_match, frac_rev, reciprocal,
+         mean_score_fwd, n_new_cells, n_pub_cells)
+
+write_csv(reciprocal, file.path(out_dir, "reciprocal_best_match.csv"))
+reciprocal
+```
+
+```{r reciprocal-summary}
+reciprocal %>%
+  mutate(class = case_when(hybrid_label %in% song_hybrid ~ "song nucleus",
+                           grepl("^Glut", hybrid_label) ~ "other Glut",
+                           grepl("^GABA", hybrid_label) ~ "GABA",
+                           TRUE ~ "non-neuronal")) %>%
+  group_by(class) %>%
+  summarise(n_clusters = n(), n_reciprocal = sum(reciprocal),
+            frac_reciprocal = mean(reciprocal),
+            mean_frac_fwd = mean(frac_fwd), .groups = "drop")
+```
+
+# Song-nucleus clusters specifically
+
+```{r song-focus}
+song_detail = fwd %>%
+  filter(own_label %in% song_hybrid) %>%
+  count(own_label, pred_pub_cluster) %>%
+  group_by(own_label) %>%
+  mutate(frac = n / sum(n)) %>%
+  slice_max(frac, n = 4) %>%
+  ungroup() %>%
+  mutate(own_label = factor(own_label, levels = song_hybrid)) %>%
+  arrange(own_label, desc(frac))
+write_csv(song_detail, file.path(out_dir, "song_cluster_predictions.csv"))
+song_detail
+```
+
+```{r song-reverse}
+## The same populations from the other side: which hybrid label do the published HVC/RA glutamatergic
+## clusters map onto?
+pub_glut_detail = rev_ %>%
+  filter(grepl("_Glut-", own_label)) %>%
+  count(own_label, pred_new_label) %>%
+  group_by(own_label) %>%
+  mutate(frac = n / sum(n)) %>%
+  slice_max(frac, n = 3) %>%
+  ungroup() %>%
+  mutate(own_label = factor(own_label, levels = pub_order)) %>%
+  arrange(own_label, desc(frac))
+write_csv(pub_glut_detail, file.path(out_dir, "pub_glut_predictions.csv"))
+pub_glut_detail
+```
+
+```{r score-plot}
+#| fig-width: 9
+#| fig-height: 6
+## Prediction score per hybrid cluster (forward direction). A cluster with a confident, consistent
+## counterpart sits high and tight; a cluster the published data has no counterpart for -- which is
+## most of the non-song set, since it sampled only HVC and RA -- sits low and/or wide. That is the
+## expected outcome for them, not a transfer failure.
+p_score = fwd %>%
+  mutate(own_label = factor(own_label, levels = rev(ct_order)),
+         class = case_when(grepl("^Glut", own_label) ~ "Glut",
+                           grepl("^GABA", own_label) ~ "GABA",
+                           TRUE ~ "Non-neuron")) %>%
+  ggplot(aes(own_label, pred_pub_cluster_score, color = class)) +
+  geom_hline(yintercept = 0.5, linetype = 2, color = "grey50", linewidth = 0.25) +
+  geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.3, linewidth = 0.25) +
+  coord_flip() + ylim(0, 1) +
+  labs(x = NULL, y = "max prediction score (published -> new)") +
+  theme_cowplot(font_size = 8) +
+  theme(legend.position = "bottom", legend.title = element_blank())
+print(p_score)
+save_plot(file.path(out_dir, "prediction_scores_pub_to_new.pdf"), p_score,
+          base_height = length(ct_order) * 0.14 + 1.5, base_width = 6)
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```

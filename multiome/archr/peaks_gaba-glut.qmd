@@ -1,0 +1,84 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+## Setup
+```{r}
+
+library(ArchR)
+library(Seurat)
+library(furrr)
+library(tidyverse)
+library(cowplot)
+library(ComplexHeatmap)
+library(circlize)
+library(scales)
+library(ggrepel)
+library(scCustomize)
+library(rtracklayer)
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
+source(here::here("config/paths.R"))
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                     pnames == "ncl" ~ "nc",
+                                     TRUE ~ pnames)
+
+pnames2 = names(position_colors2)
+names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
+                                   pnames2 == "ncl" ~ "nc",
+                                   TRUE ~ pnames2)
+```
+
+
+```{r}
+proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
+script_name = "peaks_gaba-glut"
+out_dir = here::here("multiome/archr", script_name)
+dir.create(out_dir, recursive = T)
+
+
+out_bed_fname = file.path(out_dir, "Glut_vs_GABA_enriched.bed" )
+addArchRThreads(threads = 36) 
+```
+
+```{r}
+proj = loadArchRProject(proj_dir)
+
+```
+
+### Export beds
+```{r}
+bed_dir = file.path(proj_dir, "beds")
+dir.create(bed_dir)
+```
+
+## Differential peaks
+```{r}
+plan(multisession(workers = 4))
+```
+
+### Glut vs. GABA
+```{r}
+# Group all Glut-* clusters vs all GABA-* clusters
+proj$BroadClass <- ifelse(
+  grepl("^Glut", proj$cluster) & !grepl("Pre-1|Pre-2", proj$cluster), "Glut",
+  ifelse(grepl("^GABA", proj$cluster), "GABA", "other")
+)
+
+markersPeaks <- getMarkerFeatures(
+  ArchRProj  = proj,
+  useMatrix  = "PeakMatrix",
+  groupBy    = "BroadClass",
+  testMethod = "wilcoxon",
+  bias       = c("TSSEnrichment", "log10(nFrags)"),
+)
+
+# Extract Glut-enriched peaks (high in Glut, low in GABA)
+glut_markers <- getMarkers(markersPeaks, cutOff = "FDR <= 0.1 & Log2FC >= 1",
+                            returnGR = TRUE)$Glut
+
+export(glut_markers, out_bed_fname, format = "BED")
+
+```

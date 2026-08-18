@@ -1,0 +1,680 @@
+---
+title: "Xenium label transfer — snRNA-seq cell types in space"
+format: html
+editor: source
+---
+
+Transfers the snRNA-seq cell type taxonomy onto the ten Xenium sections, at the
+label resolution established in `panel_resolution_benchmark.qmd`.
+
+## Two analysis tiers — read this before using the labels
+
+The transfer supports localization strongly and composition only under a filter.
+Both statements are measured, not cautionary boilerplate.
+
+**Tier 1 — localization ("where is cell type X?"). Use all confident cells.**
+Glut-HVC-1 is the most HVC-enriched type in the whole taxonomy: 13.4% of cells
+inside the HVC selections versus 0.09% outside, log2 7.11 (138x), reproducing
+independently in all five sections with paired ROIs across both birds (log2 6.28
+to 10.08). Glut-NC-1, the comparator, is *depleted*: literally zero cells inside
+HVC in every section against 0.5-5.3% in the surround. Nothing in the transfer
+uses position, so this is an independent anatomical validation.
+
+**Tier 2 — composition ("what fraction of region R is type X?"). Requires
+`nCount_Xenium >= composition_min_counts`.** Unfiltered composition is wrong:
+Astro 42%, Endo 21%, Glut 18% across confident cells, where glutamatergic
+neurons should be ~40-50% of telencephalic cells. That is almost entirely a
+depth artifact — cells with little signal have flat profiles and collapse onto
+the flattest reference profiles (Astro-2 and Endo have the lowest median panel
+UMI in the reference, 111 and 157):
+
+| counts/cell | Astro | Endo | Glut | GABA |
+|---|---|---|---|---|
+| <100        | 33.1% | 49.2% |  2.3% |  1.7% |
+| 200-400     | 45.3% | 27.5% |  9.8% |  5.9% |
+| 400-800     | 43.2% |  9.0% | 25.3% | 13.7% |
+| 800-1600    | 29.1% |  1.8% | 50.2% | 15.2% |
+| >1600       | 14.9% |  0.5% | 79.7% |  3.3% |
+
+At 800-1600 counts the composition is biologically plausible. The filter trades
+cells for a trustworthy denominator; 400 is the chosen operating point because
+it keeps 46% of confident cells while cutting Endo from 21% to 7.5%, and gives
+the highest HVC enrichment of any threshold tested (log2 7.38). Enrichment
+itself is stable from 0 to 800 counts (7.11-7.38), which is why Tier 1 does not
+need the filter.
+
+See `composition_by_depth.csv` and `depth_filter_tradeoff.csv`.
+
+Two methods are run. **RCTD** (`spacexr`) is the primary: it models each cell as
+a mixture of reference profiles, which matters because this run was segmented by
+5 µm nucleus expansion with no boundary stain, so transcript spillover between
+neighbouring cells is expected. **Seurat transfer anchors** is the cross-check.
+Cells where the two agree form the high-confidence set; disagreement is reported
+rather than resolved, and is itself the uncertainty map.
+
+The benchmark measured what each method recovers on held-out reference cells
+(macro-F1 0.86 naive Bayes, 0.81 anchors), so those numbers are the ceiling
+against which the transfer here should be read.
+
+RCTD is expensive at this cell count, so it runs per section and checkpoints:
+re-running skips sections already on disk.
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(BPCells)
+library(qs2)
+library(Matrix)
+library(spacexr)
+library(cowplot)
+library(here)
+
+source(here::here("config/paths.R"))
+select = dplyr::select
+```
+
+```{r}
+script_name = "xenium_label_transfer"
+out_dir = here::here("xenium/label_transfer", script_name)
+obj_dir = file.path(path.expand(XENIUM_PROC_DIR), script_name)
+ckpt_dir = file.path(obj_dir, "rctd_by_section")
+dir.create(out_dir, recursive = T, showWarnings = F)
+dir.create(ckpt_dir, recursive = T, showWarnings = F)
+
+xenium_obj_fname = file.path(path.expand(XENIUM_PROC_DIR),
+                             "xenium_preprocess", "obj_xenium.qs2")
+ref_obj_fname = file.path(SNRNA_SEURAT_DIR, "obj_clustered.qs2")
+label_set_fname = here::here("xenium/label_transfer/panel_resolution_benchmark",
+                             "recommended_label_set.csv")
+
+## RAW, not the CellBender-corrected RNA assay. CellBender strips ambient RNA
+## from the reference, making each type's profile far sharper than a Xenium cell
+## — which is segmented by 5 um nucleus expansion and so collects neighbouring
+## transcripts. Every method then assigns the blurred query cells to whichever
+## reference profile is itself blurred (Glut-Nido-3). Measured on OR52YW26_2_2:
+## CellBender used 17 of 49 labels, called ZERO Glut-HVC-1 cells, and gave no
+## HVC ROI enrichment; RAW used 41 labels and put Glut-HVC-1 at 30x enrichment
+## inside the HVC selection. See reference_variant_test.csv.
+assay_ref = "RAW"
+label_col = "cluster"
+
+## Reference cells per label. Caps the cost of both methods and keeps the
+## reference from being dominated by the most abundant types.
+max_ref_cells_per_label = 1000
+
+## Glut-Nido-3 is excluded from the reference. It behaves as a sink: with it in,
+## the transfer calls 32 Glut-HVC-1 cells in OR52YW26_2_2 at 30x HVC ROI
+## enrichment; without it, 216 cells at 90x. It is anomalous in the reference
+## too — 23% of its cells co-express SLC17A6 and GAD1 even in the LOWEST library
+## size quartile, against a 0.9% baseline at that depth.
+## Glut-Nido-2 was tested and is NOT excluded: removing it on top of Nido-3
+## changes nothing (HVC fraction 0.1543 -> 0.1566). Its apparent co-expression
+## is a depth artifact — see nido_removal_test.csv.
+exclude_labels = c("Glut-Nido-3")
+
+## RCTD. UMI_min matches the Xenium QC threshold from preprocessing rather than
+## the package default of 100, which would discard a large share of real cells.
+run_rctd = TRUE
+rctd_umi_min = 20
+rctd_doublet_mode = "doublet"
+
+## Cores are set per stage, which matters a great deal here. choose_sigma_c
+## fits on at most N_fit = 1000 cells (spacexr default) for N_epoch = 8 epochs,
+## so it is a fixed cost — but spacexr spawns a fresh PSOCK cluster per epoch,
+## and with 44 workers each re-loading the renv library on startup, the startup
+## overhead swamps the actual work: ~11 min/epoch to decompose 1000 cells.
+## Few cores for setup, many for fitPixels, where the work actually scales.
+## Capped at 22 rather than all 48 — this machine is shared.
+rctd_setup_cores = 4
+rctd_max_cores = 22
+
+## Cells per fitPixels checkpoint. Only fitPixels scales with cell count; the
+## setup before it is a fixed cost paid once for all ten sections.
+rctd_chunk_size = 2e4
+
+run_anchors = TRUE
+npcs = 30
+
+## Depth filter for COMPOSITION analyses only (see "Two analysis tiers" below).
+## Cell type calls below this transcript count are driven by depth rather than
+## identity: Endo is 49% of calls under 100 counts and 0.5% above 1600.
+composition_min_counts = 400
+
+seed = 10
+set.seed(seed)
+options(future.globals.maxSize = Inf)
+```
+
+## Reference
+
+```{r}
+label_set = read_csv(label_set_fname, show_col_types = FALSE)
+label_set %>% count(status)
+
+## Unresolved labels stay in the reference — dropping them would force their
+## cells to be called something else — but are flagged so they can be excluded
+## from interpretation downstream.
+unresolved_labels = label_set %>% filter(status == "unresolved") %>% pull(recommended_label)
+unresolved_labels
+```
+
+```{r}
+obj_ref = qs2::qs_read(ref_obj_fname)
+cells = Cells(obj_ref)[!grepl("/", obj_ref$assignment)]
+obj_ref = subset(obj_ref, cells = cells)
+
+panel = read_csv(XENIUM_PANEL_CSV, show_col_types = FALSE)$Gene
+counts_ref_all = LayerData(obj_ref, assay = assay_ref, layer = "counts")
+panel_shared = intersect(panel, rownames(counts_ref_all))
+length(panel_shared)
+```
+
+```{r}
+ref_md = obj_ref@meta.data %>%
+  rownames_to_column("cell") %>%
+  mutate(cluster = as.character(.data[[label_col]])) %>%
+  left_join(label_set %>% select(cluster, recommended_label), by = "cluster") %>%
+  filter(!is.na(recommended_label), !recommended_label %in% exclude_labels)
+
+set.seed(seed)
+ref_md = ref_md %>%
+  group_by(recommended_label) %>%
+  slice_sample(n = max_ref_cells_per_label) %>%
+  ungroup()
+
+counts_ref = as(counts_ref_all[panel_shared, ref_md$cell], "dgCMatrix")
+labels_ref = setNames(factor(ref_md$recommended_label), ref_md$cell)
+
+## RCTD rejects "/" in cell type names, which the merged Glut-NC/Glut-Nido label
+## contains. Substitute for RCTD and map back afterwards.
+labels_rctd = labels_ref
+levels(labels_rctd) = str_replace_all(levels(labels_rctd), "/", "_")
+rctd_name_map = setNames(levels(labels_ref), levels(labels_rctd))
+
+rm(counts_ref_all, obj_ref); gc()
+
+tibble(n_cells = ncol(counts_ref), n_labels = nlevels(labels_ref),
+       n_genes = nrow(counts_ref))
+table(labels_ref) %>% sort()
+```
+
+## Query
+
+```{r}
+obj = qs2::qs_read(xenium_obj_fname)
+counts_q_all = LayerData(obj, assay = "Xenium", layer = "counts")
+stopifnot(all(panel_shared %in% rownames(counts_q_all)))
+
+section_ids = levels(obj$section_id)
+section_ids
+```
+
+## RCTD
+
+RCTD's cost is dominated by a fixed setup — gene selection in `create.RCTD`,
+then `fitBulk` and the iterative `choose_sigma_c` — that does not scale with
+cell count. Only `fitPixels` scales. So all ten sections are run as **one** RCTD
+object, paying the setup once, and resumability comes from chunking `fitPixels`
+instead: `run.RCTD` is unrolled into its three stages, the fitted setup is
+checkpointed, and each chunk of cells is fitted and saved independently.
+
+Doublet-mode assignment does not use spatial coordinates — they are only carried
+along — so combining sections costs nothing scientifically. Coordinates are
+still offset per section so the stored geometry stays sane if anything plots
+from the RCTD object directly.
+
+```{r}
+setup_ckpt = file.path(obj_dir, "rctd_setup.qs2")
+
+if (run_rctd) {
+  ## min_UMI defaults to 100, which on a 425-gene subset would discard a large
+  ## share of otherwise good reference cells
+  quantile(colSums(counts_ref), c(0, 0.05, 0.25, 0.5))
+
+  cells_all = colnames(obj)
+
+  ## Offset each section along x so sections do not overlap in coordinate space
+  offsets = obj@meta.data %>%
+    group_by(section_id) %>%
+    summarize(w = max(x_centroid, na.rm = TRUE) -
+                  min(x_centroid, na.rm = TRUE), .groups = "drop") %>%
+    mutate(x_offset = lag(cumsum(w * 1.1), default = 0))
+
+  coords = obj@meta.data[cells_all, c("section_id", "x_centroid", "y_centroid")] %>%
+    rownames_to_column("cell") %>%
+    left_join(offsets, by = "section_id") %>%
+    transmute(x = x_centroid + x_offset, y = y_centroid) %>%
+    as.data.frame()
+  rownames(coords) = cells_all
+}
+```
+
+```{r}
+if (run_rctd && !file.exists(setup_ckpt)) {
+  ref_rctd = Reference(counts_ref, labels_rctd, colSums(counts_ref),
+                       min_UMI = rctd_umi_min,
+                       n_max_cells = max_ref_cells_per_label)
+
+  cq = counts_q_all[panel_shared, cells_all]
+  sp = SpatialRNA(coords, cq, colSums(cq))
+
+  r = create.RCTD(sp, ref_rctd, max_cores = rctd_setup_cores,
+                  UMI_min = rctd_umi_min, counts_MIN = rctd_umi_min)
+
+  ## run.RCTD unrolled: the first two stages are the fixed cost, paid once, and
+  ## are run on few cores because they are dominated by worker startup
+  r@config$RCTDmode = rctd_doublet_mode
+  r = fitBulk(r)
+  r = choose_sigma_c(r)
+
+  ## fitPixels is the stage that scales, so give it every core
+  r@config$max_cores = rctd_max_cores
+
+  qs2::qs_save(r, setup_ckpt)
+  rm(cq, sp); gc()
+}
+```
+
+```{r}
+if (run_rctd) {
+  r = qs2::qs_read(setup_ckpt)
+
+  fit_cells = colnames(r@spatialRNA@counts)
+  chunks = split(fit_cells, ceiling(seq_along(fit_cells) / rctd_chunk_size))
+  length(chunks)
+
+  for (i in seq_along(chunks)) {
+    ckpt = file.path(ckpt_dir, sprintf("rctd_chunk_%03d.qs2", i))
+    if (file.exists(ckpt)) { message("skipping chunk ", i, " (checkpoint exists)"); next }
+
+    message("RCTD fitPixels: chunk ", i, " of ", length(chunks))
+    rc = r
+    rc@spatialRNA = restrict_puck(r@spatialRNA, chunks[[i]])
+    rc = fitPixels(rc, doublet_mode = rctd_doublet_mode)
+
+    ## Map the RCTD-safe names back to the real label names
+    res = rc@results$results_df %>%
+      rownames_to_column("cell") %>%
+      as_tibble() %>%
+      mutate(across(c(first_type, second_type),
+                    ~ unname(rctd_name_map[as.character(.x)])))
+    qs2::qs_save(res, ckpt)
+    rm(rc); gc()
+  }
+  rm(r); gc()
+}
+```
+
+```{r}
+rctd_res = list.files(ckpt_dir, pattern = "^rctd_chunk_.*qs2$", full.names = TRUE) %>%
+  map_dfr(qs2::qs_read) %>%
+  left_join(obj@meta.data %>% rownames_to_column("cell") %>%
+              select(cell, section_id), by = "cell")
+
+rctd_res %>% count(section_id, spot_class) %>%
+  pivot_wider(names_from = spot_class, values_from = n, values_fill = 0)
+```
+
+## Naive Bayes — diagnostic only, does not transfer across platforms
+
+**This method fails on the real data and is not used for labelling.** It is kept
+because the failure is informative and because the benchmark result invites
+exactly this mistake.
+
+Naive Bayes was the strongest method in `panel_resolution_benchmark.qmd`
+(macro-F1 0.86 vs 0.81 for anchors), but that benchmark trained and tested
+*within the snRNA domain* — reference cells subset to the panel and thinned to
+Xenium depth. It measured how much cell type information the 425 genes carry.
+It could not, and did not, measure whether a raw multinomial likelihood survives
+the snRNA → Xenium platform gap, and it does not:
+
+- Uncorrected, 62% of all cells are called `Glut-Nido-3` and 30% `Endo`; only 22
+  of 49 labels are used, with essentially no GABAergic or song-nucleus cells.
+- With a gene-wise platform correction (bulk ratio applied to the reference
+  profiles, renormalized per class — without the renormalization the correction
+  cancels in the argmax), it fails differently rather than better: 40%
+  `GABA-Pre`, and 24 `Glut-HVC-1` cells in 1.59 million.
+
+The reason is visible in the correction itself: the gene-wise Xenium/snRNA bulk
+ratio spans **0.001 to 223**. Nuclear snRNA and whole-cell Xenium after 5 µm
+nucleus expansion detect genes on wildly different scales, and an unregularized
+multinomial likelihood over ~400 transcripts is dominated by that shift rather
+than by cell identity.
+
+This is precisely what RCTD's `fitBulk` and sigma estimation exist to absorb,
+and why anchor-based transfer — which works in a shared normalized PCA space —
+is robust to it. Read as a diagnostic, this quantifies the platform gap the
+other two methods have to survive.
+
+```{r}
+nb_ckpt = file.path(obj_dir, "nb_predictions.qs2")
+
+nb_fit = function(counts, labels) {
+  labels = factor(labels)
+  ind = Matrix::sparse.model.matrix(~ 0 + labels)
+  colnames(ind) = levels(labels)
+  s = as.matrix(counts %*% ind)
+  log(sweep(s + 1, 2, colSums(s) + nrow(counts), "/"))
+}
+
+if (!file.exists(nb_ckpt)) {
+  log_theta = nb_fit(counts_ref, labels_ref)
+
+  cells_all = colnames(obj)
+  blocks = split(cells_all, ceiling(seq_along(cells_all) / 2e5))
+
+  nb_res = map_dfr(seq_along(blocks), function(i) {
+    message("naive Bayes: block ", i, " of ", length(blocks))
+    cq = counts_q_all[panel_shared, blocks[[i]]]
+    ll = as.matrix(Matrix::crossprod(cq, log_theta))
+
+    top = max.col(ll, ties.method = "first")
+    n = nrow(ll)
+    ll_top = ll[cbind(seq_len(n), top)]
+    ll2 = ll; ll2[cbind(seq_len(n), top)] = -Inf
+    ll_second = ll2[cbind(seq_len(n), max.col(ll2, ties.method = "first"))]
+
+    ## Posterior of the top class, computed in a numerically safe way
+    post = 1 / rowSums(exp(ll - ll_top))
+    nUMI = Matrix::colSums(cq)
+
+    tibble(cell = blocks[[i]],
+           nb_label = colnames(log_theta)[top],
+           nb_score = post,
+           nb_margin = (ll_top - ll_second) / pmax(nUMI, 1))
+  })
+
+  qs2::qs_save(nb_res, nb_ckpt)
+} else {
+  nb_res = qs2::qs_read(nb_ckpt)
+}
+
+nb_res %>% count(nb_label, sort = TRUE) %>% print(n = Inf)
+```
+
+```{r}
+nb_res %>%
+  summarize(median_score = median(nb_score),
+            median_margin = median(nb_margin),
+            frac_score_gt_0.9 = mean(nb_score > 0.9))
+```
+
+## Transfer anchors
+
+```{r}
+## Reference and query MUST share a scale factor. NormalizeData computes
+## log1p(x/total * scale.factor), so giving each dataset its own median (243 for
+## the reference, 419 for Xenium — a 1.72x difference) maps identical relative
+## profiles to different values and corrupts the projection into the reference
+## PCA. Using per-dataset medians produced a transfer that used 21 of 49 labels
+## and called zero Glut-HVC-1 and zero Glut-RA cells in 1.59M. The benchmark
+## could not catch this: train and query were the same domain, so the two
+## medians were equal.
+scale_factor_common = median(colSums(counts_ref))
+scale_factor_common
+
+if (run_anchors) {
+  ref_seu = CreateSeuratObject(counts = counts_ref)
+  ref_seu$label = labels_ref[colnames(ref_seu)]
+  ref_seu = NormalizeData(ref_seu, scale.factor = scale_factor_common,
+                          verbose = FALSE)
+  VariableFeatures(ref_seu) = panel_shared
+  ref_seu = ScaleData(ref_seu, features = panel_shared, verbose = FALSE)
+  ref_seu = RunPCA(ref_seu, features = panel_shared, npcs = npcs, verbose = FALSE)
+
+  anchor_res = map_dfr(section_ids, function(sid) {
+    message("anchors: ", sid)
+    cells_sid = colnames(obj)[obj$section_id == sid]
+    cq = counts_q_all[panel_shared, cells_sid]
+
+    q = CreateSeuratObject(counts = cq)
+    q = NormalizeData(q, scale.factor = scale_factor_common, verbose = FALSE)
+
+    a = FindTransferAnchors(reference = ref_seu, query = q,
+                            features = panel_shared,
+                            normalization.method = "LogNormalize",
+                            reference.reduction = "pca",
+                            dims = 1:npcs, k.filter = NA, verbose = FALSE)
+    td = TransferData(anchorset = a, refdata = ref_seu$label,
+                      dims = 1:npcs, verbose = FALSE)
+
+    ## Guard the score column: if TransferData does not return it, tibble()
+    ## would silently drop it rather than error
+    score_col = grep("^predicted.id.score$|^prediction.score.max$",
+                     colnames(td), value = TRUE)[1]
+    stopifnot(!is.na(score_col))
+
+    tibble(cell = cells_sid,
+           anchor_label = td$predicted.id,
+           anchor_score = td[[score_col]],
+           section_id = sid)
+  })
+}
+```
+
+## Consensus
+
+Two votes: RCTD and transfer anchors. Naive Bayes is carried as a column for
+diagnostics but **does not vote** — it does not survive the platform gap (see
+above). A cell is confident when both methods agree and RCTD calls it a
+confident singlet or doublet; otherwise it is left unlabelled rather than
+arbitrated, since an unlabelled cell is honest about the ambiguity.
+
+```{r}
+transfer = rctd_res %>%
+  select(cell, section_id, spot_class, rctd_label = first_type,
+         rctd_second = second_type, singlet_score, min_score) %>%
+  full_join(anchor_res %>% select(cell, anchor_label, anchor_score), by = "cell") %>%
+  left_join(nb_res %>% select(cell, nb_label, nb_margin), by = "cell") %>%
+  mutate(across(c(rctd_label, anchor_label, nb_label), as.character),
+         agree = !is.na(rctd_label) & !is.na(anchor_label) &
+           rctd_label == anchor_label,
+         confident = agree & spot_class %in% c("singlet", "doublet_certain"),
+         label_final = if_else(confident, rctd_label, NA_character_),
+         unresolved = label_final %in% unresolved_labels)
+
+transfer %>%
+  summarize(n = n(),
+            frac_rctd_called = mean(!is.na(rctd_label)),
+            frac_anchor_called = mean(!is.na(anchor_label)),
+            frac_agree = mean(agree),
+            frac_confident = mean(confident))
+
+## Diagnostic: how far naive Bayes is from the two usable methods
+transfer %>%
+  filter(!is.na(nb_label), !is.na(rctd_label)) %>%
+  summarize(nb_vs_rctd = mean(nb_label == rctd_label),
+            nb_vs_anchor = mean(nb_label == anchor_label, na.rm = TRUE))
+
+write_csv(transfer, file.path(out_dir, "transfer_per_cell.csv.gz"))
+```
+
+Agreement per label shows where the methods diverge — low agreement means the
+label is method-dependent and should not carry an argument on its own.
+
+```{r}
+agreement_by_label = transfer %>%
+  filter(!is.na(rctd_label)) %>%
+  group_by(rctd_label) %>%
+  summarize(n = n(), frac_agree = mean(agree), .groups = "drop") %>%
+  arrange(frac_agree)
+
+agreement_by_label %>% print(n = Inf)
+write_csv(agreement_by_label, file.path(out_dir, "agreement_by_label.csv"))
+```
+
+```{r}
+obj$label_final = transfer$label_final[match(colnames(obj), transfer$cell)]
+obj$rctd_label = transfer$rctd_label[match(colnames(obj), transfer$cell)]
+obj$spot_class = transfer$spot_class[match(colnames(obj), transfer$cell)]
+obj$transfer_confident = transfer$confident[match(colnames(obj), transfer$cell)]
+
+obj@meta.data %>%
+  count(section_id, label_final) %>%
+  pivot_wider(names_from = section_id, values_from = n, values_fill = 0) %>%
+  print(n = Inf)
+```
+
+## Anatomical validation
+
+The collaborator's Xenium Explorer selections list cell IDs per ROI. Three
+things about them had to be established empirically rather than taken on trust:
+
+- The `#Selection name` headers frequently disagree with the file names (the
+  same mislabelling flagged in `xenium/README.md`), so each ROI is assigned to
+  the section that actually contains its cell IDs.
+- The `1um_*` files come from a **different segmentation run** (1 µm expansion,
+  not the 5 µm nucleus expansion in the delivered outputs). Their cell IDs are
+  real but do not exist in this object, so they cannot be joined and are
+  excluded — with the match rate reported below rather than dropped silently.
+- `HVC&Surround*_1mm_Selection` files are 1 mm boxes that *contain* HVC, so they
+  are not the surround. Surround is defined here as box cells minus the HVC
+  selection cells for the same section.
+
+```{r}
+roi_files = list.files(XENIUM_SELECTIONS_DIR, pattern = "cells_stats.csv$",
+                       full.names = TRUE)
+
+cells_by_section = obj@meta.data %>%
+  rownames_to_column("cell") %>%
+  mutate(cell_id = str_remove(cell, "^.*_")) %>%
+  select(cell, cell_id, section_id)
+
+roi = map_dfr(roi_files, function(f) {
+  hdr = readLines(f, n = 5)
+  skip = max(c(0, which(str_starts(hdr, "#"))))
+  d = suppressWarnings(read_csv(f, skip = skip, show_col_types = FALSE))
+  if (!"Cell ID" %in% colnames(d)) return(tibble())
+  nm = hdr[str_starts(hdr, "#Selection name")][1]
+  tibble(file = basename(f),
+         declared_name = str_remove(nm, "#Selection name: "),
+         cell_id = d$`Cell ID`,
+         roi_type = case_when(
+           str_starts(basename(f), "1um_")          ~ "alt_segmentation",
+           str_starts(basename(f), fixed("HVC&Surround")) ~ "box",
+           str_detect(basename(f), "^(orpu|oryw)_HVC_")   ~ "HVC",
+           TRUE                                      ~ "other"))
+})
+
+## How many of each file's cells exist in this object? Near-zero identifies the
+## alternate-segmentation files.
+roi_match = roi %>%
+  group_by(file, declared_name, roi_type) %>%
+  summarize(n_listed = n(),
+            n_matched = sum(cell_id %in% cells_by_section$cell_id),
+            frac_matched = n_matched / n_listed, .groups = "drop") %>%
+  arrange(frac_matched)
+
+roi_match %>% print(n = Inf)
+write_csv(roi_match, file.path(out_dir, "roi_match_rates.csv"))
+```
+
+```{r}
+## Resolve each usable ROI to a section by where its cells actually are
+roi_resolved = roi %>%
+  filter(roi_type %in% c("box", "HVC")) %>%
+  inner_join(cells_by_section, by = "cell_id", relationship = "many-to-many") %>%
+  count(file, declared_name, roi_type, section_id) %>%
+  group_by(file) %>%
+  slice_max(n, n = 1) %>%
+  ungroup()
+
+roi_resolved %>% select(file, declared_name, roi_type, section_id, n_cells = n) %>%
+  arrange(section_id, roi_type) %>%
+  print(n = Inf)
+write_csv(roi_resolved, file.path(out_dir, "roi_resolved_sections.csv"))
+```
+
+```{r}
+roi_cells = roi %>%
+  inner_join(roi_resolved %>% select(file, section_id), by = "file") %>%
+  inner_join(cells_by_section, by = c("cell_id", "section_id")) %>%
+  distinct(cell, section_id, roi_type)
+
+hvc_cells = roi_cells %>% filter(roi_type == "HVC") %>% distinct(cell, section_id)
+box_cells = roi_cells %>% filter(roi_type == "box") %>% distinct(cell, section_id)
+
+## Surround = inside the 1 mm box, outside the HVC selection
+roi_final = bind_rows(
+  hvc_cells %>% mutate(region = "HVC"),
+  box_cells %>% anti_join(hvc_cells, by = "cell") %>% mutate(region = "surround"))
+
+## Only sections with both an HVC selection and a box support the comparison
+paired_sections = roi_final %>%
+  count(section_id, region) %>%
+  pivot_wider(names_from = region, values_from = n, values_fill = 0) %>%
+  filter(HVC > 0, surround > 0)
+
+paired_sections
+roi_final = roi_final %>% semi_join(paired_sections, by = "section_id")
+```
+
+```{r}
+roi_comp = roi_final %>%
+  left_join(transfer %>% select(cell, label_final), by = "cell") %>%
+  filter(!is.na(label_final)) %>%
+  count(section_id, region, label_final) %>%
+  group_by(section_id, region) %>%
+  mutate(frac = n / sum(n)) %>%
+  ungroup()
+
+write_csv(roi_comp, file.path(out_dir, "roi_composition.csv"))
+```
+
+The test: Glut-HVC-1 should be enriched inside the HVC selections relative to
+the surround. Nothing in the transfer used position, so this is an independent
+check on it.
+
+```{r}
+hvc_enrichment = roi_comp %>%
+  filter(label_final %in% c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2",
+                            "Glut-NC-1", "Glut-NC-3", "Glut-RA")) %>%
+  select(section_id, region, label_final, frac) %>%
+  pivot_wider(names_from = region, values_from = frac, values_fill = 0) %>%
+  mutate(log2_enrichment = log2((HVC + 1e-4) / (surround + 1e-4)))
+
+hvc_enrichment %>% arrange(desc(log2_enrichment)) %>% print(n = Inf)
+
+ggplot(hvc_enrichment, aes(log2_enrichment, label_final, colour = section_id)) +
+  geom_vline(xintercept = 0, linetype = 2, colour = "grey60") +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(x = "log2(HVC / surround) cell type fraction", y = NULL) +
+  theme_cowplot()
+
+ggsave(file.path(out_dir, "hvc_roi_enrichment.pdf"), width = 9, height = 5)
+write_csv(hvc_enrichment, file.path(out_dir, "hvc_roi_enrichment.csv"))
+```
+
+## Spatial maps
+
+```{r}
+song_types = c("Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2", "Glut-RA",
+               "Glut-LMAN-1", "Glut-LMAN-2", "Glut-NC-1")
+
+for (sid in section_ids) {
+  p = ImageDimPlot(obj, fov = sid, group.by = "label_final",
+                   cells = colnames(obj)[obj$section_id == sid &
+                                           obj$label_final %in% song_types],
+                   size = 1, cols = "polychrome", dark.background = FALSE) +
+    ggtitle(paste(sid, "- song system types"))
+  ggsave(file.path(out_dir, paste0("spatial_song_types_", sid, ".png")),
+         p, width = 10, height = 10, dpi = 200, bg = "white")
+}
+```
+
+```{r}
+for (sid in section_ids) {
+  p = ImageDimPlot(obj, fov = sid, group.by = "label_final",
+                   size = 0.3, cols = "polychrome", dark.background = FALSE) +
+    ggtitle(sid)
+  ggsave(file.path(out_dir, paste0("spatial_all_labels_", sid, ".png")),
+         p, width = 12, height = 10, dpi = 200, bg = "white")
+}
+```
+
+## Save
+
+```{r}
+qs2::qs_save(obj, file.path(obj_dir, "obj_xenium_labeled.qs2"))
+sessionInfo()
+```

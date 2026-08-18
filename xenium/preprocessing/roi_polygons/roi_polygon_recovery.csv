@@ -1,0 +1,12 @@
+file,section_id,n_original,n_in_polygon,recovered,extra
+HVC&Surround2_1.7_1mm_Selection_cells_stats.csv,OR69PU4_1_7,4889,4903,1,0.0028553946563328572
+HVC&Surround2_2.4_1mm_Selection_cells_stats.csv,OR69PU4_2_4,4229,4249,1,0.004706989879971758
+HVC&Surround2_2.7_1mm_Selection_cells_stats.csv,OR69PU4_2_7,4807,4829,1,0.004555808656036446
+HVC&Surround_1.7_1mm_Selection_cells_stats.csv,OR52YW26_1_7,4124,4132,1,0.001936108422071636
+HVC&Surround_2.2_1mm_Selection_cells_stats.csv,OR52YW26_2_2,4412,4431,1,0.004287971112615662
+HVC&Surround_2.7_1mm_Selection_cells_stats.csv,OR52YW26_2_7,4309,4317,1,0.001853138753764188
+orpu_HVC_1.7_cells_stats.csv,OR69PU4_1_7,1346,1353,1,0.005173688100517369
+orpu_HVC_2.7_cells_stats.csv,OR69PU4_2_7,849,852,1,0.0035211267605633804
+oryw_HVC_1.7_cells_stats.csv,OR52YW26_1_7,1081,1085,1,0.003686635944700461
+oryw_HVC_2.2_cells_stats.csv,OR52YW26_2_2,1322,1326,1,0.0030165912518853697
+oryw_HVC_2.7_cells_stats.csv,OR52YW26_2_7,430,430,1,0

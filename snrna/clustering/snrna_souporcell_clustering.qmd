@@ -1,0 +1,957 @@
+---
+title: "snRNA souporcell reprocessing: genotype-based individual assignment"
+format: html
+editor: source
+---
+
+Reprocesses the souporcell runs for the six 210607 snRNA libraries using the approach developed in
+`~/ssd/rstudio/multiome/dev_full1/lonStrDom3/dev-full1_multiome_souporcell_clustering.qmd` (itself
+derived from `~/ssd/rstudio/stable`): read each run's `cluster_genotypes.vcf` as a clusters x variants
+genotype matrix **plus a matching read-depth matrix**, mask calls that rest on too few reads, then
+compare clusters *across* libraries by genotype to recover which souporcell cluster in which library
+is the same bird.
+
+What this replaces: `snrna_seurat_cellbender_preprocess.qmd` currently reads each run's `clusters.tsv`
+and keeps `assignment` as-is. That number is a **per-library** cluster index -- `ra_run1` cluster 0 and
+`hvc_run1` cluster 0 are unrelated birds -- so every use of `assignment` downstream (the
+`DimPlot(group.by = "assignment")` panels, the `table(cluster, assignment)` contingency tables) is
+really plotting three arbitrary labels recycled six times, and there is currently no individual
+identity in the object at all. This notebook derives that identity from the genotypes.
+
+## The headline result, and a correction to the assumed design
+
+This notebook was written expecting a complete block: three birds dissected into all six regions,
+3 x 6 = 18 slots, every library holding the same individuals. **The genotypes contradict that.** The
+libraries fall into two batches that share no birds at all:
+
+| batch | libraries                       | birds |
+|-------|---------------------------------|-------|
+| 1     | `ra`, `arco`, `hvc`, `nc`       | 3     |
+| 2     | `lman`, `nr`                    | 3     |
+
+Within batch 1 the four libraries match each other cleanly -- same-bird distances of 0.03-0.08
+against a different-bird background of 0.55-0.70, the same well-separated picture stable measured.
+Within batch 2, `lman` and `nr` match each other at 0.04-0.13. But every `ra`/`arco`/`hvc`/`nc` x
+`lman`/`nr` distance sits at 0.55-0.65, i.e. at the different-bird background, with no exceptions:
+those are different animals, not the same animals poorly genotyped.
+
+So there are **six birds**, each in four or two libraries, and `individual` is only comparable
+*within* a batch. Anything downstream that treats bird as a random effect or pairs regions within an
+animal can only do so inside a batch; `lman`/`nr` cannot be compared to the other four at the
+individual level at all. The `batch-structure` chunk below derives this from the genotypes rather
+than restating it, so a reprocessing run will re-report it rather than inherit it.
+
+`lman` and `nr` also show an intermediate band at 0.29-0.40 -- above same-bird, well below
+different-bird -- between the *other* combinations of their clusters. That is what relatedness looks
+like; those three birds are plausibly siblings. It matters here only because a loose threshold chains
+through that band, which is what the calibration below is built to reject.
+
+**Two further differences from the dev-full1 notebook.**
+
+1. *There is no hand-filled truth sheet for this dataset.* dev-full1 could calibrate `min_depth` and
+   the same-bird threshold against 90 labelled slots and score the result with agreement/ARI. Here
+   both parameters are chosen from label-free criteria instead:
+   - `min_depth` from the ratio of matched to all-pairs genotype distance (stable's criterion:
+     a depth filter is paying its way while that ratio keeps falling), floored by how many
+     comparable sites survive;
+   - the same-bird threshold from a structural criterion that assumes no design at all -- no
+     component may contain two clusters from the same library, because a bird is one individual and
+     cannot be two of a library's clusters. An earlier version of this notebook used the design
+     instead (largest threshold giving 3 components of 6, bounded by size <= 6); that criterion was
+     unreachable, and its fallback -- largest threshold within the size bound -- chose 0.40, deep
+     inside the different-bird range, chaining two `lman` and two `nr` clusters into one "bird".
+     Library-disjointness rejects exactly that, and needs to know nothing about the dissection.
+
+2. *1:1 matching is only used within a batch.* `match_clusters()` will happily assign three clusters
+   to three clusters between two libraries that share no bird -- the trap dev-full1's incomplete
+   design fell into, and eight of the fifteen library pairs here are exactly that case. Those pairs
+   are reported separately, where a match at different-bird distance is the correct outcome rather
+   than a disagreement. Connected components remain the primary method.
+
+## Packages
+
+```{r}
+#| label: packages
+#| message: false
+library(tidyverse)
+library(qs2)
+library(parallel)      # mclapply, for the VCF read
+library(ComplexHeatmap) # Heatmap / gpar
+library(knitr)         # kable
+
+## VariantAnnotation is deliberately *not* attached. Every call into it is qualified and lives in
+## the sourced helpers (VariantAnnotation::readVcf / ScanVcfParam / geno), and a qualified call
+## loads the namespace, which is all S4 dispatch needs. Attaching it here bought nothing except the
+## masking it forces on tidyverse's verbs -- which is what the re-binding block below exists to
+## undo. That block is kept anyway: ComplexHeatmap still pulls MatrixGenerics into the search path.
+
+## Loading, depth masking, distance and matching primitives, plus the run-quality metrics, come from
+## the stable project rather than being copied here: SAME_BIRD_MAX and the distance definition are
+## the bar a reprocessing run has to clear, and a second copy that drifted would invalidate the
+## comparison rather than improve it. The cost is a hard path dependency; fail loudly rather than
+## half-run if it moves.
+STABLE_R <- path.expand("~/ssd/rstudio/stable/R")
+for (f in c("souporcell_helpers.R", "souporcell_qc.R")) {
+  p <- file.path(STABLE_R, f)
+  if (!file.exists(p)) {
+    stop("Missing helper: ", p, "\nSet STABLE_R to the stable project's R/ directory.", call. = FALSE)
+  }
+  source(p)
+}
+
+## tidyverse is attached first, so its verbs are masked by the Bioconductor packages above. Re-bind
+## rather than reorder the library() calls, so the Bioconductor versions stay reachable under their
+## namespace. `count` is the one that bites silently -- MatrixGenerics::count (via ComplexHeatmap ->
+## matrixStats) returns something that is not a vector, so the failure surfaces several calls later
+## inside sort()/unique() rather than at the count() itself.
+select <- dplyr::select
+rename <- dplyr::rename
+first <- dplyr::first
+desc <- dplyr::desc
+count <- dplyr::count
+filter <- dplyr::filter
+slice <- dplyr::slice
+reduce <- purrr::reduce # GenomicRanges::reduce otherwise
+intersect <- base::intersect # BiocGenerics::intersect otherwise
+setdiff <- base::setdiff
+union <- base::union
+paste <- base::paste # BiocGenerics::paste dispatches S4 and mangles collapse=
+sort <- base::sort
+unique <- base::unique
+table <- base::table
+```
+
+## Parameters
+
+```{r}
+#| label: params
+## Same base_dir as snrna_seurat_cellbender_preprocess.qmd -- keep them equal or the cell names this
+## notebook writes will not join onto the object.
+base_dir <- "~/nest/snRNA/210607_snrna"
+
+## The six libraries the preprocessing notebook uses, in the same order: the cell-name suffix is the
+## 1-based position in this vector (via aggr.csv, below), so reordering it silently relabels every
+## cell. nc_run2 is in aggr.csv but is deliberately not processed.
+samples_to_process <- c(
+  "ra_run1", "arco_run1", "hvc_run1", "nc_run1",
+  "lman_run1", "nr_run1"
+)
+
+## souporcell was run once per library at k=3 (see run_souporcell.sh), output straight into
+## <sample>/souporcell rather than into a k-suffixed directory, so there is nothing to glob over --
+## unlike dev-full1, where `souporcell_<k>` had to be discovered. If a reprocessing run at another k
+## is ever added, point this at that directory name.
+souporcell_subdir <- "souporcell"
+
+## Genome label for readVcf. Only a label; it is not used to validate coordinates. Note that
+## souporcell was run against GCF_005870125.1_lonStrDom2_genomic_only.fna, i.e. **NCBI** contig
+## names (NC_/NW_), not the UCSC names the rest of this project uses. Variant ids are only ever
+## compared between these VCFs, so no renaming is needed -- but do not expect the ids written below
+## to join against anything UCSC-named without translation.
+genome_label <- "lonStrDom2"
+
+## The design, as measured rather than as assumed. This notebook was written expecting three birds
+## dissected into all six regions (3 x 6 = 18 slots), which would put every bird in six libraries.
+## The genotypes say otherwise, and the tables below are what say it:
+##
+##   ra / arco / hvc / nc  share three birds, matching each other at 0.03-0.08 against a
+##                         different-bird background of 0.55-0.70;
+##   lman / nr             share three *different* birds, matching each other at 0.04-0.13 and
+##                         sitting at 0.55-0.65 against every cluster in the other four libraries --
+##                         i.e. no bird in common with them at all.
+##
+## So there are six birds in two batches, each bird in four or two libraries. Nothing below depends
+## on that being true: the threshold is chosen from a structural criterion that holds for any design
+## (see the sweep chunk), and these numbers are only used to *report* whether the result matches
+## expectation. Set them if a future run has a known design worth checking against.
+n_libraries_expected <- length(samples_to_process)
+MAX_COMPONENT <- n_libraries_expected # outer bound: a bird cannot be in more libraries than exist
+N_BIRDS_EXPECTED <- 6L
+K_EXPECTED <- 3L # souporcell was run at k=3 per library; asserted against the VCFs below
+
+## Reads (AO + RO, from that cluster's own cells) required to believe a genotype call; below this the
+## call becomes NA. souporcell emits a genotype wherever a cluster had any coverage at all and most
+## calls are thin, so this is the parameter that decides whether there is individual structure in the
+## matrix at all. stable settled on 10 for RNA and dev-full1 re-derived it; the depth sweep below
+## derives it here rather than inheriting either. Set `min_depth_fixed` to override.
+depth_grid <- c(0L, 3L, 5L, 10L, 20L, 30L)
+min_depth_fixed <- NULL
+
+## A depth cut that leaves too few comparable sites buys sharpness with noise: a distance over a
+## handful of sites is not evidence. Floor the sweep's choice at this many shared called sites per
+## library pair (median over pairs).
+min_sites_floor <- 2000
+
+## Candidate same-bird distance thresholds. stable's SAME_BIRD_MAX (0.15) and
+## SAME_BIRD_MAX_COMPARE (0.22) sit inside this range but are not assumed.
+## 0.01 steps rather than 0.02: the usable window here turned out to be only ~0.05 wide (bounded
+## below by the last cluster to link and above by the related-birds band in batch 2), and a coarse
+## grid reports that as three points, which understates how well resolved the boundaries are.
+threshold_grid <- seq(0.02, 0.40, by = 0.01)
+
+## Only 3 clusters x 6 libraries here, and each VCF is 380-680 MB. stable measured ~12 min for a
+## 350 MB file, so budget ~15-25 min per library. load_gt_matrix(slim = TRUE) keeps a worker near
+## 0.5 GB rather than several GB, so with only six libraries all of them fit at once and the read
+## costs one library's wall time rather than six.
+n_workers <- length(samples_to_process)
+seed <- 10
+set.seed(seed)
+
+script_name <- "snrna_souporcell_clustering"
+out_dir <- here::here("snrna/clustering", script_name)
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+gt_fname <- file.path(out_dir, "gt_matrices.qs2")
+depth_sweep_fname <- file.path(out_dir, "depth_sweep.qs2")
+components_fname <- file.path(out_dir, "bird_components.qs2")
+assignments_fname <- file.path(out_dir, "souporcell_assignments.csv")
+
+## Per-stage redo flags: reading the VCFs costs ~1 h, the depth sweep a few minutes on top.
+redo <- list(gt = FALSE, sweep = FALSE)
+```
+
+## Libraries and cell-name indices
+
+```{r}
+#| label: discover
+## The cell-name suffix. snrna_seurat_cellbender_preprocess.qmd builds it as
+## `which(aggr_csv$sample_id == sample_name)` *after* reordering aggr.csv to samples_to_process, so
+## it is just the position in samples_to_process -- but read aggr.csv and reproduce the expression
+## rather than assuming, so the two notebooks cannot drift apart silently.
+aggr_csv <- read_csv(file.path(base_dir, "aggr.csv"), show_col_types = FALSE)
+aggr_csv <- aggr_csv[match(samples_to_process, aggr_csv$sample_id), ]
+stopifnot(
+  "samples_to_process contains an id absent from aggr.csv" = !any(is.na(aggr_csv$sample_id))
+)
+
+samples <- tibble(
+  sample_id = samples_to_process,
+  sample_index = map_int(samples_to_process, ~ which(aggr_csv$sample_id == .x)),
+  run_dir = file.path(base_dir, samples_to_process, souporcell_subdir)
+) %>%
+  mutate(
+    vcf = file.path(run_dir, "cluster_genotypes.vcf"),
+    tsv = file.path(run_dir, "clusters.tsv"),
+    complete = file.exists(vcf) & file.exists(tsv)
+  )
+
+samples %>%
+  select(sample_id, sample_index, complete, run_dir) %>%
+  kable(caption = "souporcell runs. sample_index is the cell-name suffix in the Seurat object.")
+
+stopifnot(
+  "some souporcell runs are missing cluster_genotypes.vcf or clusters.tsv" = all(samples$complete)
+)
+run_dirs <- set_names(samples$run_dir, samples$sample_id)
+```
+
+## Run quality, before any genotype work
+
+```{r}
+#| label: run-qc
+## Ambient RNA is the single best predictor of how well a library demultiplexes (stable measured
+## Spearman -0.92 against its matching score across 8 libraries; doublet rate correlates the wrong
+## way). Read it before trusting any library's genotypes. These six sit at 6.5-11.4%, i.e. all
+## comfortably better than stable's worst (41.6%).
+ambient <- souporcell_ambient(run_dirs)
+sizes <- souporcell_cluster_sizes(run_dirs)
+
+left_join(ambient, sizes, by = "sample_short") %>%
+  rename(sample_id = sample_short) %>%
+  arrange(desc(ambient_pct)) %>%
+  kable(digits = 3, caption = paste(
+    "Per-library run quality. n_clusters_seen below 3 would mean souporcell left a cluster empty;",
+    "size_ratio above ~20 flags a badly unbalanced run."
+  ))
+```
+
+## Load genotype matrices
+
+```{r}
+#| label: load-gt
+## list(gt, depth) per library. Depth is cached rather than applied, so min_depth can be retuned
+## without re-reading 6 x ~500 MB of VCF. Caches predating AO/RO hold a bare matrix -- treat those
+## as stale rather than letting `$gt` return NULL downstream.
+gt_raw <- NULL
+if (!redo$gt && file.exists(gt_fname)) {
+  gt_raw <- qs_read(gt_fname, nthreads = 8)
+  if (!all(map_lgl(gt_raw, ~ is.list(.x) && all(c("gt", "depth") %in% names(.x))))) {
+    message("Cached genotypes predate depth filtering (no AO/RO) -- re-reading the VCFs.")
+    gt_raw <- NULL
+  }
+}
+if (is.null(gt_raw)) {
+  ## mclapply (fork), not furrr/future: `load_gt_matrix` is sourced into the global environment, so
+  ## future's globals scan resolves its free variables against that environment and priced the
+  ## export at 1.2 GiB per worker -- it reported base functions like `t` and `nrow` at 230 MiB each,
+  ## i.e. it was measuring the enclosing environment rather than the function. Forking copies the
+  ## session lazily instead of serialising anything, which is both correct here and free. Reading a
+  ## VCF is deterministic, so nothing is lost by giving up furrr's RNG handling.
+  gt_raw <- mclapply(
+    set_names(samples$vcf, samples$sample_id),
+    load_gt_matrix,
+    genome = genome_label,
+    mc.cores = n_workers, mc.preschedule = FALSE
+  )
+  failed <- map_lgl(gt_raw, ~ inherits(.x, "try-error") || is.null(.x))
+  if (any(failed)) {
+    stop(
+      "Failed to read ", sum(failed), " VCF(s): ", paste(names(gt_raw)[failed], collapse = ", "),
+      "\n", paste(map_chr(gt_raw[failed], as.character), collapse = "\n"),
+      call. = FALSE
+    )
+  }
+  qs_save(gt_raw, gt_fname, nthreads = 8)
+}
+
+## First hard check, and it costs nothing: k genotype rows per library. souporcell emits a row even
+## for a cluster it left empty, so a shortfall here means the VCF is truncated, not that a cluster
+## was unused.
+imap_dfr(gt_raw, ~ tibble(sample_id = .y, n_clusters = nrow(.x$gt), n_variants = ncol(.x$gt))) %>%
+  kable(caption = "Raw genotype matrices (clusters x variants)")
+
+stopifnot(
+  "a library does not have K_EXPECTED genotype rows" =
+    all(map_int(gt_raw, ~ nrow(.x$gt)) == K_EXPECTED)
+)
+
+depth_summary(gt_raw, thresholds = c(1, 3, 5, 10, 20, 30)) %>%
+  rename(sample_id = sample_short) %>%
+  kable(digits = 3, caption = paste(
+    "Read support behind each cluster's genotype calls.",
+    "If frac_ge_10 is far below stable's 13-26%, min_depth needs lowering here."
+  ))
+```
+
+## Choose min_depth
+
+```{r}
+#| label: depth-sweep
+## dev-full1 could sweep min_depth against labelled same-bird pairs. With no truth sheet, use the
+## label-free criterion stable used instead: the ratio of the *matched* cluster distance to the
+## all-pairs distance. Matching is 1:1 and reference-free, and a depth filter is paying its way
+## while that ratio keeps falling -- the matched distance is dominated by same-bird comparisons and
+## the all-pairs median by different-bird ones, so the ratio is a separation measure that needs no
+## labels. Read it against n_sites: sharpening distances by discarding the sites they rest on is
+## not progress, which is what min_sites_floor guards.
+##
+## The pairwise pass is cheap at this scale (15 library pairs x 3 x 3 cells), so unlike dev-full1
+## this sweep recomputes the distances at every depth rather than only counting surviving sites.
+## Masking is one pass over the cached depth matrix, so only the distances are cached and the
+## masked matrices are rebuilt for whichever depth is chosen. Keeping all six depths' matrices
+## would cost ~1 GB in memory and on disk to save a few seconds of recomputation.
+masked_at <- function(d) {
+  imap(gt_raw, function(x, nm) {
+    m <- mask_low_depth(x$gt, x$depth, min_depth = d)
+    rownames(m) <- paste0(nm, "_cl", rownames(m))
+    m
+  })
+}
+
+sweep <- NULL
+if (!redo$sweep && file.exists(depth_sweep_fname)) sweep <- qs_read(depth_sweep_fname, nthreads = 8)
+if (is.null(sweep)) {
+  sweep <- map(set_names(depth_grid, depth_grid), function(d) {
+    masked <- masked_at(d)
+    list(
+      min_depth = d,
+      frac_called = mean(map_dbl(masked, ~ mean(!is.na(.x)))),
+      pair_dists = cluster_pair_distances(masked)
+    )
+  })
+  qs_save(sweep, depth_sweep_fname, nthreads = 8)
+}
+
+## The ratio has to be computed over library pairs that actually *share* birds. Eight of the fifteen
+## pairs here share none, and on those the Hungarian "matched" distance is just another
+## different-bird distance, so including them pins the ratio near 1 (0.99 -> 0.95 across the whole
+## depth grid) and hides the real effect. Which pairs share birds is not known before the threshold
+## is chosen, so identify them scale-free instead: a pair with genuine structure has a minimum
+## distance far below its own median, and a pair without has min ~ median. The `sharing` count is
+## worth reading in its own right -- it is 7 at every depth, which is the batch structure showing up
+## independently of any threshold.
+sharing_pairs <- function(pair_dists, factor = 0.5) {
+  keep <- map_lgl(pair_dists, function(x) {
+    d <- x$dist[!is.na(x$dist)]
+    length(d) > 0 && min(d) < factor * median(d)
+  })
+  pair_dists[keep]
+}
+
+depth_trade <- map_dfr(sweep, function(s) {
+  shared_pd <- sharing_pairs(s$pair_dists)
+  ms_all <- pair_match_scores(s$pair_dists, threshold = SAME_BIRD_MAX)
+  ms <- if (length(shared_pd) > 0) pair_match_scores(shared_pd, threshold = SAME_BIRD_MAX) else ms_all
+  tibble(
+    min_depth = s$min_depth,
+    frac_called = round(s$frac_called, 4),
+    median_sites = median(map_dbl(s$pair_dists, ~ median(.x$n_sites, na.rm = TRUE))),
+    n_sharing_pairs = length(shared_pd),
+    matched_median = median(ms$matched_median),
+    all_pairs_median = median(ms$all_pairs_median),
+    ratio = round(median(ms$matched_median) / median(ms$all_pairs_median), 3),
+    ratio_all_pairs = round(median(ms_all$matched_median) / median(ms_all$all_pairs_median), 3)
+  )
+})
+kable(depth_trade, digits = 3, caption = paste(
+  "What each depth cut buys. `ratio` is matched / all-pairs genotype distance over the library",
+  "pairs that share birds -- lower is better separated. stable measured 0.668 unfiltered falling to",
+  "0.427 at depth 20. `ratio_all_pairs` is the same quantity over all 15 pairs, shown to make the",
+  "dilution visible rather than to be used."
+))
+```
+
+```{r}
+#| label: choose-depth
+## Deepest cut that still leaves enough comparable sites, then the best separation among those.
+## Derived rather than typed in, so it moves if the run flavour or reference changes; override with
+## min_depth_fixed if a manual choice is ever wanted.
+usable_depth <- depth_trade %>% filter(median_sites >= min_sites_floor)
+min_depth <- if (!is.null(min_depth_fixed)) {
+  as.integer(min_depth_fixed)
+} else if (nrow(usable_depth) > 0) {
+  as.integer(usable_depth$min_depth[which.min(usable_depth$ratio)])
+} else {
+  warning(
+    "No depth cut leaves >= ", min_sites_floor, " median shared sites; falling back to min_depth = 0.",
+    " The genotypes are thin -- read the separation table before trusting anything below.",
+    call. = FALSE
+  )
+  0L
+}
+min_depth
+```
+
+```{r}
+#| label: mask-depth
+## Cluster ids carry their provenance: <sample_id>_cl<cluster>. cluster_pair_distances() and
+## bird_components() both key on these, and they are what joins back to clusters.tsv.
+gt_mats <- masked_at(min_depth)
+## Reuse the sweep's distances when the chosen depth is one it visited, which it always is unless
+## min_depth_fixed was set off-grid.
+pair_dists <- if (!is.null(sweep[[as.character(min_depth)]])) {
+  sweep[[as.character(min_depth)]]$pair_dists
+} else {
+  cluster_pair_distances(gt_mats)
+}
+
+imap_dfr(gt_mats, ~ tibble(
+  sample_id = .y, n_clusters = nrow(.x), n_variants = ncol(.x),
+  frac_called_raw = round(mean(!is.na(gt_raw[[.y]]$gt)), 3),
+  frac_called = round(mean(!is.na(.x)), 3)
+)) %>%
+  kable(caption = paste0(
+    "Genotype matrices, before and after the depth >= ", min_depth, " filter"
+  ))
+
+length(pair_dists) # 15 library pairs
+```
+
+## Calibrate the same-bird threshold
+
+```{r}
+#| label: threshold-sweep
+## With no labelled pairs, the structure of the partition is the calibration. The criterion is
+## `disjoint`: **no component may contain two clusters from the same library.** A bird is one
+## individual and souporcell assigns each cell to one cluster, so a bird cannot be two clusters of
+## the same library -- if a component holds two, single linkage has chained two birds together
+## through an intermediate distance. This replaces the size bound (`max_size <= n_libraries`) as the
+## primary check, for two reasons:
+##
+##   - it needs no design. The size bound needs to know how many libraries each bird is in, and the
+##     first version of this notebook asserted six, which the genotypes then contradicted;
+##   - it is far tighter. Here `max_size <= 6` holds all the way to the top of the grid, so choosing
+##     the largest "sane" threshold picked 0.40 -- deep inside the different-bird range -- and
+##     produced a four-cluster component containing two lman and two nr clusters. Disjointness
+##     rejects exactly that.
+##
+## `n_confident` from the 1:1 matching is shown alongside as an independent view of the same
+## threshold, but note that the *ceiling* is not 45: a library pair can only match the birds it
+## actually shares, and the two batches share none, so 3 per within-batch pair (7 pairs = 21) is
+## the most that can legitimately be confirmed.
+component_libraries_disjoint <- function(bc) {
+  tab <- bc$membership %>%
+    mutate(sample_id = sub("_cl[0-9]+$", "", cluster)) %>%
+    count(component, sample_id)
+  all(tab$n == 1)
+}
+
+threshold_table <- map_dfr(threshold_grid, function(t) {
+  bc <- bird_components(pair_dists, threshold = t)
+  ms <- pair_match_scores(pair_dists, threshold = t)
+  tibble(
+    threshold = t,
+    n_components = bc$components,
+    n_multi = sum(bc$sizes > 1),
+    n_singletons = sum(bc$sizes == 1),
+    max_size = max(bc$sizes),
+    sizes = paste(bc$sizes, collapse = ","),
+    n_confident = sum(ms$n_confident),
+    disjoint = component_libraries_disjoint(bc),
+    within_bound = max(bc$sizes) <= MAX_COMPONENT,
+    usable = component_libraries_disjoint(bc) & sum(bc$sizes == 1) == 0
+  )
+})
+kable(threshold_table, caption = paste0(
+  "Threshold sweep. `disjoint`: no component holds two clusters from one library. `within_bound`:",
+  " no component exceeds ", MAX_COMPONENT, " clusters, the number of libraries -- an outer bound",
+  " only. `usable` is `disjoint` plus every cluster placed in some component (no singletons)."
+))
+```
+
+```{r}
+#| label: choose-threshold
+## Largest usable threshold, and the plateau it sits in. Largest, not smallest: a lower value leaves
+## clusters unlinked and penalises whichever method has the wider usable range. The *width* of the
+## plateau is the real result -- a single qualifying threshold is a coincidence, a wide plateau over
+## which the partition does not change at all is structure. So report both the range of usable
+## thresholds and whether the partition is identical across it.
+usable <- threshold_table %>% filter(usable)
+plateau <- if (nrow(usable) > 0) range(usable$threshold) else c(NA_real_, NA_real_)
+
+same_bird_max <- if (nrow(usable) > 0) {
+  max(usable$threshold)
+} else {
+  ## Nothing is both disjoint and singleton-free. Either some library's genotypes are too thin to
+  ## link at any threshold (singletons persist across the whole sweep -- lower min_depth or suspect
+  ## that library) or birds are related closely enough that chaining begins before the last cluster
+  ## links (disjoint fails early). Prefer disjointness over completeness in that case: a chained
+  ## component is a wrong individual, an unlinked one is only a missing individual.
+  disjoint_only <- threshold_table %>% filter(disjoint, n_multi > 0)
+  warning(
+    "No threshold both keeps components library-disjoint and places every cluster. Falling back to ",
+    "the largest disjoint threshold; some clusters will carry no individual. Read the sweep table.",
+    call. = FALSE
+  )
+  if (nrow(disjoint_only) > 0) max(disjoint_only$threshold) else SAME_BIRD_MAX
+}
+
+## Is the partition constant over the plateau, or merely the summary statistics?
+partition_key <- function(t) {
+  bird_components(pair_dists, threshold = t)$membership %>%
+    group_by(component) %>%
+    summarise(g = paste(sort(cluster), collapse = "+"), .groups = "drop") %>%
+    pull(g) %>%
+    sort() %>%
+    paste(collapse = " | ")
+}
+plateau_stable <- if (nrow(usable) > 1) {
+  length(unique(map_chr(usable$threshold, partition_key))) == 1
+} else {
+  NA
+}
+
+tibble(
+  same_bird_max = same_bird_max,
+  plateau_min = plateau[1], plateau_max = plateau[2],
+  n_usable_thresholds = nrow(usable),
+  partition_identical_across_plateau = plateau_stable,
+  stable_same_bird_max = SAME_BIRD_MAX, stable_compare = SAME_BIRD_MAX_COMPARE
+) %>%
+  kable(caption = paste(
+    "Chosen threshold and the range over which the partition is usable.",
+    "stable's constants are shown for orientation only -- a threshold is not portable between",
+    "datasets, let alone between methods."
+  ))
+```
+
+## Genotype-derived individuals
+
+```{r}
+#| label: components
+components <- bird_components(pair_dists, threshold = same_bird_max)
+
+## Name the components. With no truth sheet there are no bird IDs to recover, so the labels are
+## arbitrary but must be *stable*: order components by the library order of their first cluster, so
+## re-running produces the same bird1/bird2/bird3 and any metadata attached by hand downstream keeps
+## meaning something. Singletons (only present in the fallback path) are named unassigned_<n>.
+lib_order <- set_names(seq_along(samples_to_process), samples_to_process)
+comp_named <- components$membership %>%
+  mutate(
+    sample_id = sub("_cl[0-9]+$", "", cluster),
+    sc_cluster = sub(".*_cl", "", cluster)
+  ) %>%
+  group_by(component) %>%
+  mutate(
+    n_in_component = n(),
+    first_lib = min(lib_order[sample_id]),
+    first_cl = first(sc_cluster[order(lib_order[sample_id], sc_cluster)])
+  ) %>%
+  ungroup() %>%
+  mutate(
+    rank = dense_rank(paste(sprintf("%02d", first_lib), first_cl)),
+    individual = if_else(n_in_component > 1, paste0("bird", rank), paste0("unassigned_", rank))
+  )
+
+qs_save(list(components = components, named = comp_named, same_bird_max = same_bird_max),
+  components_fname,
+  nthreads = 8
+)
+
+tibble(
+  n_components = components$components,
+  n_multi = sum(components$sizes > 1),
+  n_singletons = sum(components$sizes == 1),
+  max_size = max(components$sizes),
+  n_birds_expected = N_BIRDS_EXPECTED
+) %>%
+  kable(caption = paste0("Components at ", same_bird_max))
+
+comp_named %>%
+  select(individual, cluster, sample_id, sc_cluster, n_in_component) %>%
+  arrange(individual, lib_order[sample_id]) %>%
+  kable(caption = "Which souporcell cluster in which library is which bird")
+
+## The same thing as a grid: one row per library, one column per bird, holding that bird's souporcell
+## cluster index in that library. This is the table to paste into notes -- it is the whole point of
+## the notebook. Each row should be a permutation of 0/1/2 over the birds that library contains, and
+## an empty cell means that bird is not in that library.
+cluster_grid <- comp_named %>%
+  filter(n_in_component > 1) %>%
+  select(sample_id, individual, sc_cluster) %>%
+  pivot_wider(names_from = individual, values_from = sc_cluster) %>%
+  arrange(lib_order[sample_id])
+
+kable(cluster_grid, caption = "souporcell cluster index per library per bird (blank = bird absent)")
+
+stopifnot(
+  "a bird appears twice in one library -- the partition is chained, not individual" =
+    !any(map_lgl(cluster_grid, ~ any(lengths(.x) > 1)))
+)
+```
+
+```{r}
+#| label: batch-structure
+## Which libraries share birds? This is the design, read off the genotypes rather than assumed, and
+## it is where this dataset turned out not to be what the notebook was first written for. Entry
+## (i, j) is the number of birds libraries i and j have in common; the diagonal is how many birds
+## each library holds.
+birds_by_lib <- comp_named %>%
+  filter(n_in_component > 1) %>%
+  select(sample_id, individual)
+
+overlap <- outer(samples_to_process, samples_to_process, Vectorize(function(a, b) {
+  length(intersect(
+    birds_by_lib$individual[birds_by_lib$sample_id == a],
+    birds_by_lib$individual[birds_by_lib$sample_id == b]
+  ))
+}))
+dimnames(overlap) <- list(samples_to_process, samples_to_process)
+kable(overlap, caption = "Birds shared between each pair of libraries (diagonal = birds per library)")
+
+## Libraries that share no bird with each other partition into batches. Reported rather than
+## assumed: a zero off-diagonal block is a statement about the dissection, and it means no
+## individual-level comparison can be made across that block -- any downstream model with a bird
+## effect can only be fit within a batch.
+batch_of <- {
+  seen <- set_names(rep(NA_integer_, length(samples_to_process)), samples_to_process)
+  b <- 0L
+  for (lib in samples_to_process) {
+    if (!is.na(seen[[lib]])) next
+    b <- b + 1L
+    grp <- lib
+    repeat {
+      more <- samples_to_process[rowSums(overlap[, grp, drop = FALSE] > 0) > 0]
+      if (setequal(more, grp)) break
+      grp <- union(grp, more)
+    }
+    seen[grp] <- b
+  }
+  seen
+}
+
+tibble(sample_id = names(batch_of), batch = unname(batch_of)) %>%
+  left_join(count(birds_by_lib, sample_id, name = "n_birds"), by = "sample_id") %>%
+  arrange(batch, lib_order[sample_id]) %>%
+  kable(caption = paste(
+    "Batches of libraries that share individuals. Libraries in different batches have no bird in",
+    "common, so `individual` is only comparable within a batch."
+  ))
+
+tibble(
+  n_batches = max(batch_of),
+  n_birds_total = n_distinct(birds_by_lib$individual),
+  n_birds_expected = N_BIRDS_EXPECTED,
+  birds_per_library = paste(sort(unique(count(birds_by_lib, sample_id)$n)), collapse = ","),
+  libraries_per_bird = paste(sort(unique(count(birds_by_lib, individual)$n)), collapse = ",")
+) %>%
+  kable(caption = "Design as measured")
+```
+
+```{r}
+#| label: separation
+## How well separated is the partition that was chosen? Within-component distances are same-bird
+## comparisons and between-component ones are different-bird, so this is the same-bird /
+## different-bird distance distribution the truth sheet would have given -- derived from the
+## partition instead of from labels. It is not independent evidence for the partition (it was
+## thresholded into existence), but a *narrow* gap here means the threshold sat in noise, and the
+## plateau width above is then the thing to trust.
+comp_of <- set_names(comp_named$component, comp_named$cluster)
+
+pair_long <- map_dfr(pair_dists, function(x) {
+  d <- as.data.frame(as.table(x$dist), stringsAsFactors = FALSE)
+  names(d) <- c("cluster_a", "cluster_b", "distance")
+  d$n_sites <- as.data.frame(as.table(x$n_sites), stringsAsFactors = FALSE)$Freq
+  d
+}) %>%
+  filter(!is.na(distance)) %>%
+  mutate(same_bird = comp_of[cluster_a] == comp_of[cluster_b])
+
+pair_long %>%
+  group_by(same_bird) %>%
+  summarise(
+    n = n(), min = round(min(distance), 3), q05 = round(quantile(distance, .05), 3),
+    median = round(median(distance), 3), q95 = round(quantile(distance, .95), 3),
+    max = round(max(distance), 3), median_sites = median(n_sites), .groups = "drop"
+  ) %>%
+  kable(caption = paste(
+    "Cross-library genotype distance within vs between the derived components.",
+    "A usable partition needs a clear gap between the same-bird max and the different-bird min."
+  ))
+
+tibble(
+  same_bird_max_observed = round(max(pair_long$distance[pair_long$same_bird]), 3),
+  diff_bird_min_observed = round(min(pair_long$distance[!pair_long$same_bird]), 3)
+) %>%
+  mutate(gap = round(diff_bird_min_observed - same_bird_max_observed, 3)) %>%
+  kable(caption = "The gap the threshold sits in. Negative means the two distributions overlap.")
+```
+
+```{r}
+#| label: matching-crosscheck
+## Independent cross-check: match each library pair's three clusters 1:1 by total genotype distance
+## (Hungarian) and ask whether that agrees with the component partition. Two methods with different
+## failure modes -- matching always returns something and can be fooled by a bird that is absent;
+## single linkage can chain two birds together -- so agreement is a stronger statement than either
+## alone.
+##
+## **Only within-batch pairs are meaningful.** solve_LSAP will happily 1:1 match two libraries that
+## share no bird at all, which is precisely the trap dev-full1's incomplete design fell into, and
+## this dataset has 8 such pairs (every ra/arco/hvc/nc x lman/nr combination). Those matchings are
+## reported separately rather than counted as failures: a cross-batch match landing at
+## different-bird distance is the correct outcome, not a disagreement.
+match_tbl <- map_dfr(pair_dists, function(x) {
+  oriented_match(x$dist)$match %>%
+    mutate(
+      pair = paste(x$libs, collapse = "-"),
+      lib_a = x$libs[1], lib_b = x$libs[2],
+      same_batch = batch_of[[x$libs[1]]] == batch_of[[x$libs[2]]],
+      component_agrees = comp_of[row] == comp_of[matched]
+    )
+})
+
+match_tbl %>%
+  group_by(same_batch) %>%
+  summarise(
+    n_matchings = n(),
+    n_agree_with_components = sum(component_agrees, na.rm = TRUE),
+    n_below_threshold = sum(distance < same_bird_max, na.rm = TRUE),
+    matched_median = round(median(distance, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) %>%
+  kable(caption = paste(
+    "1:1 matching vs the component partition, split by whether the two libraries share birds.",
+    "Within batch: all three columns should equal n_matchings. Across batch: n_below_threshold",
+    "should be 0 and matched_median should sit at the different-bird distance -- those matchings",
+    "are artefacts of forcing a 1:1 assignment where there is nothing to assign."
+  ))
+
+match_tbl %>%
+  filter(same_batch, !component_agrees | distance >= same_bird_max) %>%
+  select(pair, row, matched, distance, margin, outbid, component_agrees) %>%
+  kable(digits = 3, caption = paste(
+    "Within-batch matchings that disagree with the partition or sit above the threshold.",
+    "Read `distance` before `margin`: solve_LSAP minimises the total, so a row can legitimately",
+    "lose its closest column to a better claimant (negative margin, outbid TRUE) with nothing wrong."
+  ))
+
+pair_batch <- match_tbl %>%
+  distinct(pair, same_batch) %>%
+  deframe()
+
+pair_match_scores(pair_dists, threshold = same_bird_max) %>%
+  mutate(same_batch = pair_batch[pair]) %>%
+  arrange(desc(same_batch), pair) %>%
+  kable(digits = 3, caption = paste(
+    "Per library pair. n_confident should be 3 of 3 for the 7 within-batch pairs and 0 for the 8",
+    "across-batch pairs -- n_possible is min(rows, cols) and so overstates the ceiling for those."
+  ))
+
+## Not library_match_scores(): it sums n_confident over all five of a library's pairings against a
+## ceiling of 5 x 3, which is unreachable here because two or four of those pairings are with
+## libraries that share no bird. Sum over within-batch pairings only, so the number is comparable
+## between libraries and against the ambient column in the run-quality table (stable measured
+## Spearman -0.92 between the two).
+## pivot_longer duplicates each matching once per participating library, which is what is wanted:
+## a pair contributes its confident matches to both of its libraries' totals.
+match_tbl %>%
+  filter(same_batch) %>%
+  pivot_longer(c(lib_a, lib_b), values_to = "sample_id") %>%
+  group_by(sample_id) %>%
+  summarise(
+    n_within_batch_pairings = n_distinct(pair),
+    confident = sum(distance < same_bird_max, na.rm = TRUE),
+    of = K_EXPECTED * n_distinct(pair),
+    .groups = "drop"
+  ) %>%
+  left_join(ambient %>% rename(sample_id = sample_short), by = "sample_id") %>%
+  arrange(desc(confident)) %>%
+  kable(digits = 2, caption = paste(
+    "Confident matches per library, over its within-batch pairings only, beside its ambient-RNA",
+    "estimate. The ceiling is 3 x n_within_batch_pairings."
+  ))
+```
+
+```{r}
+#| label: cluster-support
+## Per cluster: how many other libraries hold a counterpart at same-bird distance, and how close the
+## best one is. This is where the width of the usable threshold window comes from -- the window is
+## bounded below by whichever cluster links last, so a cluster with a conspicuously large
+## `median_best` (or a `best_distance` near the chosen threshold rather than far below it) is the
+## one making the calibration tight, and the one to look at if the window ever closes entirely.
+best_per_cluster <- map_dfr(pair_dists, function(x) {
+  bind_rows(
+    tibble(cluster = rownames(x$dist), best = suppressWarnings(apply(x$dist, 1, min, na.rm = TRUE))),
+    tibble(cluster = colnames(x$dist), best = suppressWarnings(apply(x$dist, 2, min, na.rm = TRUE)))
+  )
+}) %>%
+  filter(is.finite(best)) %>%
+  group_by(cluster) %>%
+  summarise(best_distance = round(min(best), 3), .groups = "drop")
+
+## cluster_support()'s `row` is already the full `<library>_cl<n>` id, because the matrices were
+## labelled before cluster_pair_distances(); `lib` is that cluster's own library either way round.
+cluster_support(pair_dists, threshold = same_bird_max) %>%
+  rename(cluster = row) %>%
+  left_join(best_per_cluster, by = "cluster") %>%
+  left_join(comp_named %>% select(cluster, individual), by = "cluster") %>%
+  select(cluster, individual, n_confident, best_distance, median_best) %>%
+  arrange(desc(best_distance)) %>%
+  kable(digits = 3, caption = paste0(
+    "Cross-library support per cluster, worst first. n_confident is how many other libraries hold a",
+    " counterpart below ", same_bird_max, "; for this design the ceiling is 3 for a batch-1 cluster",
+    " and 1 for a batch-2 cluster."
+  ))
+```
+
+```{r}
+#| label: within-library
+## Corroboration for k=3: if souporcell split one bird into two clusters, those two should sit at
+## same-bird distance. Weak evidence on its own -- souporcell's model pushes its own clusters apart
+## by construction -- so read it beside the component sizes, which are the real check on k.
+within_library_distances(gt_mats) %>%
+  rename(sample_id = sample_short) %>%
+  kable(caption = paste0(
+    "Distances between a library's own clusters. Values near the same-bird range (< ",
+    same_bird_max, ") would suggest k = 3 oversplit that library."
+  ))
+```
+
+```{r}
+#| label: heatmap-gt
+#| fig-width: 10
+#| fig-height: 6
+## Genotypes of all 18 clusters at the most variable shared sites, split by derived bird. Clusters
+## of the same bird should sit together; if they do not, the matching is wrong. Not "sites with no
+## missing call": no variant is called in every cluster row, so that selection is empty and the
+## heatmap draws nothing.
+shared <- reduce(map(gt_mats, colnames), intersect)
+gt_all <- do.call(rbind, map(gt_mats, ~ .x[, shared, drop = FALSE]))
+keep <- colMeans(is.na(gt_all)) <= 0.05
+gt_hm <- gt_all[, keep, drop = FALSE]
+vars <- apply(gt_hm, 2, var, na.rm = TRUE)
+gt_hm <- gt_hm[, order(vars, decreasing = TRUE)[seq_len(min(2000, sum(!is.na(vars))))], drop = FALSE]
+
+Heatmap(gt_hm,
+  name = "genotype",
+  row_split = comp_named$individual[match(rownames(gt_hm), comp_named$cluster)],
+  cluster_row_slices = FALSE, show_column_names = FALSE, row_names_gp = gpar(fontsize = 8),
+  column_title = sprintf("%s shared sites, max 5%% missing", ncol(gt_hm))
+)
+```
+
+## Cell-level assignments
+
+```{r}
+#| label: assign-cells
+## Attach individual labels to barcodes. Cell names are built exactly as in
+## snrna_seurat_cellbender_preprocess.qmd: CellRanger's `-1` suffix replaced by the library's
+## sample_index, then an underscore prefixed (Merge_Seurat_List leaves that prefix on every cell).
+## Get this wrong and the join in the preprocessing notebook silently produces all-NA metadata, so
+## it is asserted against a sanity check below rather than trusted.
+assignments <- samples %>%
+  select(sample_id, sample_index, tsv) %>%
+  mutate(cl = map(tsv, ~ read_tsv(.x, show_col_types = FALSE, progress = FALSE))) %>%
+  select(-tsv) %>%
+  unnest(cl) %>%
+  mutate(
+    sc_cluster = as.character(assignment),
+    cluster = paste0(sample_id, "_cl", sc_cluster),
+    ## Strip the suffix and paste the index on, rather than sub()-ing one for the other: sub() is
+    ## not vectorised over `replacement`, so `sub("-1$", paste0("-", sample_index), barcode)` warns
+    ## and silently uses the *first* library's index for all six, giving six copies of every cell
+    ## name. The preprocessing notebook's own str_interp() version is safe only because it runs
+    ## inside a per-sample function where sample_index is scalar.
+    cell = paste0("_", sub("-1$", "", barcode), "-", sample_index),
+    doublet_status = status
+  ) %>%
+  left_join(comp_named %>% select(cluster, component, individual), by = "cluster") %>%
+  ## `batch` travels with the cells because it constrains every downstream comparison: birds are
+  ## only comparable within a batch, so a model with a bird term needs it. It is a property of the
+  ## library, not of the cell, but carrying it here saves the preprocessing notebook from
+  ## re-deriving it.
+  left_join(tibble(sample_id = names(batch_of), batch = unname(batch_of)), by = "sample_id") %>%
+  ## souporcell's own doublet/unassigned calls: only singlets get an individual. `assignment` for a
+  ## doublet is a pair of cluster indices ("0/2"), which is why it must not be parsed as an
+  ## individual -- the old preprocessing block kept those strings as a level of `assignment`.
+  mutate(individual = if_else(doublet_status == "singlet", individual, NA_character_)) %>%
+  select(
+    cell, barcode, sample_id, sample_index, sc_cluster, cluster,
+    doublet_status, component, individual, batch
+  )
+
+stopifnot(
+  "duplicate cell names -- the library index did not make it into every cell name" =
+    !any(duplicated(assignments$cell))
+)
+
+assignments %>%
+  count(sample_id, doublet_status) %>%
+  pivot_wider(names_from = doublet_status, values_from = n, values_fill = 0) %>%
+  kable(caption = "souporcell status per library")
+
+assignments %>%
+  filter(doublet_status == "singlet") %>%
+  count(sample_id, individual) %>%
+  pivot_wider(names_from = individual, values_from = n, values_fill = 0) %>%
+  arrange(lib_order[sample_id]) %>%
+  kable(caption = "Singlet nuclei per bird per library -- the table the old `assignment` could not give")
+
+assignments %>%
+  summarise(
+    n_cells = n(),
+    n_singlet = sum(doublet_status == "singlet"),
+    n_with_individual = sum(!is.na(individual)),
+    pct_singlets_assigned = round(
+      100 * sum(!is.na(individual)) / sum(doublet_status == "singlet"), 1
+    )
+  ) %>%
+  kable(caption = "Coverage of the genotype-derived assignment")
+
+write_csv(assignments, assignments_fname)
+message("Wrote ", assignments_fname)
+```
+
+`snrna_seurat_cellbender_preprocess.qmd` reads this file in its *Load souporcell* chunk and adds
+`individual`, `batch`, `doublet_status`, `souporcell_cluster` and `souporcell_component` to the
+object, and uses the per-library doublet rates below to set DoubletFinder's `nExp`. Check the per-bird
+cell counts and the matching cross-check above before re-running it: everything downstream that
+grouped by `assignment` now groups by `individual`, and any comparison across birds has to respect
+`batch`.
+
+## Session info
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

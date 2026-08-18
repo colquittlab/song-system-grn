@@ -21,7 +21,7 @@ library(clustree)
 library(scCustomize)
 library(ComplexHeatmap)
 
-source("../../scripts/scRNA.R")
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
 source(here::here("config/paths.R"))
 reticulate::use_condaenv("/home/brad/micromamba/envs/scanorama")
 rename = dplyr::rename

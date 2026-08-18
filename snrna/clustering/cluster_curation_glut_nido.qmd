@@ -1,0 +1,332 @@
+---
+title: "Curation and naming: Glut-Nido"
+format: html
+editor: source
+---
+
+One curation round for the Glut-Nido subset, as the trial run for the scheme in
+`scripts/cluster_curation.R` and `scripts/cluster_naming.R`. Nido is the right subset to start with
+because it has already been curated by hand *twice* (`obj_glutamatergic_nido` ->
+`obj_glutamatergic_nido_filt` in `snrna_seurat_cellbender_preprocess.qmd`), so the automated flags
+can be scored against the calls you actually made rather than against nothing.
+
+**What this replaces.** The hand loop is: look at the subclusters, drop the ones with high mito or
+co-expressed markers, recluster the survivors. This notebook proposes the same drops from measured
+quantities, records them per *cell barcode*, and reruns the clustering from the ledger. Two
+properties follow, and both are the point:
+
+- **Decisions survive reclustering.** The ledger keys on barcodes, not cluster ids, so renumbering
+  cannot silently repoint a decision at different cells -- the same failure mode as souporcell's
+  per-library `assignment`.
+- **Cells are marked, not deleted.** `curation_status` / `exclude_reason` travel with every cell.
+  Since this dataset is the reference others take names from, downstream projects need to be able to
+  reconcile counts and see what was removed and why.
+
+Nothing here is applied automatically: the flags are a proposal, you confirm them, and the confirmed
+set is what the ledger records.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(knitr)
+library(clustree) # attached, not just loaded -- see the preprocess notebook for why
+
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
+source(here::here("scripts/cluster_curation.R"))
+source(here::here("scripts/cluster_naming.R"))
+
+select <- dplyr::select
+filter <- dplyr::filter
+
+## sctransform parallelises its per-gene regression through future, and future refuses to ship more
+## than 500 MiB of globals into a future by default. SCTransform's own chunked data clears that on
+## an object this size (~730 MiB for 16k cells), and the failure surfaces as
+## `getGlobalsAndPackages ... The total size of the 19 globals exported for future expression
+## ('FUN()')` -- which names neither future nor SCTransform, so it is worth knowing on sight.
+##
+## The option is the actual fix: the size check runs when the future's globals are collected, which
+## happens under a sequential plan too, so plan(sequential) alone does not avoid it. Setting the plan
+## as well keeps SCTransform from forking a copy of a large object for no gain.
+## snrna_seurat_cellbender_preprocess.qmd sets the same two lines (107-108) for the same reason.
+library(future)
+options(future.globals.maxSize = Inf)
+plan(sequential)
+```
+
+```{r}
+#| label: params
+subset_name <- "glut_nido"
+in_dir <- here::here("snrna/clustering", "snrna_seurat_cellbender_preprocess")
+obj_fname <- file.path(in_dir, "obj_glutamatergic_nido.qs2")
+
+out_dir <- here::here("snrna/clustering", "cluster_curation_glut_nido")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+## Ledgers are small, hand-confirmed, and reviewable in a diff: source, not output. They belong in
+## git next to the code, not in the output tree.
+ledger_dir <- here::here("data/curation")
+dir.create(ledger_dir, recursive = TRUE, showWarnings = FALSE)
+ledger_fname <- file.path(ledger_dir, sprintf("%s_ledger.csv", subset_name))
+
+rna_dims <- 10
+resolutions <- seq(.3, 1, .1)
+cluster_prefix_cur <- "cluster_glut_nido"
+round_n <- 1L
+
+## Recorded rather than defaulted, so the run says what it used. `doublet_frac` is left at its NA
+## default -- disabled -- because the preprocessing notebook has already kept only cells that both
+## DoubletFinder and souporcell call singlets, so every cluster here is at exactly zero and a rule
+## on it could never fire. Residual doublets surface as marker co-expression instead.
+thresholds <- curation_thresholds(mito_mad = 3, min_cells = 20)
+filters <- naming_filters()
+panels <- class_panels()
+
+seed <- 10
+set.seed(seed)
+```
+
+## The panel
+
+```{r}
+#| label: panel
+## Derived from ct_markers in gene_lists.R, with three deliberate deviations -- see class_panels().
+## Read this table before trusting any class call below: every class assignment is only as good as
+## the row that defines it.
+tibble(
+  class = names(panels$panels),
+  markers = map_chr(panels$panels, paste, collapse = ", ")
+) %>%
+  kable(caption = "Cell-class panels (specificity scoring ignores the pan-neuronal genes below)")
+
+tibble(
+  set = names(panels$exclusive),
+  members = map_chr(panels$exclusive, paste, collapse = ", ")
+) %>%
+  kable(caption = "Mutually exclusive sets: two present members in one cluster is a co-expression flag")
+
+tibble(
+  state = names(panels$states),
+  markers = map_chr(panels$states, paste, collapse = ", ")
+) %>%
+  kable(caption = paste(
+    "States, scored but never counted as violations -- a cluster may legitimately be Glut *and*",
+    "cycling. Note `Cycling` is ct_markers$Mito, which is mitotic (TOP2A/PCNA/...), not",
+    "mitochondrial; perc_mito is a separate metric entirely."
+  ))
+
+tibble(non_specific = panels$non_specific) %>%
+  kable(caption = "In a panel but excluded from specificity scoring (pan-neuronal)")
+```
+
+## Load
+
+```{r}
+#| label: load
+stopifnot("run snrna_seurat_cellbender_preprocess.qmd first" = file.exists(obj_fname))
+obj <- qs_read(obj_fname, nthreads = 8)
+
+## Re-apply any decisions from previous rounds before doing anything else: a round always starts
+## from the surviving cells, and this is what makes re-running the notebook idempotent.
+ledger <- read_ledger(ledger_fname)
+obj <- apply_ledger(obj, ledger, subset_name)
+
+tibble(
+  n_cells_total = ncol(obj),
+  n_kept = sum(obj$curation_status == "keep"),
+  n_excluded_previous_rounds = sum(obj$curation_status == "exclude")
+) %>%
+  kable(caption = "Starting point")
+```
+
+## Cluster the surviving cells
+
+```{r}
+#| label: cluster
+reduction_cur <- umap_name(rna_dims)
+res_to_use <- cluster_name(cluster_prefix_cur, rna_dims, 0.7)
+
+obj_cur <- subset(obj, cells = kept_cells(obj))
+
+## Recluster only when there is something new to react to. On round 1 the object arrives straight
+## from the preprocessing notebook with this exact clustering already on it, and re-running
+## SCTransform + process_rna would spend an hour reproducing it -- not bit-identically, either,
+## which would make the flags below refer to slightly different clusters than the ones you looked
+## at upstream. Once cells have been excluded, the clustering genuinely has to be redone, because
+## avoiding the distortion those cells cause is the entire point of the loop.
+needs_recluster <- !all(c(res_to_use %in% colnames(obj_cur@meta.data),
+                          reduction_cur %in% Reductions(obj_cur))) ||
+  any(obj$curation_status == "exclude")
+
+if (needs_recluster) {
+  message("Reclustering ", ncol(obj_cur), " surviving cells")
+  obj_cur <- obj_cur %>% SCTransform(vars.to.regress = "perc_mito")
+  obj_cur <- process_rna(obj_cur,
+                         cluster_prefix = cluster_prefix_cur,
+                         rna_dims_list = rna_dims,
+                         resolutions = resolutions,
+                         algorithm = 2,
+                         run_sct = TRUE,
+                         run_parallel = FALSE)
+} else {
+  message("Scoring the clustering already on the object (no exclusions yet)")
+}
+
+stopifnot("chosen resolution not in the object" = res_to_use %in% colnames(obj_cur@meta.data))
+```
+
+```{r}
+#| label: umap
+#| fig-width: 10
+DimPlot(obj_cur, group.by = res_to_use, label = TRUE, reduction = reduction_cur) + coord_equal()
+DimPlot(obj_cur, group.by = "individual", reduction = reduction_cur) + coord_equal()
+DimPlot(obj_cur, group.by = "position", reduction = reduction_cur) + coord_equal()
+```
+
+## Score the clusters
+
+```{r}
+#| label: score
+## One presto pass feeds both the QC metrics and the naming genes -- it is the expensive step.
+de <- cluster_de(obj_cur, res_to_use)
+qc <- cluster_qc(obj_cur, res_to_use, de = de, panels = panels)
+naming <- select_naming_genes(de, filters = filters)
+flagged <- flag_clusters(qc, thresholds = thresholds, naming = naming)
+
+flagged %>%
+  select(cluster, n_cells, median_mito, mito_mad, median_nFeature,
+         classes_present, states_present, coexpr_violation, flag_reason) %>%
+  kable(digits = 2, caption = paste(
+    "Per-cluster QC. mito_mad is MADs above the subset median, not an absolute cut -- the global",
+    "perc_mito filter already ran upstream, so what is left to detect is enrichment within Nido.",
+    "median_nFeature is reported, not flagged: elevated complexity is doublet-like but also true of",
+    "genuinely large neurons, so it is context for the co-expression call rather than a rule."
+  ))
+
+## Verification, not curation: both callers' doublets were removed upstream, so these must be zero.
+## A non-zero value means this object did not go through that filter and the co-expression rule is
+## then carrying more weight than it was meant to.
+doublet_check <- flagged %>%
+  summarise(max_df = max(coalesce(frac_df_doublet, 0)), max_soc = max(coalesce(frac_soc_doublet, 0)))
+if (doublet_check$max_df > 0 || doublet_check$max_soc > 0) {
+  warning("Doublets present in this object -- expected none after preprocessing. ",
+          "Set curation_thresholds(doublet_frac = ...) to flag on them.", call. = FALSE)
+}
+kable(doublet_check, caption = "Upstream doublet removal check (both must be 0)")
+```
+
+```{r}
+#| label: naming
+naming %>%
+  left_join(qc %>% select(cluster, top_class, class_margin), by = "cluster") %>%
+  kable(digits = 3, caption = paste(
+    "Naming genes: the smallest set that is present in this cluster and in no sibling.",
+    "A two- or three-gene name means no single gene distinguished the cluster -- the length is a",
+    "measurement, not a style choice. n_naming_genes == 0 means no marker of its own: merge or drop."
+  ))
+```
+
+```{r}
+#| label: anatomy
+## Region is an enrichment claim about sample composition, not a marker claim, so it is tested with
+## birds as the replicate unit. `confounded` marks clusters living in a single batch, where a region
+## effect cannot be told apart from a batch effect -- for Nido that is the check that matters, since
+## lman/nr are batch 2 and share no birds with the other four libraries.
+anatomy <- region_enrichment(obj_cur, res_to_use)
+kable(anatomy, digits = 2, caption = "Region enrichment (region = NA where unsupported or confounded)")
+
+labels <- make_labels(naming, qc = qc, anatomy = anatomy, prefix = "Glut-Nido")
+kable(labels %>% select(cluster, class, region, naming_genes, unique_id, label),
+      caption = "Proposed labels: <class>-<region>-<genes>, fields dropped where unsupported")
+```
+
+## Confirm the proposal
+
+```{r}
+#| label: propose
+## Everything above is a proposal. Edit `overrides` to disagree with it -- clusters listed in
+## `keep_anyway` are retained despite their flags, clusters in `drop_anyway` are dropped with the
+## reason you give. Both are recorded in the ledger, so a hand override is as auditable as an
+## automatic flag.
+overrides <- list(
+  keep_anyway = character(),
+  drop_anyway = c() # e.g. c("7" = "residual doublets not caught by either caller")
+)
+
+decided <- flagged %>%
+  mutate(
+    flagged = case_when(
+      cluster %in% overrides$keep_anyway ~ FALSE,
+      cluster %in% names(overrides$drop_anyway) ~ TRUE,
+      TRUE ~ flagged
+    ),
+    flag_reason = case_when(
+      cluster %in% overrides$keep_anyway ~ "",
+      cluster %in% names(overrides$drop_anyway) ~ paste0("manual: ", overrides$drop_anyway[cluster]),
+      TRUE ~ flag_reason
+    )
+  )
+
+proposal <- propose_exclusions(obj_cur, res_to_use, decided, subset_name, round = round_n)
+
+proposal %>%
+  count(cluster_at_decision, reason, name = "n_cells") %>%
+  kable(caption = "Cells this round proposes to exclude")
+
+tibble(
+  n_cells = ncol(obj_cur),
+  n_proposed_excluded = nrow(proposal),
+  frac_excluded = round(nrow(proposal) / ncol(obj_cur), 3)
+) %>%
+  kable(caption = paste(
+    "Drop fraction. A few percent is artefact removal; a large fraction is a different operation",
+    "wearing its clothes, and means the thresholds are wrong rather than the cells."
+  ))
+```
+
+```{r}
+#| label: write-ledger
+## Set to TRUE once the tables above look right. Kept behind a flag so rendering the notebook to
+## look at it cannot silently commit a curation decision.
+commit_decisions <- FALSE
+
+if (commit_decisions) {
+  ledger <- write_ledger(ledger, proposal, ledger_fname)
+  message("Wrote ", nrow(proposal), " decisions to ", ledger_fname)
+} else {
+  message("commit_decisions = FALSE; ledger not modified")
+}
+```
+
+## Did the curation delete biology?
+
+```{r}
+#| label: audit
+## The check that matters for this dataset. lman/nr are batch 2 -- different birds, higher ambient,
+## different doublet rates -- so a quality-driven rule can preferentially delete batch-2 cells, and
+## the result would read as "LMAN lacks cell type X". Enrichment near 1 means a level is losing
+## cells at the average rate; a level well above 1 is a finding to report, not a filter to apply.
+obj_audit <- apply_ledger(obj_cur, bind_rows(ledger, proposal), subset_name)
+excluded_composition(obj_audit) %>%
+  kable(digits = 3, caption = "Composition of the excluded cells against the design")
+```
+
+```{r}
+#| label: save
+qs_save(list(qc = flagged, naming = naming, anatomy = anatomy, labels = labels,
+             thresholds = thresholds, filters = filters, round = round_n),
+        file.path(out_dir, sprintf("%s_round%s_evidence.qs2", subset_name, round_n)), nthreads = 8)
+```
+
+Next round: set `round_n <- 2`, re-render, and the `load` chunk will start from the survivors. Stop
+when nothing is flagged -- and if that has not happened by round 3, the thresholds are wrong rather
+than the cells.
+
+## Session info
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

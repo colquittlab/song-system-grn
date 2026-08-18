@@ -20,7 +20,7 @@ select = dplyr::select
 
 library(here)
 source(here::here("config/paths.R"))
-source(here::here("scripts/stats.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
 ```
 
 ```{r}
