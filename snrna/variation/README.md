@@ -65,6 +65,11 @@ every bird to 60 cells removes that (rho = 0.24, n.s.) and preserves the orderin
 with 27 of 28 still significant. **Glut-CACNA1H-RA stays first either way; Glut-DACH2-HVCra's rank
 does not survive matching** -- most of its headline value was its 3017 cells.
 
+`split_fold_matched_ranking.pdf` ranks the matched ratio by cell type, coloured by class. The
+ordering is broadly by class: glutamatergic projection neurons at the top, GABAergic and
+non-neuronal types in the middle, and the two neurogenic populations (`Glut-NSC`, `Glut-NB`) at the
+bottom, `Glut-NB` sitting essentially on the sampling floor at 1.02.
+
 **Genes.** 2061 genes are individually significant in at least one combination; only 54 in three or
 more. The recurrent ones (DLGAP2, FRMD8, PDE10A, PHACTR1, CACNA2D3, HOMER1, KCNJ6, NTRK2) are the
 ones to be most careful with: a gene that separates birds in five different cell types is a property

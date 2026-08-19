@@ -702,6 +702,35 @@ gg = rank_cmp %>%
 save_plot(file.path(out_dir, "split_fold_matched_vs_unmatched.pdf"), gg, base_height = 6, base_asp = 1.4)
 save_plot(file.path(out_dir, "split_fold_matched_vs_unmatched.png"), gg, base_height = 6, base_asp = 1.4)
 
+## Ranking of the matched F ratio, which is the version comparable across cell types.
+##
+## Class comes from the explicit precursor set in snrna/naming/hybrid_division_naming.qmd
+## (`precursor_overrides`), not from a name pattern: "-Pre" would misfile Glut-DACH2-HVCra-Pre, which
+## is a subtype of the HVCra projection neurons rather than a precursor.
+neurogenic_types = c("Glut-NSC", "Glut-NB", "Glut-Im", "GABA-Im")
+cell_class = function(x) {
+  case_when(x %in% neurogenic_types ~ "Neurogenic",
+            str_starts(x, "Glut-") ~ "Glut",
+            str_starts(x, "GABA-") ~ "GABA",
+            TRUE ~ "Non-neuronal")
+}
+class_colors = c(Glut = "#c0392b", GABA = "#2c7fb8", Neurogenic = "#7b3294", `Non-neuronal` = "#7f8c8d")
+
+gg = matched_summary %>%
+  mutate(label = sprintf("%s (%s)", celltype, sub("_run1$", "", soup_library)),
+         class = factor(cell_class(celltype), levels = names(class_colors))) %>%
+  ggplot(aes(F_ratio, fct_reorder(label, F_ratio), colour = class)) +
+  ## The sampling floor: birds no further apart than an arbitrary regrouping of their own folds.
+  geom_vline(xintercept = 1, linetype = 2, colour = "grey60") +
+  geom_point(size = 2.5) +
+  scale_colour_manual(values = class_colors, name = NULL, drop = FALSE) +
+  labs(x = sprintf("between-bird F ratio (%s cells per bird)", min_cells_split), y = NULL) +
+  theme(axis.text.y = element_text(size = 7),
+        legend.position = "top",
+        plot.background = element_rect(fill = "white", colour = NA))
+save_plot(file.path(out_dir, "split_fold_matched_ranking.pdf"), gg, base_height = 6, base_asp = 1.2)
+save_plot(file.path(out_dir, "split_fold_matched_ranking.png"), gg, base_height = 6, base_asp = 1.2)
+
 # Figures -----------------------------------------------------------------
 
 ## Observed against its own permuted null, per cell type. A cell type sitting on the diagonal has no
