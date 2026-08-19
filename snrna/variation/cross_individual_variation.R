@@ -134,6 +134,53 @@ gg = comp %>%
 save_plot(file.path(out_dir, "composition_by_individual.pdf"), gg, base_height = 10, base_asp = 1.3)
 save_plot(file.path(out_dir, "composition_by_individual.png"), gg, base_height = 10, base_asp = 1.3)
 
+# Residency: which library a cell type actually belongs to ------------------
+
+## Not every (library, cell type) pair is a population of that library. RA sits inside the
+## arcopallium, so the ra dissection also catches surrounding arcopallium: `Glut-CACNA1H-1` has 891
+## cells in arco and 277 in ra. Those 277 are real cells, but they are a spillover fringe, and
+## between-bird differences measured on them are partly differences in how much arcopallium each
+## dissection happened to include -- a dissection result wearing the clothes of a cell-type result.
+##
+## The filter is on *density*, not on count or on share of the cell type. Share of the cell type
+## cannot tell a spillover fringe from a genuinely ubiquitous type: an interneuron class spread over
+## four libraries has ~25% of itself in each, which looks identical to contamination by that measure.
+## Density -- the cell type's proportion *within* each library, divided by its highest such
+## proportion across libraries of the batch -- separates them, because a ubiquitous type sits at
+## comparable density everywhere while a fringe sits far below its home.
+##
+## The data make the threshold rather than the other way round: the pairs entering these analyses
+## are one at 0.32 (ra / Glut-CACNA1H-1, the case above), then nothing until 0.61, then a run to 1.0.
+## 0.5 falls in that gap. The three pairs in 0.61-0.75 are Astro-2, GABA-1-1 and Glut-DACH2-2 at
+## similar density in hvc and nc, which is what a widespread type is supposed to look like and is
+## kept.
+min_rel_density = 0.5
+
+residency = md %>%
+  count(soup_batch, soup_library, celltype, name = "n_cells") %>%
+  group_by(soup_library) %>%
+  mutate(prop_of_library = n_cells / sum(n_cells)) %>%
+  ungroup() %>%
+  group_by(soup_batch, celltype) %>%
+  mutate(home_library = soup_library[which.max(prop_of_library)],
+         rel_density = prop_of_library / max(prop_of_library)) %>%
+  ungroup() %>%
+  mutate(resident = rel_density >= min_rel_density)
+write_csv(residency, file.path(out_dir, "celltype_library_residency.csv"))
+
+## Only cells in a resident pair go into any model below. Reported here, not silently applied: a
+## cell type that loses a library can also lose testability in the crossed model, which needs two.
+dropped = residency %>% filter(!resident, n_cells >= min_cells_per_pseudobulk) %>%
+  arrange(desc(n_cells))
+message(sprintf("non-resident (library, cell type) pairs with >= %s cells, dropped: %s",
+                min_cells_per_pseudobulk, nrow(dropped)))
+print(dropped %>% select(soup_library, celltype, n_cells, home_library, rel_density), n = 40)
+
+md = md %>%
+  semi_join(residency %>% filter(resident) %>% select(soup_batch, soup_library, celltype),
+            by = c("soup_batch", "soup_library", "celltype"))
+message(sprintf("cells retained after residency filter: %s", nrow(md)))
+
 # Pseudobulk --------------------------------------------------------------
 
 ## Counts, not the SCT residuals: the decomposition below is over library-size-normalised counts,
@@ -150,13 +197,20 @@ pb_meta = md %>%
 pb_group = md %>%
   left_join(pb_meta %>% select(celltype, soup_library, individual, pb_id),
             by = c("celltype", "soup_library", "individual"))
-stopifnot(identical(pb_group$cell, colnames(obj)))
-obj$pb_group = pb_group$pb_id
+
+## Assigned by cell name rather than positionally: `md` is now shorter than the object, because the
+## residency filter above drops the non-resident pairs. Cells with no group are NA and are subset
+## out before aggregating.
+pb_vec = setNames(rep(NA_character_, ncol(obj)), colnames(obj))
+pb_vec[pb_group$cell] = pb_group$pb_id
+obj$pb_group = unname(pb_vec)
 
 pb_counts_fname = file.path(out_dir, "pseudobulk_counts.qs2")
 if (!file.exists(pb_counts_fname)) {
-  pb = AggregateExpression(obj, assays = "RNA", group.by = "pb_group")$RNA
+  obj_pb = subset(obj, cells = colnames(obj)[!is.na(obj$pb_group)])
+  pb = AggregateExpression(obj_pb, assays = "RNA", group.by = "pb_group")$RNA
   qs_save(pb, pb_counts_fname, nthreads = 8)
+  rm(obj_pb)
 } else {
   pb = qs_read(pb_counts_fname, nthreads = 8)
 }
@@ -612,65 +666,111 @@ save_plot(file.path(out_dir, "split_fold_variance_by_group.png"), gg, base_heigh
 ## is here for the ranking, not for the significance calls. Read the unmatched version for "is there
 ## a bird effect in this cell type", this one for "which cell types have the largest one".
 
-set.seed(seed + 1)
-matched_md = md %>%
-  group_by(celltype, soup_library, individual) %>%
-  filter(n() >= min_cells_split) %>%
-  slice_sample(n = min_cells_split) %>%
-  mutate(fold = sample(rep_len(as.character(seq_len(n_folds)), n()))) %>%
-  ungroup()
+## Repeated, not once. A single subsample at 20 cells per fold moves the F ratio by ~0.1 between
+## draws -- enough to reorder the top of the ranking -- so one draw would be reporting the draw
+## rather than the cell type. `n_matched_repeats` independent subsamples are run and the per-cell-type
+## median taken; the spread across repeats is kept alongside it, and is the honest error bar on any
+## two cell types being ordered.
+n_matched_repeats = 5L
 
-matched_meta = matched_md %>%
-  count(celltype, soup_batch, soup_library, individual, fold, name = "n_cells") %>%
-  mutate(sp_id = sprintf("ms%04d", row_number()))
+run_matched_repeat = function(r) {
+  set.seed(seed + r)
+  matched_md = md %>%
+    group_by(celltype, soup_library, individual) %>%
+    filter(n() >= min_cells_split) %>%
+    slice_sample(n = min_cells_split) %>%
+    mutate(fold = sample(rep_len(as.character(seq_len(n_folds)), n()))) %>%
+    ungroup()
 
-matched_groups = matched_md %>%
-  left_join(matched_meta %>% select(celltype, soup_library, individual, fold, sp_id),
-            by = c("celltype", "soup_library", "individual", "fold"))
+  matched_meta = matched_md %>%
+    count(celltype, soup_batch, soup_library, individual, fold, name = "n_cells") %>%
+    mutate(sp_id = sprintf("ms%04d", row_number()))
 
-ms_vec = setNames(rep(NA_character_, ncol(obj)), colnames(obj))
-ms_vec[matched_groups$cell] = matched_groups$sp_id
-obj$matched_group = unname(ms_vec)
+  matched_groups = matched_md %>%
+    left_join(matched_meta %>% select(celltype, soup_library, individual, fold, sp_id),
+              by = c("celltype", "soup_library", "individual", "fold"))
 
-ms_counts_fname = file.path(out_dir, "split_fold_matched_counts.qs2")
-if (!file.exists(ms_counts_fname)) {
-  obj_ms = subset(obj, cells = colnames(obj)[!is.na(obj$matched_group)])
-  ms = AggregateExpression(obj_ms, assays = "RNA", group.by = "matched_group")$RNA
-  qs_save(ms, ms_counts_fname, nthreads = 8)
-  rm(obj_ms)
-} else {
-  ms = qs_read(ms_counts_fname, nthreads = 8)
+  ms_vec = setNames(rep(NA_character_, ncol(obj)), colnames(obj))
+  ms_vec[matched_groups$cell] = matched_groups$sp_id
+  obj$matched_group = unname(ms_vec)
+
+  ms_counts_fname = file.path(out_dir, sprintf("split_fold_matched_counts_r%s.qs2", r))
+  if (!file.exists(ms_counts_fname)) {
+    obj_ms = subset(obj, cells = colnames(obj)[!is.na(obj$matched_group)])
+    ms = AggregateExpression(obj_ms, assays = "RNA", group.by = "matched_group")$RNA
+    qs_save(ms, ms_counts_fname, nthreads = 8)
+    rm(obj_ms)
+  } else {
+    ms = qs_read(ms_counts_fname, nthreads = 8)
+  }
+  stopifnot("matched columns do not match the group table" = setequal(colnames(ms), matched_meta$sp_id))
+  ms = ms[, matched_meta$sp_id]
+  ms_cpm = t(t(ms) / colSums(ms)) * 1e6
+  ms_logcpm = as.matrix(log2(ms_cpm + 1))
+
+  design_r = matched_meta %>%
+    group_by(soup_batch, soup_library, celltype) %>%
+    summarise(n_birds = n_distinct(individual), n_folds_total = n(), n_cells = sum(n_cells),
+              .groups = "drop") %>%
+    filter(n_folds_total == n_folds * n_birds, n_birds >= min_birds_split)
+
+  map2_dfr(design_r$soup_library, design_r$celltype, function(lib, ct) {
+    message(sprintf("  matched r%s: %s / %s", r, lib, ct))
+    split_one(lib, ct, meta_tbl = matched_meta, cpm_mat = ms_cpm, logcpm_mat = ms_logcpm)
+  }) %>%
+    group_by(soup_library, celltype) %>%
+    summarise(repeat_id = r,
+              n_genes = n(),
+              median_var_between_birds = median(var_between_birds),
+              median_F = median(F_between),
+              F_ratio = dplyr::first(obs_median_F) / dplyr::first(median_of_perm_medians),
+              p_global = dplyr::first(p_global),
+              n_sig = sum(padj_perm < 0.05),
+              .groups = "drop")
 }
-stopifnot("matched columns do not match the group table" = setequal(colnames(ms), matched_meta$sp_id))
-ms = ms[, matched_meta$sp_id]
-ms_cpm = t(t(ms) / colSums(ms)) * 1e6
-ms_logcpm = as.matrix(log2(ms_cpm + 1))
 
-matched_design = matched_meta %>%
-  group_by(soup_batch, soup_library, celltype) %>%
-  summarise(n_birds = n_distinct(individual), n_folds_total = n(), n_cells = sum(n_cells),
-            .groups = "drop") %>%
-  filter(n_folds_total == n_folds * n_birds, n_birds >= min_birds_split)
+matched_repeats = map_dfr(seq_len(n_matched_repeats), run_matched_repeat)
+write_csv(matched_repeats, file.path(out_dir, "split_fold_matched_repeats.csv"))
 
-matched_res = map2_dfr(matched_design$soup_library, matched_design$celltype, function(lib, ct) {
-  message(sprintf("  matched: %s / %s", lib, ct))
-  split_one(lib, ct, meta_tbl = matched_meta, cpm_mat = ms_cpm, logcpm_mat = ms_logcpm)
-})
-
-matched_summary = matched_res %>%
+matched_summary = matched_repeats %>%
   group_by(soup_library, celltype) %>%
-  summarise(n_genes = n(),
-            median_var_between_birds = median(var_between_birds),
-            median_F = median(F_between),
-            F_ratio = dplyr::first(obs_median_F) / dplyr::first(median_of_perm_medians),
-            p_global = dplyr::first(p_global),
-            n_sig = sum(padj_perm < 0.05),
+  summarise(n_repeats = n(),
+            n_genes = median(n_genes),
+            median_var_between_birds = median(median_var_between_birds),
+            median_F = median(median_F),
+            ## min/max/sd before the median: summarise() evaluates in order and later expressions
+            ## see the columns the earlier ones created, so computing F_ratio first would silently
+            ## take min() and max() of a single collapsed value and report a zero range.
+            F_ratio_min = min(F_ratio),
+            F_ratio_max = max(F_ratio),
+            F_ratio_sd = sd(F_ratio),
+            F_ratio = median(F_ratio),
+            ## Worst case over repeats, so a cell type only counts as significant if every draw said
+            ## so -- the subsample is a nuisance, not a lottery ticket to be kept when it wins.
+            p_global = max(p_global),
+            n_sig = median(n_sig),
             .groups = "drop") %>%
-  left_join(matched_design %>% select(soup_batch, soup_library, celltype), by = c("soup_library", "celltype")) %>%
+  left_join(split_design %>% select(soup_batch, soup_library, celltype),
+            by = c("soup_library", "celltype")) %>%
   mutate(padj_global = p.adjust(p_global, method = "BH")) %>%
   arrange(desc(F_ratio))
 write_csv(matched_summary, file.path(out_dir, "split_fold_matched_summary.csv"))
 print(matched_summary, n = 40)
+
+## How reproducible is the ranking between two independent subsamples? This is the number that says
+## whether neighbouring cell types in the figure can be told apart at all.
+repeat_ranks = matched_repeats %>%
+  select(soup_library, celltype, repeat_id, F_ratio) %>%
+  pivot_wider(names_from = repeat_id, values_from = F_ratio, names_prefix = "r") %>%
+  select(starts_with("r"))
+repeat_rho = cor(repeat_ranks, method = "spearman")
+message(sprintf("matched F_ratio rank correlation between repeats: median rho = %.2f (range %.2f-%.2f)",
+                median(repeat_rho[lower.tri(repeat_rho)]),
+                min(repeat_rho[lower.tri(repeat_rho)]),
+                max(repeat_rho[lower.tri(repeat_rho)])))
+message(sprintf("median spread of F_ratio across repeats: %.3f (max %.3f)",
+                median(matched_summary$F_ratio_max - matched_summary$F_ratio_min),
+                max(matched_summary$F_ratio_max - matched_summary$F_ratio_min)))
 
 matched_conf = cor.test(log10(split_summary$n_cells[match(paste(matched_summary$soup_library, matched_summary$celltype),
                                                           paste(split_summary$soup_library, split_summary$celltype))]),
@@ -722,6 +822,10 @@ gg = matched_summary %>%
   ggplot(aes(F_ratio, fct_reorder(label, F_ratio), colour = class)) +
   ## The sampling floor: birds no further apart than an arbitrary regrouping of their own folds.
   geom_vline(xintercept = 1, linetype = 2, colour = "grey60") +
+  ## Range over the subsampling repeats. These overlap heavily, which is the point: the ordering of
+  ## any two neighbouring cell types is not resolved by this data set, only the ends of the range
+  ## are.
+  geom_linerange(aes(xmin = F_ratio_min, xmax = F_ratio_max), linewidth = 0.3, alpha = 0.6) +
   geom_point(size = 1.8) +
   scale_colour_manual(values = class_colors, name = NULL, drop = FALSE) +
   ## Two rows: four classes in one row is wider than the panel here and the last label is cut off.
