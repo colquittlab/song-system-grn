@@ -722,14 +722,24 @@ gg = matched_summary %>%
   ggplot(aes(F_ratio, fct_reorder(label, F_ratio), colour = class)) +
   ## The sampling floor: birds no further apart than an arbitrary regrouping of their own folds.
   geom_vline(xintercept = 1, linetype = 2, colour = "grey60") +
-  geom_point(size = 2.5) +
+  geom_point(size = 1.8) +
   scale_colour_manual(values = class_colors, name = NULL, drop = FALSE) +
+  ## Two rows: four classes in one row is wider than the panel here and the last label is cut off.
+  guides(colour = guide_legend(nrow = 2)) +
   labs(x = sprintf("between-bird F ratio (%s cells per bird)", min_cells_split), y = NULL) +
-  theme(axis.text.y = element_text(size = 7),
+  ## The axis title and legend are sized down with the tick labels rather than left at the cowplot
+  ## default: at this width (base_asp 0.6) a 14 pt title and legend run past the panel and are
+  ## clipped, which is not visible in the object, only in the saved file.
+  theme(axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 5),
+        axis.title.x = element_text(size = 7),
         legend.position = "top",
+        legend.justification = "center",
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(8, "pt"),
         plot.background = element_rect(fill = "white", colour = NA))
-save_plot(file.path(out_dir, "split_fold_matched_ranking.pdf"), gg, base_height = 6, base_asp = 1.2)
-save_plot(file.path(out_dir, "split_fold_matched_ranking.png"), gg, base_height = 6, base_asp = 1.2)
+save_plot(file.path(out_dir, "split_fold_matched_ranking.pdf"), gg, base_height = 6, base_asp = 0.6)
+save_plot(file.path(out_dir, "split_fold_matched_ranking.png"), gg, base_height = 6, base_asp = 0.6)
 
 # Figures -----------------------------------------------------------------
 
