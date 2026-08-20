@@ -1,0 +1,276 @@
+---
+title: "Ex_-style aliases for the glutamatergic clusters"
+format: html
+editor: source
+---
+
+Applies the naming grammar validated in `zaremba_naming_validation.qmd` -- `Ex_<gene1>[_<gene2>]`,
+from Zaremba et al. 2025 (*Science* 387:adp5182) -- to this project's own glutamatergic clusters, as
+an alias next to the existing region-based names, not a replacement for them.
+
+**What this does not do.** It does not recluster, does not rename `cluster`/`celltype`, and does not
+claim that a generated `Ex_<gene>` alias denotes the same cell type Zaremba's identically-formatted
+name does -- that is a cross-species homology claim, answered only by your own Xenium spatial
+correspondences (supplied below as `xenium_overrides`) or by actually running the cross-species
+integration in `snrna_zaremba-chk_integration_glut_sct_k10-f50-s30-d40.qmd`, not by string formatting.
+Everywhere you have not supplied a confirmed correspondence, the alias is generated fresh from this
+cluster's own top markers in *this* dataset -- informative, real, but not a Zaremba identity claim.
+
+**Independent from the preprocessing/clustering/visualization notebook by design**, per your request:
+this reads `obj_clustered.qs2` read-only and never sources or requires
+`snrna_seurat_cellbender_preprocess.qmd`. It also does not write back into that file -- see
+*Why not write onto `obj_clustered.qs2` directly* below.
+
+**Nesting**, per the validation notebook's result: comparing a cluster only against its *region*
+siblings (e.g. `Glut-HVC-1a` against `Glut-HVC-1`/`Glut-HVC-2` only, not against every other
+glutamatergic cluster) found a real, uniquely-identifying marker for 69% of Zaremba's own supertypes
+against 54% for a flat comparison across the whole population -- a large enough gap to make nesting
+the default here rather than a coin flip. Read `zaremba_naming_validation.qmd` before trusting this
+number in isolation: nesting was a wash on literally reproducing Zaremba's *specific* gene choices,
+so it is adopted here for the "finds a real distinguishing marker" property, not because it recovers
+their exact genes -- there is no ground truth for that on this dataset anyway, which is exactly why
+that property is what matters here.
+
+## Packages
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(knitr)
+
+## Nothing here needs AnnotationHub/ensembldb -- no cross-species gene-ID mapping is required for
+## this dataset's own gene symbols, so the dplyr-verb masking that bit zaremba_naming_validation.qmd
+## does not apply. cluster_curation.R / cluster_naming.R still qualify every susceptible verb
+## internally regardless, so this is robust either way.
+source(here::here("scripts/cluster_curation.R"))
+source(here::here("scripts/cluster_naming.R"))
+```
+
+## Parameters
+
+```{r}
+#| label: params
+## EXPLORATORY -- not production. See ../README.md; the production filtering and naming live in
+## ../hybrid_division_naming.qmd.
+## The main clustered object, read-only, never written back to. It still has the old per-library
+## `assignment` rather than `individual`/`batch`, and it still contains Glut-Nido-3, so
+## drop_clusters below removes that artifact explicitly rather than silently naming it.
+in_fname <- here::here("snrna/clustering/snrna_seurat_cellbender_preprocess",
+                       "obj_clustered.qs2")
+cluster_col <- "cluster" # set by snrna_seurat_cellbender_preprocess.qmd's `final_cluster`
+
+## Excluded regardless of source object: confirmed artifact (see the manuscript-revision fix in
+## snrna_seurat_cellbender_preprocess.qmd), a sink cluster with pathological SLC17A6/GAD1
+## co-expression documented independently in xenium_label_transfer.qmd. Naming it would be naming
+## something already slated for removal.
+drop_clusters <- c("Glut-Nido-3")
+
+out_dir <- here::here("snrna/naming/exploratory", "glut_ex_style_naming")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+alias_fname <- file.path(out_dir, "glut_ex_style_aliases.csv")
+obj_out_fname <- file.path(out_dir, "obj_glut_ex_style.qs2")
+
+filters <- naming_filters(max_genes = 2)
+
+## Xenium-confirmed correspondences: fill these in from your spatial mapping session as you confirm
+## them. Only clusters listed here get a Zaremba-attributed name; everything else gets a fresh,
+## self-generated Ex_-style alias from its own markers (source = "generated from own markers").
+## Example: xenium_overrides <- c("Glut-HVC-1" = "Ex_DACH2_SLIT2")
+## character(), not c(): the latter evaluates to NULL, which zaremba_labels() now guards against,
+## but writing the correctly-typed empty vector here doesn't rely on that guard.
+xenium_overrides <- character()
+override_source <- "xenium spatial mapping (fill in date/session)"
+```
+
+## Load
+
+```{r}
+#| label: load
+stopifnot("input object not found at in_fname -- check the path above" = file.exists(in_fname))
+obj <- qs_read(in_fname, nthreads = 8)
+stopifnot(cluster_col %in% colnames(obj@meta.data))
+
+## Glutamatergic, non-precursor cells only -- Glut-Pre-* are immature/undifferentiated, the same
+## reason Ex_Pre_* was excluded from the Zaremba validation, and the same filter the existing
+## snrna_zaremba-chk_integration...qmd notebook already applies to the bf side for the same reason.
+## drop_clusters removes confirmed artifacts (Glut-Nido-3) regardless of what the source object
+## still contains.
+glut_cells <- colnames(obj)[grepl("^Glut", obj@meta.data[[cluster_col]]) &
+                              !grepl("Pre", obj@meta.data[[cluster_col]]) &
+                              !obj@meta.data[[cluster_col]] %in% drop_clusters]
+obj_glut <- subset(obj, cells = glut_cells)
+obj_glut@meta.data[[cluster_col]] <- droplevels(factor(obj_glut@meta.data[[cluster_col]]))
+
+tibble(n_cells = ncol(obj_glut), n_clusters = n_distinct(obj_glut@meta.data[[cluster_col]])) %>%
+  kable(caption = "Glutamatergic, non-precursor cells to be aliased")
+```
+
+## Region family: the nesting variable, parsed from your own labels
+
+```{r}
+#| label: region-family
+## Raw region is parsed from the label itself (Glut-HVC-1a -> HVC, Glut-Nido-2 -> Nido,
+## Glut-RA -> RA), not a separate metadata join. Reverted to nesting each region against itself --
+## the two-group merge tried earlier (Arco+RA, HVC+NC+NR+Nido+LMAN) cost real naming quality (more
+## unnamed clusters, real gene symbols replaced by uncharacterized loci and weaker multi-gene
+## combinations) for a grouping that turned out not to be what was wanted region by region:
+##
+##   - NR, NC, Arco: back to separate, as originally.
+##   - HVC, RA: separate, and should stay that way -- these are genuinely region-specific song
+##     nuclei, so naming within-region is the right comparison, not a limitation to work around.
+##   - Nido: separate. Also newly relevant here regardless of the region question: Nido-3 is
+##     dropped (drop_clusters, above) as a confirmed artifact; Nido-2 looks like a real distinct
+##     population (broadly distributed per-cell SLC17A6/GABA co-expression, not concentrated in one
+##     library, unexplained by depth) rather than a Nido-3-style artifact or a stand-in for "Nido in
+##     general" -- so it is named on its own here, not folded into a big cross-region comparison.
+##   - LMAN: separate too, but treat its regional specificity with more caution than the others.
+##     It is enriched in LMAN, but Xenium shows it more broadly distributed than that -- with the
+##     caveat that the Xenium panel itself was designed from HVC/RA markers only, so it may simply
+##     lack the resolution to detect true LMAN specificity, rather than LMAN specificity being
+##     genuinely absent. Nested separately here because no alternative grouping was specified, not
+##     because the region claim is as settled as HVC/RA's.
+##
+## region_group_map is kept as an explicit (currently identity) lookup, not removed, so a future
+## merge is a one-line edit here rather than a rewrite -- and so this reasoning stays attached to
+## the code that encodes it.
+region_group_map <- c(
+  Arco = "Arco", RA = "RA", HVC = "HVC", NC = "NC", NR = "NR", Nido = "Nido", LMAN = "LMAN"
+)
+
+raw_region <- function(cluster) {
+  x <- sub("^Glut-", "", cluster)
+  sub("-[0-9]+[a-z]?$", "", x)
+}
+region_family <- function(cluster) {
+  raw <- raw_region(cluster)
+  mapped <- region_group_map[raw]
+  unname(ifelse(is.na(mapped), raw, mapped))
+}
+
+family_table <- tibble(cluster = levels(droplevels(factor(obj_glut@meta.data[[cluster_col]])))) %>%
+  mutate(raw_region = raw_region(cluster), family = region_family(cluster)) %>%
+  arrange(family, raw_region, cluster)
+
+kable(family_table, caption = paste(
+  "Parsed region and coarsened family per cluster -- check both columns before trusting the",
+  "nesting below. A raw_region not in region_group_map (unexpected) would print as its own family."
+))
+
+family_table %>%
+  count(family, name = "n_children") %>%
+  kable(caption = "Clusters per family. A family of 1 has no sibling to nest against (see fallback below).")
+```
+
+## Generate aliases, nested by region family
+
+```{r}
+#| label: generate
+sizes <- family_table %>% count(family, name = "n_children")
+multi_families <- sizes %>% dplyr::filter(n_children > 1) %>% pull(family)
+singleton_clusters <- family_table %>%
+  dplyr::filter(family %in% (sizes %>% dplyr::filter(n_children == 1) %>% pull(family))) %>%
+  pull(cluster)
+
+## Nested: each cluster's markers chosen only against its region siblings.
+nested_aliases <- map(multi_families, function(fam) {
+  clusters_fam <- family_table %>% dplyr::filter(family == fam) %>% pull(cluster)
+  cells_fam <- colnames(obj_glut)[obj_glut@meta.data[[cluster_col]] %in% clusters_fam]
+  obj_fam <- subset(obj_glut, cells = cells_fam)
+  zaremba_labels(obj_fam, cluster_col, overrides = xenium_overrides,
+                override_source = override_source, filters = filters) %>%
+    mutate(family = fam)
+})
+
+## Singleton families: nothing to nest against, so fall back to this cluster vs every other
+## glutamatergic cluster in the dataset. Computed once, reused for every singleton rather than
+## rerun per cluster -- it is the same flat DE regardless of which singleton is being named.
+singleton_aliases <- if (length(singleton_clusters) > 0) {
+  de_flat <- cluster_de(obj_glut, cluster_col)
+  zaremba_labels(obj_glut, cluster_col, overrides = xenium_overrides,
+                override_source = override_source, filters = filters, de = de_flat) %>%
+    dplyr::filter(cluster %in% singleton_clusters) %>%
+    left_join(family_table, by = "cluster")
+} else {
+  tibble()
+}
+
+aliases <- bind_rows(nested_aliases, singleton_aliases) %>%
+  arrange(family, cluster)
+
+kable(aliases, caption = paste(
+  "celltype_ex_style per cluster. source distinguishes an override (your Xenium correspondence)",
+  "from a name generated fresh from this cluster's own markers -- read it before treating any",
+  "generated name as more than 'a real distinguishing gene', let alone a Zaremba identity claim."
+))
+
+tibble(
+  n_clusters = nrow(aliases),
+  n_overridden = sum(aliases$source == override_source),
+  n_generated = sum(aliases$source == "generated from own markers"),
+  n_unnamed = sum(aliases$source == "no marker cleared naming_filters()")
+) %>%
+  kable(caption = "Coverage")
+```
+
+## Unnamed clusters, if any
+
+```{r}
+#| label: unnamed
+## A cluster with no marker clearing naming_filters() is not necessarily a bad cluster -- it may
+## just be poorly separated from its region siblings at the current resolution. Worth reading beside
+## scripts/cluster_curation.R's flags (no_unique_markers), which asks the same question for a
+## different purpose (curation) using the same underlying select_naming_genes() call.
+unnamed <- aliases %>% dplyr::filter(is.na(celltype_ex_style))
+if (nrow(unnamed) > 0) {
+  kable(unnamed %>% select(cluster, family, source), caption = "Clusters with no Ex_-style alias")
+} else {
+  message("Every cluster got an alias.")
+}
+```
+
+## Write the lookup
+
+```{r}
+#| label: write-lookup
+write_csv(aliases %>% select(cluster, family, celltype_ex_style, source, naming_genes,
+                             n_naming_genes, unique_id),
+          alias_fname)
+message("Wrote ", alias_fname)
+```
+
+## Attach to the glutamatergic subset (a copy, not `obj_clustered.qs2`)
+
+Why not write onto `obj_clustered.qs2` directly, given you asked for a metadata column on the
+object: that file is owned by `snrna_seurat_cellbender_preprocess.qmd`, and this notebook is
+independent of it by your request. If this notebook wrote back into that file, a later re-run of
+the preprocessing notebook would silently overwrite the alias column with no record it had ever
+been there, and "independent" would only be true in one direction. Instead this writes its own copy
+of just the glutamatergic subset, with the alias attached, so nothing about the canonical object
+changes as a side effect of running this one.
+
+```{r}
+#| label: attach
+obj_glut <- AddMetaData(obj_glut, aliases %>% select(cluster, celltype_ex_style, source) %>%
+                          column_to_rownames("cluster") %>%
+                          .[obj_glut@meta.data[[cluster_col]], , drop = FALSE] %>%
+                          `rownames<-`(colnames(obj_glut)))
+qs_save(obj_glut, obj_out_fname, nthreads = 8)
+message("Wrote ", obj_out_fname)
+```
+
+To pull the alias onto your own live object interactively instead:
+
+```r
+aliases <- read_csv(here::here("snrna/naming/exploratory/glut_ex_style_naming", "glut_ex_style_aliases.csv"))
+obj$celltype_ex_style <- aliases$celltype_ex_style[match(obj$cluster, aliases$cluster)]
+```
+
+## Session info
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

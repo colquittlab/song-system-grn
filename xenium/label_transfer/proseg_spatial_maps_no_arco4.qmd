@@ -1,0 +1,463 @@
+---
+title: "Xenium spatial maps — proseg RCTD calls, no-Arco-4 reference"
+format: html
+editor: source
+---
+
+Identical to `proseg_spatial_maps.qmd` except the RCTD reference used to
+produce `rctd_all.csv.gz` additionally excludes `Glut-Arco-4` (on top of the
+already-excluded `Glut-Nido-3`) — see
+`xenium/label_transfer/hpc_rctd_proseg_no_arco4/README.md`. Output goes to a
+distinct directory (`proseg_spatial_maps_no_arco4/`) so the with-Arco-4 figures
+are not overwritten; the two can be compared side by side.
+
+Spatial location of confident RCTD calls (proseg segmentation, all ten
+sections) for the ten glutamatergic types named as the primary targets of this
+analysis: `Glut-HVC-1`, `Glut-HVC-2`, `Glut-NC-1`, `Glut-NC-4`, `Glut-RA`,
+`Glut-Arco-1`, `Glut-LMAN-1`, `Glut-LMAN-2`, `Glut-NR-1`, `Glut-NR-4`.
+
+Two products: one combined figure with all ten types overlaid (distinct
+colors, faceted by section), and ten single-type figures (same layout, one
+type highlighted at a time) — the single-type views are what should be used to
+judge any one type's distribution, since with ten overlapping colors the
+combined figure is dominated by whichever type happens to be plotted last in
+a given location.
+
+Every panel also shows every profiled cell in light grey, regardless of
+`spot_class` or type, so the tissue outline and section orientation are always
+visible — without it, the highlighted points alone give no anatomical context.
+
+```{r}
+library(tidyverse)
+library(Seurat)   # only for DiscretePalette — no Seurat object involved here
+library(cowplot)
+library(here)
+
+source(here::here("config/paths.R"))
+select = dplyr::select
+```
+
+```{r}
+script_name = "proseg_spatial_maps_no_arco4"
+hpc_dir = path.expand("~/hdd/rstudio/xenium/260811_brainard_adult-425g/hpc_rctd_proseg_no_arco4")
+out_dir = here::here("xenium/label_transfer", script_name)
+dir.create(out_dir, recursive = T, showWarnings = F)
+
+song_types = c("Glut-HVC-1", "Glut-HVC-2", "Glut-NC-1", "Glut-NC-4", "Glut-RA",
+              "Glut-Arco-1", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-NR-1", "Glut-NR-4")
+
+section_order = c("OR52YW26_1_4", "OR52YW26_1_7", "OR52YW26_2_2", "OR52YW26_2_4", "OR52YW26_2_7",
+                  "OR69PU4_1_4", "OR69PU4_1_7", "OR69PU4_2_2", "OR69PU4_2_4", "OR69PU4_2_7")
+
+## confident = the same threshold used throughout xenium_label_transfer.qmd and
+## the proseg validation: RCTD singlet or confident doublet
+confident_classes = c("singlet", "doublet_certain")
+```
+
+## Load
+
+```{r}
+rctd = read_csv(file.path(hpc_dir, "rctd_all.csv.gz"), show_col_types = FALSE) %>%
+  select(cell, spot_class, first_type)
+
+md = read_csv(file.path(hpc_dir, "proseg_cell_metadata.csv.gz"), show_col_types = FALSE) %>%
+  select(cell, section_id, x_centroid, y_centroid)
+
+## Per-cell transcript count (panel nUMI), for the depth-filtered set built
+## further down. Already computed once by RCTD (`spatialRNA@nUMI` inside every
+## chunk object, sliced from `colSums()` at query-build time) — read back out
+## of the chunks rather than resumming raw proseg counts.
+ncount = read_csv(file.path(hpc_dir, "proseg_ncount.csv.gz"), show_col_types = FALSE)
+
+d = md %>%
+  left_join(rctd, by = "cell") %>%
+  left_join(ncount, by = "cell") %>%
+  mutate(section_id = factor(section_id, levels = section_order),
+         confident = spot_class %in% confident_classes)
+
+nrow(d)
+d %>% count(section_id)
+summary(d$nCount)
+```
+
+## Common orientation — posterior left, dorsal up
+
+Per-section rotation/flip so every panel shares the same anatomical
+orientation, applied to `x_centroid`/`y_centroid` before any plotting (raw
+coordinates elsewhere in the pipeline — ROI polygons, RCTD itself — are
+untouched; this is cosmetic to this figure set only). Rotations are in the
+standard mathematical sense (x right, y up): CCW90 is `(x,y) -> (-y,x)`, CW90 is
+`(x,y) -> (y,-x)`; a flip negates x, applied after any rotation.
+`OR52YW26_1_4` and `OR69PU4_1_4` are not listed and are left as-is.
+
+```{r}
+section_transform = tribble(
+  ~section_id,     ~rotate,  ~flip_h,
+  "OR52YW26_1_4",  "none",   FALSE,
+  "OR52YW26_1_7",  "ccw90",  FALSE,
+  "OR52YW26_2_2",  "ccw90",  TRUE,
+  "OR52YW26_2_4",  "ccw90",  FALSE,
+  "OR52YW26_2_7",  "cw90",   TRUE,
+  "OR69PU4_1_4",   "none",   FALSE,
+  "OR69PU4_1_7",   "ccw90",  TRUE,
+  "OR69PU4_2_2",   "cw90",   FALSE,
+  "OR69PU4_2_4",   "ccw90",  FALSE,
+  "OR69PU4_2_7",   "ccw90",  FALSE,
+)
+stopifnot(setequal(section_transform$section_id, section_order))
+
+d = d %>%
+  left_join(section_transform, by = "section_id") %>%
+  mutate(
+    x_rot = case_when(rotate == "none"  ~ x_centroid,
+                      rotate == "ccw90" ~ -y_centroid,
+                      rotate == "cw90"  ~ y_centroid),
+    y_rot = case_when(rotate == "none"  ~ y_centroid,
+                      rotate == "ccw90" ~ x_centroid,
+                      rotate == "cw90"  ~ -x_centroid),
+    x_plot = if_else(flip_h, -x_rot, x_rot),
+    y_plot = y_rot) %>%
+  select(-rotate, -flip_h, -x_rot, -y_rot)
+```
+
+```{r}
+stopifnot(all(song_types %in% unique(d$first_type)))
+
+highlight = d %>% filter(confident, first_type %in% song_types) %>%
+  mutate(first_type = factor(first_type, levels = song_types))
+
+highlight %>% count(first_type) %>% arrange(desc(n))
+```
+
+## Palette
+
+`Seurat::DiscretePalette(..., "polychrome")`'s first two colors are `#5A5156`
+(dark grey) and `#E4E1E3` (near-white) — both nearly invisible against the
+grey background / white page used here, and Glut-HVC-1/Glut-HVC-2 are exactly
+the two types that most need to stay legible. Picked by hand instead: fully
+saturated, mutually distinguishable, none close to white or grey.
+
+Glut-HVC-1's original color (`#E6194B`) was replaced with black — it was
+nearly identical to `position_colors["ra"]` (`#e31a1c`) in
+`/opt/colquittlab/utils/R/common_aesthetics.R`, the lab's standard color for
+the RA position, which risked being misread as RA in any figure shown
+alongside that convention. Black is unused elsewhere in this palette and
+reads clearly against the grey background. The same fix (that red -> black)
+is applied everywhere else in this document a single fixed highlight color is
+used: `single_type_colour`, `pair_song_colour`, and `pre_colors["Glut-Pre-1"]`.
+
+```{r}
+type_colors = setNames(
+  c("#000000", "#3CB44B", "#4363D8", "#F58231", "#911EB4",
+    "#42D4F4", "#F032E6", "#BFEF45", "#000075", "#9A6324"),
+  song_types)
+
+scales::show_col(type_colors)
+```
+
+## Plot helper
+
+`coord_equal()` (needed so tissue isn't visually stretched) cannot be combined
+with `facet_wrap(scales = "free")` in current ggplot2 — sections differ enough
+in extent and aspect that a shared scale would shrink most of them to a sliver.
+Built as one `coord_equal()` plot per section instead, then assembled with
+`cowplot::plot_grid()`, which gives the same layout without that restriction.
+
+```{r}
+theme_spatial = theme_cowplot() +
+  theme(axis.title = element_blank(), axis.text = element_blank(),
+        axis.line = element_blank(), axis.ticks = element_blank(),
+        plot.title = element_text(size = 10, hjust = 0.5))
+
+section_plot = function(sid, hl, point_colour = NULL) {
+  bg = d %>% filter(section_id == sid)
+  hl_sid = hl %>% filter(section_id == sid)
+
+  p = ggplot() +
+    geom_point(data = bg, aes(x_plot, y_plot),
+               colour = "grey85", size = 0.03, alpha = 0.4) +
+    coord_equal() + labs(title = sid) + theme_spatial
+
+  if (nrow(hl_sid) == 0) return(p)
+
+  if (is.null(point_colour)) {
+    p + geom_point(data = hl_sid, aes(x_plot, y_plot, colour = first_type),
+                   size = 0.25, alpha = 0.85) +
+      scale_colour_manual(values = type_colors, name = NULL, limits = song_types,
+                          guide = "none")
+  } else {
+    p + geom_point(data = hl_sid, aes(x_plot, y_plot),
+                   colour = point_colour, size = 0.3, alpha = 0.85)
+  }
+}
+```
+
+## Aggregate — all ten types, one figure
+
+```{r}
+panels = map(section_order, section_plot, hl = highlight)
+
+## shared legend, built once from a dummy plot carrying every type level
+legend_plot = ggplot(tibble(first_type = factor(song_types, levels = song_types)),
+                     aes(1, 1, colour = first_type)) +
+  geom_point(size = 3) +
+  scale_colour_manual(values = type_colors, name = NULL)
+legend = cowplot::get_legend(legend_plot)
+
+grid = cowplot::plot_grid(plotlist = panels, ncol = 5)
+p_agg = cowplot::plot_grid(grid, legend, ncol = 2, rel_widths = c(1, 0.12))
+
+ggsave(file.path(out_dir, "spatial_song_types_aggregate.png"), p_agg,
+       width = 22, height = 9, dpi = 250, bg = "white")
+p_agg
+```
+
+## Individual — one type per figure
+
+```{r}
+for (ty in song_types) {
+  hl = highlight %>% filter(first_type == ty)
+  panels = map(section_order, section_plot, hl = hl, point_colour = type_colors[[ty]])
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(paste0(ty, "  (n = ", nrow(hl), " confident cells)"),
+                               position = "top", size = 14)
+
+  fname = paste0("spatial_", str_replace_all(ty, "-", "_"), ".png")
+  ggsave(file.path(out_dir, fname), p, width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+
+list.files(out_dir, pattern = "^spatial_")
+```
+
+## Song vs. non-song comparator pairs
+
+Five song-nucleus / adjacent-comparator pairs, each pair in one figure, song
+type drawn on top of its comparator so it isn't obscured where the comparator
+is more abundant. Fixed colors reused across all five pairs (song = red,
+comparator = blue) rather than a distinct palette per pair.
+
+```{r}
+pair_list = tribble(
+  ~song,          ~nonsong,
+  "Glut-HVC-1",   "Glut-NC-1",
+  "Glut-HVC-2",   "Glut-NC-4",
+  "Glut-LMAN-1",  "Glut-NR-1",
+  "Glut-LMAN-2",  "Glut-NR-4",
+  "Glut-RA",      "Glut-Arco-1",
+)
+stopifnot(all(c(pair_list$song, pair_list$nonsong) %in% song_types))
+
+pair_song_colour = "#000000"
+pair_nonsong_colour = "#4363D8"
+
+pair_section_plot = function(sid, song_ty, nonsong_ty, hl_data = highlight) {
+  bg = d %>% filter(section_id == sid)
+  hl_non  = hl_data %>% filter(section_id == sid, first_type == nonsong_ty)
+  hl_song = hl_data %>% filter(section_id == sid, first_type == song_ty)
+
+  ggplot() +
+    geom_point(data = bg, aes(x_plot, y_plot), colour = "grey85", size = 0.03, alpha = 0.4) +
+    geom_point(data = hl_non, aes(x_plot, y_plot), colour = pair_nonsong_colour,
+               size = 0.25, alpha = 0.8) +
+    geom_point(data = hl_song, aes(x_plot, y_plot), colour = pair_song_colour,
+               size = 0.25, alpha = 0.85) +
+    coord_equal() + labs(title = sid) + theme_spatial
+}
+
+for (i in seq_len(nrow(pair_list))) {
+  song_ty = pair_list$song[i]; nonsong_ty = pair_list$nonsong[i]
+  panels = map(section_order, pair_section_plot, song_ty = song_ty, nonsong_ty = nonsong_ty)
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(
+      paste0(song_ty, " (red)  vs.  ", nonsong_ty, " (blue)"),
+      position = "top", size = 14)
+
+  fname = paste0("spatial_pair_", str_replace_all(song_ty, "-", "_"),
+                 "_vs_", str_replace_all(nonsong_ty, "-", "_"), ".png")
+  ggsave(file.path(out_dir, fname), p, width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+
+list.files(out_dir, pattern = "^spatial_pair_")
+```
+
+## Individual — every cell call in the taxonomy
+
+All 48 labels present in the RCTD output, not just the ten glutamatergic
+targets above. One fixed colour throughout (no per-type palette, since only
+one type is ever shown per figure) — kept as a separate `spatial_all_*` file
+series so the distinctly-coloured ten figures above are untouched.
+
+```{r}
+all_types = sort(unique(d$first_type))
+length(all_types)
+
+single_type_colour = "#000000"
+
+for (ty in all_types) {
+  hl = d %>% filter(confident, first_type == ty)
+  panels = map(section_order, section_plot, hl = hl, point_colour = single_type_colour)
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(paste0(ty, "  (n = ", nrow(hl), " confident cells)"),
+                               position = "top", size = 14)
+
+  ## "/" in Glut-NC/Glut-Nido would otherwise break the path
+  safe_name = str_replace_all(ty, "[/-]", "_")
+  ggsave(file.path(out_dir, paste0("spatial_all_", safe_name, ".png")), p,
+         width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+
+list.files(out_dir, pattern = "^spatial_all_")
+```
+
+## Aggregate — Glut-Pre-1/2/3
+
+Same construction as the ten-type aggregate above, scoped to the three
+`Glut-Pre-*` types with their own small palette.
+
+```{r}
+pre_types = c("Glut-Pre-1", "Glut-Pre-2", "Glut-Pre-3")
+stopifnot(all(pre_types %in% unique(d$first_type)))
+
+pre_colors = setNames(c("#000000", "#3CB44B", "#4363D8"), pre_types)
+
+pre_highlight = d %>% filter(confident, first_type %in% pre_types) %>%
+  mutate(first_type = factor(first_type, levels = pre_types))
+pre_highlight %>% count(first_type)
+
+pre_section_plot = function(sid, hl_data = pre_highlight) {
+  bg = d %>% filter(section_id == sid)
+  hl_sid = hl_data %>% filter(section_id == sid)
+
+  p = ggplot() +
+    geom_point(data = bg, aes(x_plot, y_plot), colour = "grey85", size = 0.03, alpha = 0.4) +
+    coord_equal() + labs(title = sid) + theme_spatial
+
+  if (nrow(hl_sid) == 0) return(p)
+
+  p + geom_point(data = hl_sid, aes(x_plot, y_plot, colour = first_type),
+                 size = 0.25, alpha = 0.85) +
+    scale_colour_manual(values = pre_colors, name = NULL, limits = pre_types, guide = "none")
+}
+
+panels = map(section_order, pre_section_plot)
+
+legend_plot = ggplot(tibble(first_type = factor(pre_types, levels = pre_types)),
+                     aes(1, 1, colour = first_type)) +
+  geom_point(size = 3) +
+  scale_colour_manual(values = pre_colors, name = NULL)
+legend = cowplot::get_legend(legend_plot)
+
+grid = cowplot::plot_grid(plotlist = panels, ncol = 5)
+p_pre = cowplot::plot_grid(grid, legend, ncol = 2, rel_widths = c(1, 0.12))
+
+ggsave(file.path(out_dir, "spatial_glut_pre_aggregate.png"), p_pre,
+       width = 22, height = 9, dpi = 250, bg = "white")
+p_pre
+```
+
+## Depth-filtered parallel set (nCount >= 400)
+
+Every plot above uses only `confident` (RCTD singlet or confident doublet) with
+no floor on transcript count beyond RCTD's own `UMI_min = 20` — permissive,
+since a cell can be a confident *call* while still resting on very little
+signal. `xenium_label_transfer.qmd`'s depth analysis found composition below
+roughly 400 counts is increasingly depth-driven rather than identity-driven
+(e.g. `Endo` runs 49% of calls under 100 counts, 0.5% above 1600); this section
+repeats every figure above with that same `nCount >= 400` floor added on top of
+`confident`, so the two can be compared directly. The grey background (all
+profiled cells, any depth) is left unfiltered in both, so only the colored
+overlay differs — the tissue silhouette is a fixed reference, not part of the
+comparison. Files carry a `_gte400` suffix.
+
+```{r}
+deep_min_counts = 400
+
+highlight_gte400 = highlight %>% filter(nCount >= deep_min_counts)
+pre_highlight_gte400 = pre_highlight %>% filter(nCount >= deep_min_counts)
+
+highlight_gte400 %>% count(first_type) %>% arrange(desc(n))
+pre_highlight_gte400 %>% count(first_type)
+```
+
+### Aggregate (gte400)
+
+```{r}
+panels = map(section_order, section_plot, hl = highlight_gte400)
+grid = cowplot::plot_grid(plotlist = panels, ncol = 5)
+p_agg_deep = cowplot::plot_grid(grid, legend, ncol = 2, rel_widths = c(1, 0.12))
+
+ggsave(file.path(out_dir, "spatial_song_types_aggregate_gte400.png"), p_agg_deep,
+       width = 22, height = 9, dpi = 250, bg = "white")
+p_agg_deep
+```
+
+### Individual — one type per figure (gte400)
+
+```{r}
+for (ty in song_types) {
+  hl = highlight_gte400 %>% filter(first_type == ty)
+  panels = map(section_order, section_plot, hl = hl, point_colour = type_colors[[ty]])
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(paste0(ty, "  (n = ", nrow(hl), " confident cells, nCount >= ",
+                                      deep_min_counts, ")"),
+                               position = "top", size = 14)
+
+  fname = paste0("spatial_", str_replace_all(ty, "-", "_"), "_gte400.png")
+  ggsave(file.path(out_dir, fname), p, width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+```
+
+### Song vs. non-song comparator pairs (gte400)
+
+```{r}
+for (i in seq_len(nrow(pair_list))) {
+  song_ty = pair_list$song[i]; nonsong_ty = pair_list$nonsong[i]
+  panels = map(section_order, pair_section_plot, song_ty = song_ty, nonsong_ty = nonsong_ty,
+              hl_data = highlight_gte400)
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(
+      paste0(song_ty, " (red)  vs.  ", nonsong_ty, " (blue) — nCount >= ", deep_min_counts),
+      position = "top", size = 14)
+
+  fname = paste0("spatial_pair_", str_replace_all(song_ty, "-", "_"),
+                 "_vs_", str_replace_all(nonsong_ty, "-", "_"), "_gte400.png")
+  ggsave(file.path(out_dir, fname), p, width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+```
+
+### Individual — every cell call in the taxonomy (gte400)
+
+```{r}
+all_confident_gte400 = d %>% filter(confident, nCount >= deep_min_counts)
+
+for (ty in all_types) {
+  hl = all_confident_gte400 %>% filter(first_type == ty)
+  panels = map(section_order, section_plot, hl = hl, point_colour = single_type_colour)
+  p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
+    cowplot::draw_figure_label(paste0(ty, "  (n = ", nrow(hl), " confident cells, nCount >= ",
+                                      deep_min_counts, ")"),
+                               position = "top", size = 14)
+
+  safe_name = str_replace_all(ty, "[/-]", "_")
+  ggsave(file.path(out_dir, paste0("spatial_all_", safe_name, "_gte400.png")), p,
+         width = 20, height = 9.5, dpi = 250, bg = "white")
+}
+
+list.files(out_dir, pattern = "_gte400\\.png$") %>% length()
+```
+
+### Aggregate — Glut-Pre-1/2/3 (gte400)
+
+```{r}
+panels = map(section_order, pre_section_plot, hl_data = pre_highlight_gte400)
+grid = cowplot::plot_grid(plotlist = panels, ncol = 5)
+p_pre_deep = cowplot::plot_grid(grid, legend, ncol = 2, rel_widths = c(1, 0.12))
+
+ggsave(file.path(out_dir, "spatial_glut_pre_aggregate_gte400.png"), p_pre_deep,
+       width = 22, height = 9, dpi = 250, bg = "white")
+p_pre_deep
+```
+
+```{r}
+sessionInfo()
+```

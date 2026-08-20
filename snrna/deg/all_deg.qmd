@@ -19,7 +19,7 @@ library(proxy)
 library(here)
 select = dplyr::select
 
-source(here::here("scripts/gene_lists.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "gene_lists.R"))
 ```
 
 ```{r}

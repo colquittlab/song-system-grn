@@ -1,0 +1,28 @@
+## Conda/micromamba environment for the proseg array job on the cluster.
+##
+##   micromamba create -f scripts/environment.yml
+##   micromamba activate xenium-proseg
+##   cargo install proseg      # fetches from crates.io — confirmed OK to reach
+##
+## One env covers both needs here:
+##   - rust/cargo to build the proseg binary (a single Rust crate, no heavy
+##     system deps beyond a C++ toolchain for its few native dependencies)
+##   - a minimal R (readr/dplyr/stringr only) for scripts/03_gather_status.R,
+##     which just checks which sections finished — not needed to run proseg
+##     itself, only for that convenience check
+##
+## `cargo install` puts the `proseg` binary in $CARGO_HOME/bin (default
+## ~/.cargo/bin) regardless of whether rustc came from here or from rustup —
+## proseg_array.sbatch already puts that on PATH, so no further wiring needed.
+name: xenium-proseg
+channels:
+  - conda-forge
+dependencies:
+  - rust
+  - compilers
+  - pkg-config
+  - openssl
+  - r-base=4.4
+  - r-readr
+  - r-dplyr
+  - r-stringr

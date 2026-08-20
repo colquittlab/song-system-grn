@@ -1,0 +1,598 @@
+---
+title: "Xenium panel resolution benchmark"
+format: html
+editor: source
+---
+
+Determines the finest level of the snRNA-seq cell type taxonomy that can be
+recovered from the 425-gene Xenium panel (design `Z2XBPV`) alone. This is the
+prerequisite for label transfer onto the Xenium sections: it sets the label
+granularity every downstream spatial analysis is allowed to assume.
+
+The reference snRNA-seq data are subset to the panel genes and binomially
+thinned to the transcript depth actually observed in the Xenium run, producing a
+"pseudo-Xenium" dataset with known labels. Held-out cells are then classified
+under cross-validation, at three levels of the taxonomy, with two independent
+classifiers.
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(BPCells)   # snRNA counts layers are on-disk BPCells matrices
+library(qs2)
+library(Matrix)
+library(cowplot)
+library(here)
+
+source(here::here("config/paths.R"))
+select = dplyr::select
+```
+
+```{r}
+script_name = "panel_resolution_benchmark"
+out_dir = here::here("xenium/label_transfer", script_name)
+dir.create(out_dir, recursive = T, showWarnings = F)
+
+ref_obj_fname = file.path(SNRNA_SEURAT_DIR, "obj_clustered.qs2")
+
+## CellBender-corrected counts (default RNA assay of the snRNA object)
+assay_to_use = "RNA"
+label_col = "cluster"
+
+## Cross-validation
+n_folds = 5
+min_cells_per_label = 30    # labels below this are excluded and reported
+max_cells_per_label = 500   # downsample large clusters for tractability
+npcs = 30                   # < 425 features, so PCA is well posed
+
+## A cluster is judged "recoverable" at this F1 against held-out truth.
+f1_threshold = 0.5
+
+## Labels that must survive as themselves. Merging one of these away would
+## destroy a planned comparison, so a failing label is never merged into them —
+## it is reported as unresolved instead. Glut-NC-1 is the comparator for
+## Glut-HVC-1; the song nuclei types are the subject of the spatial analysis.
+protected_labels = c("Glut-NC-1", "Glut-HVC-1", "Glut-HVC-1a", "Glut-HVC-2",
+                     "Glut-RA", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-Arco-1")
+
+## Minimum share of a failing label's cells that must be confused with a
+## candidate partner before the two are merged. Below this the confusion is
+## diffuse rather than a specific collision, and merging would degrade a
+## perfectly good label to rescue a bad one; the failing label is left
+## unresolved instead.
+min_merge_frac = 0.15
+
+seed = 10
+set.seed(seed)
+options(future.globals.maxSize = Inf)
+```
+
+## Panel and observed Xenium depth
+
+```{r}
+panel = read_csv(XENIUM_PANEL_CSV, show_col_types = FALSE)
+panel_genes = panel$Gene
+length(panel_genes)
+```
+
+Target depth for thinning is the median transcripts per cell actually achieved
+across the ten Xenium sections, not a nominal value.
+
+```{r}
+metrics_fnames = list.files(XENIUM_RAW_DIR, pattern = "metrics_summary.csv",
+                            recursive = TRUE, full.names = TRUE)
+
+xenium_metrics = map_dfr(metrics_fnames, read_csv, show_col_types = FALSE) %>%
+  select(cassette_name, region_name, num_cells_detected,
+         median_transcripts_per_cell, median_genes_per_cell,
+         fraction_transcripts_assigned, adjusted_negative_control_probe_rate)
+
+xenium_metrics
+
+target_depth = median(xenium_metrics$median_transcripts_per_cell)
+target_depth
+```
+
+## Reference
+
+```{r}
+obj = qs2::qs_read(ref_obj_fname)
+
+## Same filter as snrna/deg/all_deg.qmd: drop cells with ambiguous sample assignment
+cells = Cells(obj)[!grepl("/", obj$assignment)]
+obj = subset(obj, cells = cells)
+
+counts_all = LayerData(obj, assay = assay_to_use, layer = "counts")
+md = obj@meta.data
+dim(counts_all)
+```
+
+Panel coverage of the reference feature space. All 425 genes are expected to be
+present — the panel was designed against this dataset — so any shortfall here is
+a symbol-mismatch bug, not a biological result.
+
+```{r}
+panel_in_ref = intersect(panel_genes, rownames(counts_all))
+panel_missing = setdiff(panel_genes, rownames(counts_all))
+
+tibble(n_panel = length(panel_genes),
+       n_in_reference = length(panel_in_ref),
+       n_missing = length(panel_missing))
+
+panel_missing
+```
+
+```{r}
+tibble(gene = panel_genes,
+       in_reference = panel_genes %in% rownames(counts_all)) %>%
+  write_csv(file.path(out_dir, "panel_genes_in_reference.csv"))
+```
+
+## Pseudo-Xenium construction
+
+Subset to panel genes, then binomially thin each cell to the observed Xenium
+depth. Thinning matters: reference cells carry far more counts over these genes
+than a Xenium cell does, and an un-thinned benchmark would report an accuracy
+the real data cannot reach.
+
+```{r}
+thin_counts = function(m, target, seed = 1) {
+  set.seed(seed)
+  m = as(m, "CsparseMatrix")
+  tot = Matrix::colSums(m)
+  p = pmin(1, target / pmax(tot, 1))
+  col_idx = rep.int(seq_len(ncol(m)), diff(m@p))
+  m@x = as.numeric(rbinom(length(m@x), size = as.integer(round(m@x)), prob = p[col_idx]))
+  Matrix::drop0(m)
+}
+
+## Materialize the 425-gene slice out of the on-disk BPCells matrix
+counts_panel = as(counts_all[panel_in_ref, ], "dgCMatrix")
+counts_thin = thin_counts(counts_panel, target_depth, seed = seed)
+
+tibble(stage = c("reference, panel genes", "thinned", "Xenium (observed)"),
+       median_counts_per_cell = c(median(Matrix::colSums(counts_panel)),
+                                  median(Matrix::colSums(counts_thin)),
+                                  target_depth),
+       median_genes_per_cell = c(median(Matrix::colSums(counts_panel > 0)),
+                                 median(Matrix::colSums(counts_thin > 0)),
+                                 median(xenium_metrics$median_genes_per_cell)))
+```
+
+## Label hierarchy
+
+Three nested levels. `cluster` is the published 50-type taxonomy; `subclass`
+collapses numbered variants of a type; `class` collapses to the major
+populations.
+
+```{r}
+to_subclass = function(x) {
+  map_chr(x, function(nm) {
+    tok = str_split(nm, "-")[[1]]
+    if (tok[1] %in% c("Astro", "Oligo")) return(tok[1])
+    if (length(tok) >= 3) return(paste(tok[1], tok[2], sep = "-"))
+    nm
+  })
+}
+
+## Glut, GABA, and each non-neuronal population (Astro, Oligo, OPC, Micro, Endo, Epen)
+to_class = function(x) str_split_i(x, "-", 1)
+
+labels_tbl = tibble(cell = rownames(md),
+                    cluster = as.character(md[[label_col]])) %>%
+  filter(!is.na(cluster)) %>%
+  mutate(subclass = to_subclass(cluster),
+         class = to_class(cluster))
+
+labels_tbl %>% count(class, subclass, cluster) %>% print(n = Inf)
+```
+
+Exclude clusters too small to evaluate, and cap the large ones. Capping
+deliberately flattens cluster abundance so the benchmark measures the panel's
+discriminative information rather than the prior.
+
+```{r}
+label_n = labels_tbl %>% count(cluster, name = "n_cells")
+
+labels_dropped = label_n %>% filter(n_cells < min_cells_per_label)
+labels_dropped
+
+set.seed(seed)
+bench_tbl = labels_tbl %>%
+  semi_join(label_n %>% filter(n_cells >= min_cells_per_label), by = "cluster") %>%
+  group_by(cluster) %>%
+  slice_sample(n = max_cells_per_label) %>%
+  ungroup()
+
+nrow(bench_tbl)
+n_distinct(bench_tbl$cluster)
+```
+
+```{r}
+counts_bench = counts_thin[, bench_tbl$cell]
+
+## Cells left with no transcripts after thinning cannot be classified by any
+## method; Xenium QC would remove them too.
+keep = Matrix::colSums(counts_bench) > 0
+bench_tbl = bench_tbl[keep, ]
+counts_bench = counts_bench[, keep]
+sum(!keep)
+```
+
+## Cross-validation folds
+
+Stratified by cluster, so every fold sees every label.
+
+```{r}
+set.seed(seed)
+bench_tbl = bench_tbl %>%
+  group_by(cluster) %>%
+  mutate(fold = sample(rep_len(seq_len(n_folds), n()))) %>%
+  ungroup()
+
+table(bench_tbl$fold)
+```
+
+## Classifier 1 — multinomial naive Bayes
+
+Fast, calibrated for count data, and free of the assumptions of anchor-based
+integration. Uniform class prior, Laplace smoothing. This is the reference
+point for how much information the panel carries.
+
+```{r}
+nb_fit = function(counts, labels) {
+  labels = factor(labels)
+  ind = Matrix::sparse.model.matrix(~ 0 + labels)
+  colnames(ind) = levels(labels)
+  s = as.matrix(counts %*% ind)
+  theta = sweep(s + 1, 2, colSums(s) + nrow(counts), "/")
+  log(theta)
+}
+
+nb_predict = function(counts, log_theta) {
+  ll = as.matrix(Matrix::crossprod(counts, log_theta))
+  colnames(log_theta)[max.col(ll, ties.method = "first")]
+}
+
+nb_res = map_dfr(seq_len(n_folds), function(k) {
+  train = bench_tbl$fold != k
+  lt = nb_fit(counts_bench[, train, drop = FALSE], bench_tbl$cluster[train])
+  tibble(cell = bench_tbl$cell[!train],
+         truth = bench_tbl$cluster[!train],
+         pred = nb_predict(counts_bench[, !train, drop = FALSE], lt),
+         fold = k, method = "naive_bayes")
+})
+
+nrow(nb_res)
+```
+
+## Classifier 2 — Seurat transfer anchors
+
+Mirrors the workflow that would actually be applied to the Xenium data, so its
+gap from naive Bayes indicates method loss rather than panel loss.
+
+```{r}
+make_obj = function(counts, labels = NULL) {
+  o = CreateSeuratObject(counts = counts)
+  if (!is.null(labels)) o$label = labels
+  o = NormalizeData(o, scale.factor = median(Matrix::colSums(counts)), verbose = FALSE)
+  o
+}
+
+transfer_res = map_dfr(seq_len(n_folds), function(k) {
+  train = bench_tbl$fold != k
+
+  ref = make_obj(counts_bench[, train, drop = FALSE], bench_tbl$cluster[train])
+  ref = ScaleData(ref, features = panel_in_ref, verbose = FALSE)
+  ref = RunPCA(ref, features = panel_in_ref, npcs = npcs, verbose = FALSE)
+
+  qry = make_obj(counts_bench[, !train, drop = FALSE])
+
+  anchors = FindTransferAnchors(reference = ref, query = qry,
+                                features = panel_in_ref,
+                                normalization.method = "LogNormalize",
+                                reference.reduction = "pca",
+                                dims = 1:npcs, k.filter = NA, verbose = FALSE)
+
+  td = TransferData(anchorset = anchors, refdata = ref$label,
+                    dims = 1:npcs, verbose = FALSE)
+
+  tibble(cell = bench_tbl$cell[!train],
+         truth = bench_tbl$cluster[!train],
+         pred = td$predicted.id,
+         score = td$predicted.id.score,
+         fold = k, method = "transfer_anchors")
+})
+
+nrow(transfer_res)
+```
+
+```{r}
+cv_res = bind_rows(nb_res, transfer_res) %>%
+  left_join(labels_tbl %>% select(cluster, subclass, class) %>% distinct(),
+            by = c("truth" = "cluster")) %>%
+  rename(truth_subclass = subclass, truth_class = class) %>%
+  mutate(pred_subclass = to_subclass(pred),
+         pred_class = to_class(pred))
+
+qs2::qs_save(cv_res, file.path(out_dir, "cv_predictions.qs2"))
+```
+
+## Metrics
+
+```{r}
+prf = function(truth, pred) {
+  lv = union(truth, pred)
+  truth = factor(truth, levels = lv); pred = factor(pred, levels = lv)
+  cm = table(truth = truth, pred = pred)
+  tp = diag(cm)
+  tibble(label = lv,
+         n_true = as.integer(rowSums(cm)),
+         n_pred = as.integer(colSums(cm)),
+         tp = as.integer(tp)) %>%
+    mutate(recall = if_else(n_true > 0, tp / n_true, NA_real_),
+           precision = if_else(n_pred > 0, tp / n_pred, NA_real_),
+           f1 = if_else(recall + precision > 0,
+                        2 * recall * precision / (recall + precision), 0))
+}
+
+levels_tbl = tribble(
+  ~level,      ~truth_col,       ~pred_col,
+  "cluster",   "truth",          "pred",
+  "subclass",  "truth_subclass", "pred_subclass",
+  "class",     "truth_class",    "pred_class"
+)
+
+per_label = pmap_dfr(levels_tbl, function(level, truth_col, pred_col) {
+  cv_res %>%
+    group_by(method) %>%
+    group_modify(~ prf(.x[[truth_col]], .x[[pred_col]])) %>%
+    ungroup() %>%
+    mutate(level = level)
+})
+
+summary_tbl = per_label %>%
+  group_by(method, level) %>%
+  summarize(n_labels = n(),
+            macro_f1 = mean(f1),
+            balanced_accuracy = mean(recall, na.rm = TRUE),
+            .groups = "drop") %>%
+  left_join(cv_res %>%
+              group_by(method) %>%
+              summarize(accuracy_cluster = mean(truth == pred), .groups = "drop"),
+            by = "method") %>%
+  arrange(method, factor(level, levels = c("cluster", "subclass", "class")))
+
+summary_tbl
+write_csv(per_label, file.path(out_dir, "per_label_metrics.csv"))
+write_csv(summary_tbl, file.path(out_dir, "summary_metrics.csv"))
+```
+
+Per-cluster performance, worst first. These are the clusters that cannot be
+mapped onto the Xenium sections as distinct types.
+
+```{r}
+per_label %>%
+  filter(level == "cluster", method == "naive_bayes") %>%
+  arrange(f1) %>%
+  select(label, n_true, recall, precision, f1) %>%
+  print(n = Inf)
+```
+
+```{r}
+per_label %>%
+  filter(level == "cluster") %>%
+  select(method, label, f1) %>%
+  pivot_wider(names_from = method, values_from = f1) %>%
+  ggplot(aes(naive_bayes, transfer_anchors, label = label)) +
+  geom_abline(slope = 1, linetype = 2, colour = "grey60") +
+  geom_point(alpha = 0.7) +
+  ggrepel::geom_text_repel(size = 2.5, max.overlaps = 20) +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(x = "F1, naive Bayes", y = "F1, transfer anchors",
+       title = "Per-cluster recoverability from the 425-gene panel") +
+  theme_cowplot()
+
+ggsave(file.path(out_dir, "f1_by_method.pdf"), width = 8, height = 8)
+```
+
+## Confusion structure
+
+Row-normalized: what each true cluster is called. Off-diagonal mass shows which
+types collapse into which — that is what determines the sensible label set, not
+the F1 values alone.
+
+```{r}
+plot_confusion = function(df, truth_col, pred_col, title) {
+  lv = sort(union(df[[truth_col]], df[[pred_col]]))
+  df %>%
+    count(truth = .data[[truth_col]], pred = .data[[pred_col]]) %>%
+    group_by(truth) %>%
+    mutate(frac = n / sum(n)) %>%
+    ungroup() %>%
+    mutate(truth = factor(truth, levels = lv),
+           pred = factor(pred, levels = lv)) %>%
+    ggplot(aes(pred, truth, fill = frac)) +
+    geom_tile() +
+    scale_fill_viridis_c(limits = c(0, 1)) +
+    labs(x = "predicted", y = "true", title = title) +
+    theme_cowplot() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6),
+          axis.text.y = element_text(size = 6))
+}
+
+for (m in unique(cv_res$method)) {
+  d = cv_res %>% filter(method == m)
+  p1 = plot_confusion(d, "truth", "pred", paste(m, "- cluster"))
+  p2 = plot_confusion(d, "truth_subclass", "pred_subclass", paste(m, "- subclass"))
+  ggsave(file.path(out_dir, paste0("confusion_cluster_", m, ".pdf")), p1, width = 11, height = 10)
+  ggsave(file.path(out_dir, paste0("confusion_subclass_", m, ".pdf")), p2, width = 9, height = 8)
+  print(p1); print(p2)
+}
+```
+
+## Recommended label set
+
+Collapsing a failing cluster onto its position in the taxonomy would only be a
+rename unless the labels it is *actually* confused with come with it, so the
+recommended set is derived from the confusion structure instead of the naming
+hierarchy: repeatedly merge the worst-performing label with the label carrying
+the most confusion mass with it, until every merged label clears
+`f1_threshold`. The result is the finest partition of the taxonomy that the
+panel supports, which may cut across the `cluster` → `subclass` → `class`
+hierarchy.
+
+Two guards keep the merge from doing more harm than good. Labels in
+`protected_labels` are never merged into, so a planned comparison can never be
+destroyed to rescue a failing label. And a merge requires the partner to account
+for at least `min_merge_frac` of the failing label's cells: below that the
+confusion is diffuse rather than a specific collision between two types, and
+merging would degrade a perfectly good label for no gain.
+
+A failing label that clears neither guard is marked **unresolved** and left as
+is. Unresolved labels should not be interpreted as distinct populations in the
+spatial data, but they also do not contaminate anything else.
+
+The merge sequence is derived from naive Bayes — the estimate of what the panel
+can support in principle — and the resulting label set is then scored under both
+classifiers.
+
+```{r}
+merge_until_resolved = function(truth, pred, threshold, protected = character(),
+                                min_frac = 0, max_iter = 100) {
+  lv = union(truth, pred)
+  members = setNames(as.list(lv), lv)          # merged label -> original clusters
+  map_lab = setNames(lv, lv)                   # original cluster -> merged label
+  unresolved = character()
+  log = tibble()
+
+  for (i in seq_len(max_iter)) {
+    t2 = map_lab[truth]; p2 = map_lab[pred]
+    cur = union(t2, p2)
+    m = prf(t2, p2)
+    worst = m %>%
+      filter(f1 < threshold, !label %in% unresolved, !label %in% protected) %>%
+      arrange(f1, desc(n_true)) %>%
+      slice(1)
+    if (nrow(worst) == 0) break
+
+    cm = table(factor(t2, levels = cur), factor(p2, levels = cur))
+    conf = cm[worst$label, ] + cm[, worst$label]
+    conf[c(worst$label, intersect(protected, names(conf)))] = -1
+
+    ## No unprotected partner left, or the best one is only diffusely confused
+    if (max(conf) <= 0 || max(conf) / worst$n_true < min_frac) {
+      unresolved = c(unresolved, worst$label)
+      log = bind_rows(log, tibble(iteration = i, merged = worst$label,
+                                  f1 = worst$f1,
+                                  with = if (max(conf) > 0) names(which.max(conf)) else NA_character_,
+                                  best_partner_frac = max(conf) / worst$n_true,
+                                  into = NA_character_, action = "unresolved"))
+      next
+    }
+    partner = names(which.max(conf))
+
+    new_members = c(members[[worst$label]], members[[partner]])
+    subcl = unique(to_subclass(new_members))
+    new_name = if (length(subcl) == 1) subcl else paste(sort(subcl), collapse = "/")
+    ## keep names unique if a merge lands on an existing group name
+    while (new_name %in% setdiff(names(members), c(worst$label, partner))) {
+      new_name = paste0(new_name, "*")
+    }
+
+    log = bind_rows(log, tibble(iteration = i, merged = worst$label,
+                                f1 = worst$f1, with = partner,
+                                best_partner_frac = max(conf) / worst$n_true,
+                                into = new_name, action = "merged"))
+
+    members[[worst$label]] = NULL; members[[partner]] = NULL
+    members[[new_name]] = new_members
+    map_lab[new_members] = new_name
+  }
+
+  list(map = map_lab, members = members, log = log, unresolved = unresolved)
+}
+
+merge_res = cv_res %>%
+  filter(method == "naive_bayes") %>%
+  { merge_until_resolved(.$truth, .$pred, f1_threshold,
+                         protected = protected_labels, min_frac = min_merge_frac) }
+
+merge_res$log
+merge_res$unresolved
+```
+
+```{r}
+cv_rec = cv_res %>%
+  mutate(truth_rec = merge_res$map[truth],
+         pred_rec = merge_res$map[pred])
+
+per_label_rec = cv_rec %>%
+  group_by(method) %>%
+  group_modify(~ prf(.x$truth_rec, .x$pred_rec)) %>%
+  ungroup()
+
+rec_summary = per_label_rec %>%
+  group_by(method) %>%
+  summarize(n_labels = n(),
+            macro_f1 = mean(f1),
+            balanced_accuracy = mean(recall, na.rm = TRUE),
+            .groups = "drop") %>%
+  left_join(cv_rec %>%
+              group_by(method) %>%
+              summarize(accuracy = mean(truth_rec == pred_rec), .groups = "drop"),
+            by = "method")
+
+rec_summary
+
+per_label_rec %>%
+  filter(method == "naive_bayes") %>%
+  arrange(f1) %>%
+  select(label, n_true, recall, precision, f1) %>%
+  print(n = Inf)
+```
+
+Labels still below threshold after merging — protected labels, and labels left
+unresolved because every confusion partner was protected. These require a
+judgement call rather than an automatic rule, and should not be interpreted as
+distinct populations in the spatial data.
+
+```{r}
+per_label_rec %>%
+  filter(f1 < f1_threshold) %>%
+  mutate(status = case_when(label %in% merge_res$unresolved ~ "unresolved",
+                            label %in% protected_labels ~ "protected",
+                            TRUE ~ "below threshold")) %>%
+  arrange(f1)
+```
+
+```{r}
+recommended = tibble(cluster = sort(unique(labels_tbl$cluster))) %>%
+  mutate(subclass = to_subclass(cluster),
+         class = to_class(cluster),
+         evaluated = cluster %in% bench_tbl$cluster,
+         recommended_label = unname(merge_res$map[cluster]),
+         resolved_at_cluster = evaluated & recommended_label == cluster,
+         protected = cluster %in% protected_labels,
+         status = case_when(!evaluated ~ "not evaluated",
+                            recommended_label %in% merge_res$unresolved ~ "unresolved",
+                            recommended_label != cluster ~ "merged",
+                            TRUE ~ "resolved"))
+
+recommended %>% print(n = Inf)
+write_csv(recommended, file.path(out_dir, "recommended_label_set.csv"))
+write_csv(per_label_rec, file.path(out_dir, "per_label_metrics_recommended.csv"))
+write_csv(rec_summary, file.path(out_dir, "summary_metrics_recommended.csv"))
+write_csv(merge_res$log, file.path(out_dir, "merge_log.csv"))
+```
+
+```{r}
+p = plot_confusion(cv_rec %>% filter(method == "naive_bayes"),
+                   "truth_rec", "pred_rec", "recommended label set - naive Bayes")
+ggsave(file.path(out_dir, "confusion_recommended.pdf"), p, width = 10, height = 9)
+p
+```
+
+```{r}
+sessionInfo()
+```

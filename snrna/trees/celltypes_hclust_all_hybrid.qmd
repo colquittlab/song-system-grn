@@ -1,0 +1,237 @@
+---
+title: "Cluster proportions / specificity heatmap, hybrid division-based labels"
+format: html
+editor: source
+---
+
+Reruns `celltypes_hclust_all.qmd`'s analysis and plotting (position-by-cluster proportion heatmap
+with a tissue-specificity annotation bar) on the hybrid division-based labels from
+`snrna/naming/hybrid_division_naming.qmd` (`celltype_hybrid`: major excitatory division kept
+[`DACH2`/`SATB2`/`CACNA1H`], specific chicken-integration gene match dropped, song-region clusters
+hand-labeled from anatomy/projections) instead of the raw `cluster` identity the original notebook
+used. Independent of both source notebooks, by the same convention used throughout this project's
+naming work: reads their outputs read-only, writes its own copy.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+
+library(pvclust)
+library(future)
+library(furrr)
+library(ComplexHeatmap)
+library(circlize)
+library(scCustomize)
+library(here)
+
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
+```
+
+## Parameters
+
+```{r}
+#| label: params
+hclust_method <- "average"
+dist_method <- "correlation"
+```
+
+## Directories
+
+```{r}
+#| label: dirs
+script_name <- "celltypes_hclust_all_hybrid"
+obj_fname <- here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
+
+out_dir <- here::here("snrna/trees", script_name)
+out_sub_dir <- file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_sub_dir, showWarnings = FALSE)
+
+## celltype_hybrid, not cluster -- the one substantive change from celltypes_hclust_all.qmd.
+res_to_use <- "celltype_hybrid"
+
+obj_out_fname <- file.path(out_dir, "obj_subset.qs2")
+
+data_out_avg_fname <- file.path(out_dir, "data_avg.qs2")
+data_out_pv_fname <- file.path(out_sub_dir, "pvclust.qs2") # path only, unused below -- matches
+                                                            # the original, which never calls
+                                                            # pvclust() in the code shown either
+
+tfs <- read_delim(here::here("data/lambert_tfs/tfs.csv"), show_col_types = FALSE) %>%
+  filter(DBD != "Unknown") # loaded but unused below, matching the original
+```
+
+## Load data
+
+```{r}
+#| label: load
+redo <- TRUE
+if (redo) {
+  obj <- qs_read(obj_fname, nthreads = 8)
+  idents <- FetchData(obj, res_to_use) %>%
+    mutate_all(as.factor)
+  Idents(obj) <- idents[, 1]
+
+  ## Same doublet-assignment filter as the original (a no-op on this object specifically -- it was
+  ## already filtered to both-caller singlets upstream, confirmed directly: 0 of 34295 cells have a
+  ## "/" in `assignment` -- kept anyway so this notebook doesn't silently rely on that upstream state).
+  ## New here: also drop cells whose cluster was excluded under the hybrid scheme (celltype_hybrid
+  ## is NA for Glut-Arco-4 and Glut-Nido-3) -- carrying an excluded artifact cluster's cells into
+  ## this analysis under a missing label would either error or silently create an "NA" column.
+  cells <- Cells(obj)[!grepl("/", obj$assignment) & !is.na(obj@meta.data[[res_to_use]])]
+  obj_sub <- subset(obj, cells = cells)
+
+  qs_save(obj_sub, obj_out_fname, nthreads = 8)
+} else {
+  obj_sub <- qs_read(obj_out_fname, nthreads = 8)
+}
+```
+
+```{r}
+#| label: region
+obj_sub$region <- case_when(obj_sub$position %in% c("ra", "arco") ~ "ARCO",
+                            obj_sub$position %in% c("lman", "nr", "hvc", "nc") ~ "NIDO")
+```
+
+```{r}
+#| label: cluster-table
+table(obj_sub@meta.data[[res_to_use]])
+```
+
+### Manual order
+
+`Glut-Nido-1` and `Glut-NC-1` are the same population under the hybrid scheme (confirmed in
+`snrna/naming/exploratory/apply_composite_labels.qmd`: they independently won the same chicken match and were folded
+together) and so share one label, `Glut-DACH2-1` -- listed once here, not twice, unlike the original
+`ct_order`, which had them as separate rows.
+
+```{r}
+#| label: ct-order
+ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+             "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
+             "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
+             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",
+             "Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-CACNA1H-3", "Glut-CACNA1H-4",
+             "Glut-GABA",
+             "Glut-Im", "Glut-NB", "Glut-NSC",
+             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
+             "GABA-3", "GABA-4-1", "GABA-4-2",
+             "GABA-5-1", "GABA-5-2",
+             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-Im",
+             "Astro-1", "Astro-2", "Astro-3", "Epen",
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+
+stopifnot(
+  "ct_order does not exactly match the clusters present in obj_sub" =
+    setequal(ct_order, unique(obj_sub@meta.data[[res_to_use]]))
+)
+```
+
+## Average data
+
+```{r}
+#| label: aggregate
+assay_to_use <- "SCT"
+Idents(obj_sub) <- obj_sub@meta.data[[res_to_use]]
+obj_int_avg <- AggregateExpression(obj_sub, assays = assay_to_use)
+obj_int_avg1 <- log1p(obj_int_avg[[assay_to_use]])
+colnames(obj_int_avg1) <- colnames(obj_int_avg[[assay_to_use]])
+qs_save(obj_int_avg1, data_out_avg_fname, nthreads = 8)
+```
+
+```{r}
+#| label: position-table
+tab <- table(obj_sub$position, obj_sub@meta.data[[res_to_use]])
+tab <- tab[c("hvc", "nc", "lman", "nr", "ra", "arco"), ct_order]
+tab <- sweep(tab, 1, rowSums(tab), FUN = "/")
+tab <- sweep(tab, 2, colSums(tab), FUN = "/")
+tab_spec <- apply(tab, 2, calc_tissue_specificity)
+```
+
+```{r}
+#| label: heatmap
+scale_factor <- 0.08
+height <- nrow(tab) * scale_factor
+width <- ncol(tab) * scale_factor
+
+tab <- tab[, ct_order]
+tab_spec <- tab_spec[ct_order]
+
+ncolors <- 9
+cols <- colorRamp2(breaks = seq(0, 1, length.out = ncolors), colors = scales::brewer_pal(palette = "Greys")(ncolors))
+
+## Cluster-type classification for the specificity-bar color, rewritten for the hybrid labels: the
+## original matched "Glut-Pre"/"GABA-Pre" as literal substrings of the cluster name, which no longer
+## works now that the precursor labels are Glut-NSC/Glut-NB/Glut-Im (no "Pre" substring at all) --
+## classified here by an explicit name list instead of a substring that would silently stop matching.
+## Glut-GABA (the Nido-2 dual-transmitter override) is deliberately caught by the "Glut" branch, not
+## "GABA", matching how the original treated Glut-Nido-2 -- checked explicitly below rather than left
+## to substring-match luck, since "Glut-GABA" also contains the literal substring "GABA".
+glut_precursor <- c("Glut-NSC", "Glut-NB", "Glut-Im")
+gaba_precursor <- c("GABA-Im")
+
+bar_cols <- data.frame(cluster_type = c("Glut", "Glut-Pre", "GABA", "GABA-Pre", "Non-neuron"),
+                       col = c("#008000", "#90ca90", "#800000", "#c37474", "#808000"))
+ct_df <- data.frame(cluster = names(tab_spec)) %>%
+  mutate(cluster_type = case_when(
+    cluster %in% glut_precursor ~ "Glut-Pre",
+    grepl("^Glut", cluster) ~ "Glut",
+    cluster %in% gaba_precursor ~ "GABA-Pre",
+    grepl("^GABA", cluster) ~ "GABA",
+    TRUE ~ "Non-neuron")) %>%
+  left_join(bar_cols, by = "cluster_type")
+stopifnot("Glut-GABA classified as Glut, not GABA, as intended" =
+           ct_df$cluster_type[ct_df$cluster == "Glut-GABA"] == "Glut")
+
+bar_colors <- ct_df$col
+ab <- anno_barplot(tab_spec, 0, which = "column", border = FALSE,
+                   gp = gpar(fill = bar_colors))
+hm_row <- HeatmapAnnotation(ab = ab, which = "column")
+
+hm <- Heatmap(tab, cluster_columns = FALSE,
+             cluster_rows = FALSE,
+             col = cols,
+             border = TRUE, border_gp = gpar(lwd = 0.5),
+             height = unit(height, "in"),
+             width = unit(width, "in"),
+             column_names_gp = gpar(fontsize = 6),
+             row_names_gp = gpar(fontsize = 6))
+hm
+hm2 <- hm_row %v% hm
+hm2
+
+pdf(file.path(out_sub_dir, "cluster_proportions_horiz_with-bar_ordered.pdf"), height = height + 4, width = width + 4)
+print(hm2)
+dev.off()
+
+ab <- anno_barplot(tab_spec, 0, which = "row", border = TRUE,
+                   gp = gpar(fill = bar_colors),
+                   axis_param = list(gp = gpar(fontsize = 5)))
+hm_row <- HeatmapAnnotation(ab = ab, which = "row")
+
+hm <- Heatmap(t(tab), cluster_rows = FALSE, show_row_names = TRUE, row_names_side = "left",
+             cluster_columns = FALSE,
+             col = cols,
+             border = TRUE, border_gp = gpar(lwd = 0.5),
+             height = unit(width, "in"),
+             width = unit(height, "in"),
+             column_names_gp = gpar(fontsize = 6),
+             row_names_gp = gpar(fontsize = 6))
+hm
+hm2 <- hm + hm_row
+hm2
+pdf(file.path(out_sub_dir, "cluster_proportions_vert_with-bar_ordered.pdf"), height = width + 4, width = height + 4)
+print(hm2)
+dev.off()
+```
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

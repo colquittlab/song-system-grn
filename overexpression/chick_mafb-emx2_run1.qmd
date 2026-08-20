@@ -21,10 +21,10 @@ library(parallel)
 
 options(future.globals.maxSize = Inf)
  
-source("../scripts/scRNA.R")
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
 source(here::here("config/paths.R"))
-source("../scripts/gene_lists.R")
-source("../scripts/scenicplus.R")
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "gene_lists.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scenicplus.R"))
 
 plot_theme <- function() {
   theme(

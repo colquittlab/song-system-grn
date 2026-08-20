@@ -1,0 +1,124 @@
+---
+title: "Manual-marker dotplot, hybrid division-based labels"
+format: html
+editor: source
+---
+
+Brings over the curated (not top-DEG) manual-marker dotplot from
+`snrna_seurat_cellbender.0.01_preprocess/deg/all_deg.qmd`'s `dotplot_manual-markers` chunk, on the
+current hybrid division-based cluster labels (`snrna/naming/hybrid_division_naming.qmd`) instead of
+the raw `cluster` identity that notebook used. The cluster set and order are harmonized with
+`celltypes_hclust_all_hybrid.qmd`'s tree analysis -- same `ct_order`, same cluster omissions
+(`Glut-Arco-4`, `Glut-Nido-3` dropped, not just unlabeled) -- and the cluster axis is oriented so this
+dotplot can be read directly alongside that notebook's
+`cluster_proportions_vert_with-bar_ordered.pdf` (clusters top-to-bottom in the same order).
+
+Independent of the source notebooks, by the same convention used throughout this project's naming
+work: reads their outputs read-only, writes its own copy.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(scCustomize)
+library(cowplot)
+library(egg)
+theme_set(theme_cowplot())
+```
+
+## Parameters
+
+```{r}
+#| label: params
+in_fname <- here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
+res_to_use <- "celltype_hybrid"
+assay_to_use <- "SCT"
+
+out_dir <- here::here("snrna/deg", "dotplot_manual_markers_hybrid")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+## Identical to celltypes_hclust_all_hybrid.qmd's ct_order -- not re-derived, so this can't
+## silently drift from the cluster set/order that notebook's vertical heatmap uses.
+ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+             "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
+             "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
+             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",
+             "Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-CACNA1H-3", "Glut-CACNA1H-4",
+             "Glut-GABA",
+             "Glut-Im", "Glut-NB", "Glut-NSC",
+             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
+             "GABA-3", "GABA-4-1", "GABA-4-2",
+             "GABA-5-1", "GABA-5-2",
+             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-Im",
+             "Astro-1", "Astro-2", "Astro-3", "Epen",
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+
+## The curated marker list from all_deg.qmd's dotplot_manual-markers chunk, unchanged -- this
+## request is about harmonizing the CLUSTER axis, not re-picking the genes.
+manual_markers <- c("SLC17A6", "SYT1", "DACH2", "SATB2", "LHX9", "CACNA1H",
+                    "NECTIN3", "DCX", "SOX4", "NR2E1",
+                    "GAD1", "FOXP2", "NPY", "CEMIP", "NXPH1", "TTLL5", "PENK", "CRH", "LAMP5", "CALB2", "LHX8",
+                    "SLC1A3", "SPEF2", "PLP1", "PDGFRA", "CSF1R", "FLI1")
+```
+
+## Load, apply the same cluster omissions as the tree analysis
+
+```{r}
+#| label: load
+obj <- qs_read(in_fname, nthreads = 8)
+DefaultAssay(obj) <- assay_to_use
+
+## Same omission as celltypes_hclust_all_hybrid.qmd: celltype_hybrid is NA for exactly the excluded
+## artifact clusters (Glut-Arco-4, Glut-Nido-3) -- dropped, not left as an unlabeled row.
+obj <- subset(obj, cells = colnames(obj)[!is.na(obj@meta.data[[res_to_use]])])
+
+stopifnot(
+  "ct_order does not exactly match the clusters present in obj" =
+    setequal(ct_order, unique(obj@meta.data[[res_to_use]]))
+)
+
+## rev(ct_order): ggplot's discrete axis draws the FIRST factor level at the axis origin, so
+## reversing here is what puts ct_order's first entry (Glut-DACH2-HVCra) at the TOP of the plot --
+## matching cluster_proportions_vert_with-bar_ordered.pdf's top-to-bottom row order, not bottom-to-top.
+obj@meta.data[[res_to_use]] <- factor(obj@meta.data[[res_to_use]], levels = rev(ct_order))
+```
+
+## Dotplot
+
+```{r}
+#| label: dotplot-manual-markers
+#| fig-height: 10
+#| fig-width: 10
+markers_present <- intersect(manual_markers, rownames(obj))
+missing <- setdiff(manual_markers, markers_present)
+if (length(missing) > 0) {
+  warning("Manual markers not present in this object's ", assay_to_use, " assay, dropped: ",
+         paste(missing, collapse = ", "))
+}
+
+scale_factor <- 0.08
+height <- length(ct_order) * scale_factor
+width <- length(markers_present) * scale_factor
+
+gg <- DotPlot_scCustom(obj, features = markers_present, group.by = res_to_use, flip_axes = FALSE,
+                      dot.scale = 2, dot.min = 0.05, col.min = 0)
+gg <- gg +
+  theme(axis.text.x = element_text(size = 6, angle = 90, hjust = 1, vjust = 0.5),
+       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.25),
+       axis.text.y = element_text(size = 6),
+       axis.line = element_blank(),
+       axis.ticks = element_blank())
+
+gg <- egg::set_panel_size(p = gg, width = unit(width, "in"), height = unit(height, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "dotplot_manual-markers.pdf"), gg, base_height = height + 5, base_width = width + 5)
+```
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

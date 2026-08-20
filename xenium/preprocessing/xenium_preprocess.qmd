@@ -1,0 +1,381 @@
+---
+title: "Xenium preprocessing — ten-section merged object"
+format: html
+editor: source
+---
+
+Builds the analysis object for the Xenium run `Brainard_KL_052905`: ten sections
+(two birds × five coronal levels) loaded from the Xenium Ranger outputs, QC
+filtered, merged into a single Seurat object with one field of view per section,
+and normalized.
+
+Objects are rebuilt from the raw outputs rather than taken from
+`Xenium Objects/*.RData`, because the collaborator's section labels disagree
+with the run metadata (see `xenium/README.md`); `region_name` from each
+region's `experiment.xenium` is treated as authoritative.
+
+Normalization matches `xenium/label_transfer/panel_resolution_benchmark.qmd`
+(log-normalization scaled to the median transcript count) so that reference and
+query are treated identically at label transfer.
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(qs2)
+library(data.table)
+library(harmony)
+library(cowplot)
+library(jsonlite)
+library(future)
+library(here)
+
+source(here::here("config/paths.R"))
+select = dplyr::select
+```
+
+```{r}
+## Threading. ScaleData is future-aware; PCA and Harmony go through OpenBLAS.
+## FindNeighbors (annoy) and FindClusters (Louvain) are single-threaded in
+## Seurat with no thread argument — which is why the embedding runs on a
+## subsample rather than on all ~1.6M cells.
+n_threads = 24
+RhpcBLASctl::blas_set_num_threads(n_threads)
+plan("multicore", workers = n_threads)
+```
+
+```{r}
+script_name = "xenium_preprocess"
+out_dir = here::here("xenium/preprocessing", script_name)          # tables and figures
+obj_dir = file.path(path.expand(XENIUM_PROC_DIR), script_name)     # large objects
+dir.create(out_dir, recursive = T, showWarnings = F)
+dir.create(obj_dir, recursive = T, showWarnings = F)
+
+## QC thresholds. 20 counts follows the collaborator's script and the 10x
+## guidance for a panel this size; cells below it cannot be typed reliably.
+min_counts = 20
+min_features = 10
+
+## Embedding / clustering QC. Run on a stratified subsample: the graph steps are
+## single-threaded and scale badly (>2 h on the full 1.6M cells), and these
+## clusters are only a sanity check — cell identity comes from label transfer.
+run_embedding = TRUE
+embedding_n_cells = 1e5      # total, split evenly across the ten sections
+npcs = 30
+cluster_res = 0.5
+
+## Anatomy-defining panel genes, plotted on *all* cells as the spatial check
+## that does not depend on the subsample
+## AQP4 is not on this panel; SLC1A3 is the astrocyte marker that is
+marker_genes = c("SLC17A6", "GAD1", "PLP1", "SLC1A3", "PVALB", "UCHL1")
+
+out_obj_fname = file.path(obj_dir, "obj_xenium.qs2")
+out_qc_obj_fname = file.path(obj_dir, "obj_xenium_qc-subsample.qs2")
+
+seed = 10
+set.seed(seed)
+options(future.globals.maxSize = Inf)
+```
+
+## Sections
+
+```{r}
+region_dirs = list.dirs(XENIUM_RAW_DIR, recursive = FALSE)
+region_dirs = region_dirs[grepl("^output-XETG", basename(region_dirs))]
+
+sections = map_dfr(region_dirs, function(d) {
+  e = jsonlite::fromJSON(file.path(d, "experiment.xenium"))
+  tibble(dir = d,
+         bird = e$cassette_name,
+         slide = e$slide_id,
+         section = e$region_name,
+         run = e$run_name,
+         panel = e$panel_name,
+         segmentation = if_else(e$segmented_cell_nuc_expansion_frac == 1,
+                                "nucleus expansion", "mixed"),
+         n_cells_reported = e$num_cells,
+         analysis_sw = e$analysis_sw_version)
+}) %>%
+  mutate(section_id = paste(bird, section, sep = "_")) %>%
+  arrange(bird, section)
+
+sections %>% select(section_id, bird, slide, section, segmentation, n_cells_reported)
+write_csv(sections %>% select(-dir), file.path(out_dir, "sections.csv"))
+```
+
+## Load
+
+Molecule coordinates are not loaded — `transcripts.parquet` is ~2 GB per section
+and is only needed for resegmentation or subcellular work. Segmentation polygons
+are likewise left on disk; centroids carry the spatial information every planned
+analysis uses.
+
+```{r}
+load_section = function(d, section_id) {
+  x = LoadXenium(d, fov = section_id,
+                 molecule.coordinates = FALSE,
+                 cell.centroids = TRUE)
+
+  ## Per-cell covariates LoadXenium does not import: areas and control counts.
+  ## Piped through zcat so the read does not depend on R.utils.
+  cells = fread(cmd = paste("zcat", shQuote(file.path(d, "cells.csv.gz"))))
+  cells = as.data.frame(cells)
+  rownames(cells) = cells$cell_id
+  cells = cells[colnames(x), ]
+
+  x$cell_area = cells$cell_area
+  x$nucleus_area = cells$nucleus_area
+  x$nucleus_count = cells$nucleus_count
+  x$control_counts = cells$control_probe_counts + cells$control_codeword_counts +
+    cells$genomic_control_counts + cells$unassigned_codeword_counts +
+    cells$deprecated_codeword_counts
+  x$control_frac = x$control_counts / pmax(cells$total_counts, 1)
+  x$x_centroid = cells$x_centroid
+  x$y_centroid = cells$y_centroid
+  x
+}
+
+obj_list = pmap(list(sections$dir, sections$section_id), function(d, sid) {
+  message("loading ", sid)
+  x = load_section(d, sid)
+  x$section_id = sid
+  x$bird = sections$bird[sections$section_id == sid]
+  x$slide = sections$slide[sections$section_id == sid]
+  x$section = sections$section[sections$section_id == sid]
+  x
+})
+names(obj_list) = sections$section_id
+
+map_int(obj_list, ncol)
+```
+
+## QC
+
+```{r}
+qc_tbl = imap_dfr(obj_list, function(x, sid) {
+  x@meta.data %>% as_tibble() %>% mutate(section_id = sid)
+})
+
+qc_summary = qc_tbl %>%
+  group_by(section_id, bird, section) %>%
+  summarize(n_cells = n(),
+            median_counts = median(nCount_Xenium),
+            median_features = median(nFeature_Xenium),
+            median_cell_area = median(cell_area),
+            median_nucleus_area = median(nucleus_area),
+            mean_control_frac = mean(control_frac),
+            n_zero_count = sum(nCount_Xenium == 0),
+            n_missing_area = sum(is.na(cell_area)),
+            frac_below_min_counts = mean(nCount_Xenium < min_counts),
+            .groups = "drop")
+
+qc_summary
+write_csv(qc_summary, file.path(out_dir, "qc_summary_prefilter.csv"))
+```
+
+The control fraction is the readout that matters most here: it bounds how much
+of each cell's signal is background rather than panel transcripts.
+
+```{r}
+## Empty cells (0 transcripts) are counted in qc_summary but excluded from the
+## log-scaled panels, where they would become -Inf
+qc_plot_tbl = qc_tbl %>% filter(nCount_Xenium > 0, !is.na(cell_area), cell_area > 0)
+
+p1 = ggplot(qc_plot_tbl, aes(nCount_Xenium, section_id, fill = bird)) +
+  ggridges::geom_density_ridges(alpha = 0.6, scale = 1.2) +
+  scale_x_log10() + geom_vline(xintercept = min_counts, linetype = 2) +
+  labs(x = "transcripts per cell", y = NULL) + theme_cowplot()
+
+p2 = ggplot(qc_plot_tbl, aes(nFeature_Xenium, section_id, fill = bird)) +
+  ggridges::geom_density_ridges(alpha = 0.6, scale = 1.2) +
+  geom_vline(xintercept = min_features, linetype = 2) +
+  labs(x = "genes per cell", y = NULL) + theme_cowplot()
+
+p3 = ggplot(qc_plot_tbl, aes(cell_area, section_id, fill = bird)) +
+  ggridges::geom_density_ridges(alpha = 0.6, scale = 1.2) +
+  scale_x_log10() + labs(x = "cell area (um^2)", y = NULL) + theme_cowplot()
+
+p4 = ggplot(qc_summary, aes(mean_control_frac, section_id, fill = bird)) +
+  geom_col() + labs(x = "mean control fraction", y = NULL) + theme_cowplot()
+
+p = plot_grid(p1, p2, p3, p4, nrow = 2)
+ggsave(file.path(out_dir, "qc_distributions.pdf"), p, width = 16, height = 10)
+p
+```
+
+```{r}
+obj_list = map(obj_list, function(x) {
+  keep = colnames(x)[x$nCount_Xenium >= min_counts & x$nFeature_Xenium >= min_features]
+  subset(x, cells = keep)
+})
+
+retention = tibble(section_id = names(obj_list),
+                   n_cells_prefilter = qc_summary$n_cells[match(names(obj_list), qc_summary$section_id)],
+                   n_cells_postfilter = map_int(obj_list, ncol)) %>%
+  mutate(frac_retained = n_cells_postfilter / n_cells_prefilter)
+
+retention
+write_csv(retention, file.path(out_dir, "qc_retention.csv"))
+```
+
+## Merge
+
+One field of view per section, so each section keeps its own coordinate frame.
+
+```{r}
+obj = merge(obj_list[[1]], obj_list[-1], add.cell.ids = names(obj_list))
+
+## Control assays are retained for QC but are not used downstream
+DefaultAssay(obj) = "Xenium"
+
+obj$section_id = factor(obj$section_id, levels = sections$section_id)
+obj
+
+rm(obj_list); gc()
+```
+
+## Normalize
+
+```{r}
+obj = JoinLayers(obj, assay = "Xenium")
+scale_factor = median(obj$nCount_Xenium)
+scale_factor
+
+obj = NormalizeData(obj, assay = "Xenium", scale.factor = scale_factor, verbose = FALSE)
+
+## All 425 panel genes are informative by design; no variable feature selection
+VariableFeatures(obj) = rownames(obj[["Xenium"]])
+```
+
+## Embedding QC
+
+Run on a stratified subsample. `FindNeighbors` and `FindClusters` are
+single-threaded with no thread argument in Seurat, and take over two hours on
+the full object; the clusters they produce are a sanity check that gets replaced
+by transferred labels, so paying that cost buys nothing. `RunUMAP` is threaded
+through uwot — note that `n_sgd_threads > 1` makes the layout non-reproducible
+even under a fixed seed, which is acceptable for a QC figure.
+
+```{r}
+if (run_embedding) {
+  set.seed(seed)
+  qc_cells = obj@meta.data %>%
+    rownames_to_column("cell") %>%
+    group_by(section_id) %>%
+    slice_sample(n = ceiling(embedding_n_cells / n_distinct(obj$section_id))) %>%
+    pull(cell)
+
+  obj_qc = subset(obj, cells = qc_cells)
+  obj_qc = ScaleData(obj_qc, verbose = FALSE)
+  obj_qc = RunPCA(obj_qc, npcs = npcs, verbose = FALSE)
+  obj_qc = RunHarmony(obj_qc, group.by.vars = "section_id",
+                      reduction.use = "pca", reduction.save = "harmony")
+  obj_qc = RunUMAP(obj_qc, reduction = "harmony", dims = 1:npcs,
+                   reduction.name = "umap", verbose = FALSE,
+                   n_threads = n_threads, n_sgd_threads = n_threads)
+  obj_qc = FindNeighbors(obj_qc, reduction = "harmony", dims = 1:npcs, verbose = FALSE)
+  obj_qc = FindClusters(obj_qc, resolution = cluster_res, verbose = FALSE)
+  obj_qc$cluster_qc = obj_qc$seurat_clusters
+
+  ## Carry the QC clusters back onto the full object (NA outside the subsample)
+  cl = setNames(rep(NA_character_, ncol(obj)), colnames(obj))
+  cl[colnames(obj_qc)] = as.character(obj_qc$cluster_qc)
+  obj$cluster_qc = cl
+
+  ncol(obj_qc)
+}
+```
+
+Clusters here are a QC readout only — cell type identity comes from label
+transfer in `xenium/label_transfer/`, at the resolution the panel benchmark
+showed to be supportable.
+
+```{r}
+if (run_embedding) {
+  p = DimPlot(obj_qc, group.by = c("cluster_qc", "section_id", "bird"),
+              raster = TRUE, raster.dpi = c(1200, 1200), ncol = 3) &
+    theme(legend.position = "none")
+  ggsave(file.path(out_dir, "umap_qc.png"), p, width = 18, height = 6, dpi = 200)
+  p
+}
+```
+
+Spatial coherence of the QC clusters is the check on the merge: anatomical
+structure should be visible without position having been used in the clustering.
+
+```{r}
+if (run_embedding) {
+  for (sid in levels(obj_qc$section_id)) {
+    p = ImageDimPlot(obj_qc, fov = sid, group.by = "cluster_qc",
+                     size = 0.8, cols = "polychrome", dark.background = FALSE) +
+      ggtitle(sid)
+    ggsave(file.path(out_dir, paste0("spatial_cluster_qc_", sid, ".png")),
+           p, width = 10, height = 10, dpi = 200)
+  }
+}
+```
+
+The stronger anatomical check does not depend on the subsample: marker genes
+plotted on every cell. `PLP1` should trace fibre tracts and delineate song
+nucleus boundaries, and the glutamatergic/GABAergic split should follow known
+telencephalic structure.
+
+```{r}
+marker_genes_present = intersect(marker_genes, rownames(obj[["Xenium"]]))
+setdiff(marker_genes, marker_genes_present)
+
+## ImageFeaturePlot has no ncol argument; combine = FALSE returns the panels
+## and plot_grid lays them out
+for (sid in levels(obj$section_id)) {
+  ps = ImageFeaturePlot(obj, fov = sid, features = marker_genes_present,
+                        size = 0.3, max.cutoff = "q95",
+                        dark.background = FALSE, combine = FALSE)
+  ps = map2(ps, marker_genes_present, ~ .x + ggtitle(.y))
+  p = plot_grid(plotlist = ps, ncol = 3)
+  ggsave(file.path(out_dir, paste0("spatial_markers_", sid, ".png")),
+         p, width = 18, height = 12, dpi = 200, bg = "white")
+}
+```
+
+```{r}
+if (run_embedding) {
+  comp = obj_qc@meta.data %>%
+    count(section_id, cluster_qc) %>%
+    group_by(section_id) %>%
+    mutate(frac = n / sum(n)) %>%
+    ungroup()
+
+  ggplot(comp, aes(section_id, frac, fill = cluster_qc)) +
+    geom_col() +
+    labs(x = NULL, y = "fraction of cells", fill = "QC cluster") +
+    theme_cowplot() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+  ggsave(file.path(out_dir, "qc_cluster_composition.pdf"), width = 10, height = 6)
+  write_csv(comp, file.path(out_dir, "qc_cluster_composition.csv"))
+}
+```
+
+## Save
+
+The full object carries counts, normalized data, spatial coordinates, and the QC
+cluster labels for the subsampled cells; the subsample object additionally
+carries the PCA/Harmony/UMAP reductions. `scale.data` is dropped — a dense
+425 × n matrix, needed only for the PCA computed above, and cheap to regenerate.
+
+```{r}
+if (run_embedding) {
+  obj_qc[["Xenium"]]$scale.data = NULL
+  qs2::qs_save(obj_qc, out_qc_obj_fname)
+}
+
+qs2::qs_save(obj, out_obj_fname)
+c(out_obj_fname, out_qc_obj_fname)
+
+obj@meta.data %>%
+  rownames_to_column("cell") %>%
+  write_csv(file.path(out_dir, "cell_metadata.csv.gz"))
+```
+
+```{r}
+sessionInfo()
+```

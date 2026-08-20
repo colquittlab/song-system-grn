@@ -1,0 +1,276 @@
+---
+title: "Zaremba Ex_-style naming: flat vs nested validation"
+format: html
+editor: source
+---
+
+**Exploratory — not production.** See `README.md`; the production cluster filtering and naming
+live in `../hybrid_division_naming.qmd`.
+
+Before adopting the `Ex_<gene1>[_<gene2>]` nomenclature from Zaremba et al. 2025 (*Science*
+387:adp5182, "Developmental origins and evolution of pallial cell types and structures in birds")
+for this project's own glutamatergic clusters, this notebook checks whether
+`scripts/cluster_naming.R`'s DEG-based gene selection actually recovers *their* published gene
+choices when run on *their own* object -- a ground-truth check with a known right answer, rather
+than trusting the method on data where the right answer is unknown.
+
+**Independent from the preprocessing/clustering/visualization notebook by design.** This reads only
+the externally supplied Zaremba reference object
+(`/hdd/sc_datasets/zaremba_gg_dev_2024/Gg_adult_snRNA_seq_srt.rds`) and this project's own
+`scripts/cluster_curation.R` / `scripts/cluster_naming.R`. It does not read, source, or require
+`snrna_seurat_cellbender_preprocess.qmd` or any of its outputs, and can be run at any point
+regardless of where that notebook is in its own run. Applying whichever method wins here to this
+project's actual glutamatergic clusters is a deliberate next step, not done in this notebook.
+
+**The comparison, and why it's here at all.** Their metadata carries two annotation levels:
+`anno_level_1` (7 excitatory subclasses, e.g. `Ex_DACH2_CALCR`) and `anno_level_3` (28 finer
+supertypes, e.g. `Ex_DACH2_SLIT2`). A first pass (flat: every supertype's marker genes chosen by
+comparing it against all 25 *other* supertypes at once, regardless of subclass) recovered their
+literal gene choice for only 7-8 of 26 non-precursor supertypes, and 5 of the 6 total failures
+(no gene cleared the naming filters at all) fell in the `DACH2` lineage specifically. The suspicion
+this notebook tests: `DACH2_CALCR` and `DACH2_SV2C` are two *separate* six-child subclasses, and a
+flat comparison drowns each supertype's distinguishing gene in comparisons against subclasses it was
+never meant to be distinguished from. Their own naming more plausibly compared each supertype only
+against its subclass siblings -- a **nested** comparison -- which this notebook runs directly and
+scores the same way.
+
+## Packages
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(AnnotationHub)
+library(Matrix)
+library(knitr)
+
+## cluster_curation.R / cluster_naming.R qualify every dplyr verb susceptible to Bioconductor
+## masking (filter/rename/select/desc) internally, so they are safe to source regardless of load
+## order here -- AnnotationHub/ensembldb below attach exactly the generics (S4Vectors::rename,
+## BiocGenerics::filter) that used to make an unqualified call inside a sourced file silently
+## resolve to the wrong function. Source them after attaching everything else anyway, as a
+## defensive habit, not because it is required now.
+source(here::here("scripts/cluster_curation.R"))
+source(here::here("scripts/cluster_naming.R"))
+```
+
+## Parameters
+
+```{r}
+#| label: params
+zaremba_fname <- "/hdd/sc_datasets/zaremba_gg_dev_2024/Gg_adult_snRNA_seq_srt.rds"
+stopifnot("Zaremba reference object not found" = file.exists(zaremba_fname))
+
+out_dir <- here::here("snrna/naming/exploratory", "zaremba_naming_validation")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+obj_cache_fname <- file.path(out_dir, "obj_ex_symbols.qs2")
+
+filters <- naming_filters(max_genes = 2)
+redo <- list(load = FALSE)
+```
+
+## Load the reference and map to gene symbols
+
+```{r}
+#| label: load
+## Excitatory, non-precursor cells only -- Ex_Pre_* are neuroblasts, not the mature types this
+## nomenclature is being borrowed for.
+if (!redo$load && file.exists(obj_cache_fname)) {
+  obj_ex <- qs_read(obj_cache_fname, nthreads = 8)
+} else {
+  obj <- readRDS(zaremba_fname)
+  obj$anno_level_1 <- as.character(obj$anno_level_1)
+  obj$anno_level_3 <- as.character(obj$anno_level_3)
+  ex_cells <- colnames(obj)[grepl("^Ex", obj$anno_level_1) & !grepl("Pre", obj$anno_level_1)]
+  obj_ex <- subset(obj, cells = ex_cells)
+  DefaultAssay(obj_ex) <- "RNA"
+
+  ## Ensembl gene ID -> chicken gene symbol, same source as snrna_zaremba-chk_integration...qmd
+  ## (AH53208, Ensembl 87 EnsDb for Gallus gallus). No finch ortholog step needed here: the
+  ## comparison is against Zaremba's own chicken gene symbols, not a cross-species join.
+  ah <- AnnotationHub()
+  gg_db <- query(ah, c("Ensembl", "Gallus gallus", "EnsDb"))[["AH53208"]]
+  ens_df <- AnnotationDbi::select(gg_db, keys = Features(obj_ex), c("SYMBOL", "GENENAME"), "GENEID")
+  ens_df <- ens_df %>% dplyr::filter(!is.na(SYMBOL), SYMBOL != "")
+
+  mat <- GetAssayData(obj_ex, assay = "RNA", layer = "counts")
+  mat <- mat[ens_df$GENEID, ]
+  ## Group-sum duplicate gene symbols via a sparse indicator matrix. Matrix.utils::aggregate.Matrix
+  ## (used for this in the existing integration notebook) is archived on CRAN and unavailable
+  ## through renv; this needs nothing beyond Matrix, already a hard Seurat dependency.
+  grp <- factor(ens_df$SYMBOL)
+  ind <- sparseMatrix(i = as.integer(grp), j = seq_along(grp), x = 1)
+  mat <- ind %*% mat
+  rownames(mat) <- levels(grp)
+
+  obj_ex <- CreateSeuratObject(mat, meta.data = obj_ex@meta.data)
+  obj_ex <- NormalizeData(obj_ex, verbose = FALSE)
+  qs_save(obj_ex, obj_cache_fname, nthreads = 8)
+}
+
+tibble(n_cells = ncol(obj_ex), n_genes = nrow(obj_ex),
+      n_supertypes = n_distinct(obj_ex$anno_level_3),
+      n_subclasses = n_distinct(obj_ex$anno_level_1)) %>%
+  kable(caption = "Excitatory, non-precursor cells and genes after symbol mapping")
+```
+
+## The nesting, read from their own metadata
+
+```{r}
+#| label: nesting
+## Not assumed from string prefixes -- DACH2_CALCR and DACH2_SV2C are separate six-child subclasses
+## whose children's names both start with "DACH2_", which is exactly what made the flat comparison
+## fail on them. This table is the ground truth the nested loop below actually uses.
+nesting <- obj_ex@meta.data %>%
+  distinct(subclass = anno_level_1, supertype = anno_level_3) %>%
+  arrange(subclass, supertype)
+
+nesting %>%
+  count(subclass, name = "n_children") %>%
+  kable(caption = "Children per subclass. A subclass with 1 child has nothing to run DE against.")
+
+kable(nesting, caption = "Full subclass -> supertype nesting")
+```
+
+## Scoring helper
+
+```{r}
+#| label: score-helper
+## Case-insensitive gene-name comparison: the object's mapped gene symbols are not uniformly cased
+## (e.g. one gene surfaced as "tac1" against the published "TAC1"), a mapping-table artefact, not a
+## naming disagreement, so scoring must not let case decide a match.
+score_against_published <- function(nm, published_col = "cluster") {
+  nm %>%
+    mutate(
+      published = sub("^Ex_", "", .data[[published_col]]),
+      published_genes = str_split(toupper(published), "_"),
+      my_genes = str_split(toupper(coalesce(naming_genes, "")), "/"),
+      overlap = map2_int(published_genes, my_genes, ~ length(intersect(.x, .y))),
+      any_match = overlap > 0
+    ) %>%
+    dplyr::select(cluster = all_of(published_col), published, naming_genes, n_naming_genes,
+           unique_id, overlap, any_match)
+}
+```
+
+## Flat naming: every supertype against all 25 others
+
+```{r}
+#| label: flat
+de_flat <- cluster_de(obj_ex, "anno_level_3", assay = "RNA")
+nm_flat <- select_naming_genes(de_flat, filters = filters)
+cmp_flat <- score_against_published(nm_flat) %>% mutate(method = "flat")
+
+tibble(
+  n_supertypes = nrow(cmp_flat),
+  n_any_match = sum(cmp_flat$any_match),
+  n_unique_id = sum(cmp_flat$unique_id),
+  n_no_marker = sum(cmp_flat$n_naming_genes == 0)
+) %>%
+  kable(caption = "Flat comparison: every supertype scored against the entire excitatory population at once")
+```
+
+## Nested naming: each supertype against its subclass siblings only
+
+```{r}
+#| label: nested
+## Subclasses with a single child cannot be tested by DE at all -- their "name" is definitionally
+## the subclass itself, so score them as a trivial match rather than silently dropping them or
+## running a meaningless one-group comparison.
+subclass_sizes <- nesting %>% count(subclass, name = "n_children")
+multi <- subclass_sizes %>% dplyr::filter(n_children > 1) %>% pull(subclass)
+singleton <- subclass_sizes %>% dplyr::filter(n_children == 1) %>% pull(subclass)
+
+nested_results <- map(multi, function(sc) {
+  cells_sc <- colnames(obj_ex)[obj_ex$anno_level_1 == sc]
+  obj_sc <- subset(obj_ex, cells = cells_sc)
+  de_sc <- cluster_de(obj_sc, "anno_level_3", assay = "RNA")
+  nm_sc <- select_naming_genes(de_sc, filters = filters)
+  score_against_published(nm_sc) %>% mutate(method = "nested", subclass = sc)
+})
+
+nested_singleton <- map_dfr(singleton, function(sc) {
+  st <- nesting %>% dplyr::filter(subclass == sc) %>% pull(supertype)
+  tibble(cluster = st, published = sub("^Ex_", "", st), naming_genes = NA_character_,
+        n_naming_genes = 0L, unique_id = TRUE, overlap = 1L, any_match = TRUE,
+        method = "nested (trivial: only child of its subclass)", subclass = sc)
+})
+
+cmp_nested <- bind_rows(nested_results, nested_singleton)
+
+tibble(
+  n_supertypes = nrow(cmp_nested),
+  n_any_match = sum(cmp_nested$any_match),
+  n_unique_id = sum(cmp_nested$unique_id),
+  n_no_marker = sum(cmp_nested$n_naming_genes == 0 & !grepl("trivial", cmp_nested$method))
+) %>%
+  kable(caption = "Nested comparison: every supertype scored only against its own subclass siblings")
+```
+
+## Head-to-head
+
+```{r}
+#| label: compare
+side_by_side <- cmp_flat %>%
+  dplyr::select(cluster, published, flat_genes = naming_genes, flat_match = any_match, flat_unique = unique_id) %>%
+  left_join(
+    cmp_nested %>% dplyr::select(cluster, subclass, nested_genes = naming_genes,
+                          nested_match = any_match, nested_unique = unique_id),
+    by = "cluster"
+  ) %>%
+  arrange(subclass, cluster)
+
+kable(side_by_side, caption = paste(
+  "Per-supertype comparison. flat_match / nested_match: did that method's chosen gene(s) include",
+  "at least one of Zaremba's published genes for this supertype (case-insensitive)?"
+))
+
+tibble(
+  method = c("flat", "nested"),
+  n_any_match = c(sum(cmp_flat$any_match), sum(cmp_nested$any_match)),
+  n_unique_id = c(sum(cmp_flat$unique_id), sum(cmp_nested$unique_id)),
+  n_no_marker = c(sum(cmp_flat$n_naming_genes == 0),
+                 sum(cmp_nested$n_naming_genes == 0 & !grepl("trivial", cmp_nested$method))),
+  n_total = c(nrow(cmp_flat), nrow(cmp_nested))
+) %>%
+  kable(caption = "Headline comparison")
+
+## The specific claim under test: does nesting fix the DACH2 lineage, where the flat method failed
+## almost entirely?
+side_by_side %>%
+  dplyr::filter(grepl("DACH2", subclass)) %>%
+  dplyr::select(subclass, cluster, flat_genes, flat_match, nested_genes, nested_match) %>%
+  kable(caption = "DACH2_CALCR and DACH2_SV2C children specifically -- where the flat method broke")
+```
+
+## Conclusion
+
+```{r}
+#| label: conclusion
+verdict <- tibble(
+  flat_rate = sum(cmp_flat$any_match) / nrow(cmp_flat),
+  nested_rate = sum(cmp_nested$any_match) / nrow(cmp_nested)
+)
+kable(verdict, digits = 3, caption = "Fraction of supertypes where the method's own top gene(s) matched a published gene")
+```
+
+Read the tables above before trusting either number in isolation: a higher match rate could still
+be driven entirely by the DACH2 lineage (6+6 of 26 supertypes) rather than a general improvement,
+and the `unique_id` columns matter independently of `any_match` -- a method can fail to name a
+cluster the way Zaremba did while still finding *a* real, uniquely-identifying gene of its own, which
+is a different (milder) kind of disagreement than finding no marker at all.
+
+**What this notebook does not do.** It does not decide which method wins by fiat, and it does not
+touch this project's own glutamatergic clusters. Whichever method scores better here is the one to
+carry into a follow-up notebook that runs `zaremba_labels()` against the project's actual `obj_glut*`
+objects -- additive, non-destructive, existing `celltype`/`cluster` columns untouched, exactly as
+scoped for that step.
+
+## Session info
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

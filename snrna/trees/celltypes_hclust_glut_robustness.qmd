@@ -1,0 +1,912 @@
+---
+title: "Robustness of glutamatergic cell-type clustering to song-DEG removal"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+Reviewer-requested robustness analysis for the hierarchical clustering of
+glutamatergic cell types in `celltypes_hclust_glut.qmd`. In that analysis, genes
+differentially expressed in the song nuclei (Glut-RA within the arcopallial
+dissections; Glut-HVC-* / Glut-LMAN-* within the nidopallial dissections) are
+removed from the feature set before the cell types are clustered, so that the
+tree reflects regional identity rather than song-nucleus identity.
+
+This document addresses four points:
+
+1. **Before removal.** The tree built with no song-DEG removal at all.
+2. **Threshold sensitivity.** Trees built while defining the song DEGs at a
+   range of adjusted-p thresholds (a looser threshold removes *more* genes).
+3. **Bootstrap stability.** Two complementary bootstraps: `pvclust`
+   multiscale bootstrap over genes (AU/BP support per branch) and a
+   nucleus-level bootstrap that resamples cells within each cell type and
+   measures how often each branch of the published tree is recovered.
+4. **Splitting the dissections.** The published trees are built separately for
+   the nidopallial (NIDO) and arcopallial (ARCO) dissections, which occupy
+   distinct pallial domains. Every analysis below is therefore run a third
+   time, labelled `ALL`, with all glutamatergic cell types clustered together
+   in a single tree, so that the split can be compared against the pooled
+   alternative. For `ALL`, the markers and the song DEGs are called on
+   pseudobulk profiles with both dissections pooled, and the song-DEG set is
+   the union of the Glut-RA, Glut-HVC-* and Glut-LMAN-* DEGs.
+
+All parameters other than the song-DEG removal step are held at the values used
+in `celltypes_hclust_glut.qmd` (`ward.D` on correlation distance, top 100
+markers per cluster per direction at `p_adj < 0.1`, gene-specificity scaling).
+
+```{r setup}
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(Matrix)
+library(pvclust)
+library(ComplexHeatmap)
+library(circlize)
+library(ggtree)
+library(ape)
+library(cowplot)
+library(here)
+set.seed(10)
+
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
+
+pnames = names(position_colors)
+names(position_colors) = case_when(pnames == "nido" ~ "nr",
+                                   pnames == "ncl" ~ "nc",
+                                   TRUE ~ pnames)
+```
+
+# Parameters
+
+```{r params}
+hclust_method = "ward.D"
+dist_method   = "correlation"
+assay_to_use  = "SCT"
+res_to_use    = "cluster"
+
+## Number of top markers retained per cluster per direction (as published)
+nsig = 100
+## Significance threshold used to *select* the clustering features (as published)
+feature_thresh = 0.1
+
+## Song-DEG removal thresholds to sweep. NA = no removal (i.e. the clustering
+## as it would be done before any song DEGs are taken out).
+deg_thresholds = c(NA, 0.5, 0.25, 0.1, 0.05, 0.01, 0.001)
+## The threshold used in the manuscript, for reference comparisons
+ref_threshold = 0.1
+
+## pvclust multiscale bootstrap replicates
+nboot = 1000
+n_cores = min(20L, max(1L, parallel::detectCores() - 4L))
+
+## Cell-level bootstrap replicates
+n_cellboot = 500
+
+## Song-nucleus clusters, per analysis. ALL = every glutamatergic cell type
+## clustered together, without splitting the nidopallial and arcopallial
+## dissections (requested by a reviewer).
+song_clusters = list(ARCO = "^Glut-RA$",
+                     NIDO = "HVC|LMAN",
+                     ALL  = "^Glut-RA$|HVC|LMAN")
+## Which aggregated columns belong to each tree
+region_cols  = list(ARCO = "RA|Arco",
+                    NIDO = "HVC|NC|LMAN|NR|Nido",
+                    ALL  = "Glut")
+regions = c("ARCO", "NIDO", "ALL")
+
+## Element-wise label for a threshold (format() on a vector pads to a common
+## width, which would break the joins below, so map over elements).
+thr_label = function(x) {
+  vapply(x, function(v) if (is.na(v)) "none" else format(v, scientific = FALSE),
+         character(1))
+}
+## Ordered threshold labels, most genes removed -> fewest
+lev = c("none", thr_label(sort(deg_thresholds[!is.na(deg_thresholds)], decreasing = TRUE)))
+ref_lab = thr_label(ref_threshold)
+```
+
+# Directories
+
+```{r dirs}
+script_name = "celltypes_hclust_glut_robustness"
+
+obj_fname = here::here("snrna/clustering/snrna_seurat_cellbender_preprocess",
+                       "obj_clustered.qs2")
+
+out_dir     = here::here("snrna/trees", script_name)
+out_sub_dir = file.path(out_dir, str_interp("${dist_method}_${hclust_method}"))
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_sub_dir, recursive = TRUE, showWarnings = FALSE)
+
+obj_out_fname      = file.path(out_dir, "obj_clustered_glutamatergic.qs2")
+data_out_avg_fname = file.path(out_dir, "data_avg.qs2")
+markers_fname      = file.path(out_dir, sprintf("marker_genes_cluster_%s.rds", assay_to_use))
+
+## Marker tables from the published run (identical cell subset); used as caches
+## so that the pseudobulk DESeq2 tests are not recomputed unnecessarily.
+## markers_cache holds the per-dissection tables, markers_cache_all the table
+## computed with both dissections pooled.
+markers_cache     = here::here("snrna/trees/celltypes_hclust_glut_no1a",
+                               sprintf("marker_genes_cluster_%s.rds", assay_to_use))
+markers_cache_all = here::here("snrna/trees/celltypes_hclust_glut_no1a",
+                               sprintf("marker_genes_cluster_pos-together_%s.rds", assay_to_use))
+```
+
+# Load data
+
+Same cell subset as the published analysis: glutamatergic clusters, excluding
+the pre-motor/pre-song ("Pre") clusters, the Glut-HVC-1a cluster, and cells
+whose dissection assignment spans two regions.
+
+```{r load}
+redo = !file.exists(obj_out_fname)
+if (redo) {
+  obj = qs_read(obj_fname)
+  idents = FetchData(obj, res_to_use) %>% mutate_all(as.factor)
+  Idents(obj) = idents[, 1]
+  cells = Cells(obj)[grepl("Glut", Idents(obj)) &
+                       !grepl("Pre", Idents(obj)) &
+                       !grepl("1a", Idents(obj))]
+  obj_sub = subset(obj, cells = cells)
+
+  cells = Cells(obj_sub)[!grepl("/", obj_sub$assignment)]
+  obj_sub = subset(obj_sub, cells = cells)
+
+  qs_save(obj_sub, obj_out_fname)
+  rm(obj); gc()
+} else {
+  obj_sub = qs_read(obj_out_fname)
+}
+
+obj_sub$region = case_when(obj_sub$position %in% c("ra", "arco") ~ "ARCO",
+                           obj_sub$position %in% c("lman", "nr", "hvc", "nc") ~ "NIDO")
+obj_sub$cluster = droplevels(as.factor(obj_sub@meta.data[[res_to_use]]))
+table(obj_sub$cluster, obj_sub$region)
+```
+
+# Markers
+
+Pseudobulk (cluster x animal) DESeq2 markers, computed separately within each
+dissection region. These define both the song-DEG sets that get removed and the
+feature sets used for clustering.
+
+```{r markers}
+compute_markers = function(obj_cur) {
+  obj_agg = AggregateExpression(obj_cur, assay = assay_to_use,
+                                group.by = c(res_to_use, "assignment"),
+                                return.seurat = TRUE)
+  Idents(obj_agg) = obj_agg$cluster
+  FindAllMarkers(obj_agg, assay = assay_to_use, test.use = "DESeq2", only.pos = FALSE)
+}
+
+markers_agg = if (file.exists(markers_fname)) readRDS(markers_fname) else list()
+markers_new = FALSE
+for (reg in regions) {
+  if (!is.null(markers_agg[[reg]])) next
+  markers_new = TRUE
+  markers_agg[[reg]] =
+    if (reg == "ALL") {
+      ## both dissections pooled
+      if (file.exists(markers_cache_all)) readRDS(markers_cache_all) else compute_markers(obj_sub)
+    } else if (file.exists(markers_cache)) {
+      readRDS(markers_cache)[[reg]]
+    } else {
+      compute_markers(subset(obj_sub, region == reg))
+    }
+}
+if (markers_new) saveRDS(markers_agg, markers_fname)
+map(markers_agg[regions], ~ count(.x, cluster))
+```
+
+# Average expression
+
+```{r avg}
+if (file.exists(data_out_avg_fname)) {
+  obj_int_avg1 = qs_read(data_out_avg_fname)
+} else {
+  Idents(obj_sub) = obj_sub$cluster
+  obj_int_avg = AggregateExpression(obj_sub, assays = assay_to_use)
+  obj_int_avg1 = log1p(obj_int_avg[[assay_to_use]])
+  colnames(obj_int_avg1) = colnames(obj_int_avg[[assay_to_use]])
+  qs_save(obj_int_avg1, data_out_avg_fname)
+}
+dim(obj_int_avg1)
+```
+
+# Helper functions
+
+```{r helpers}
+## Genes called as song DEGs at a given adjusted-p threshold.
+## thresh = NA -> no genes removed (clustering "before" song-DEG removal).
+song_degs = function(markers, song_pattern, thresh) {
+  if (is.na(thresh)) return(character(0))
+  markers %>%
+    filter(grepl(song_pattern, cluster)) %>%
+    filter(p_val_adj < thresh) %>%
+    pull(gene) %>%
+    unique()
+}
+
+## Feature set used for clustering, exactly as in celltypes_hclust_glut.qmd
+## except that the removed-gene set is supplied.
+select_features = function(markers, removed, nsig, feature_thresh) {
+  markers %>%
+    filter(!(gene %in% removed)) %>%
+    mutate(sign = avg_log2FC > 0) %>%
+    filter(p_val_adj < feature_thresh) %>%
+    group_by(cluster, sign) %>%
+    top_n(nsig, abs(avg_log2FC)) %>%
+    ungroup() %>%
+    distinct(gene, .keep_all = TRUE) %>%
+    pull(gene)
+}
+
+## genes x cell-types matrix of scaled gene specificity, as published
+specificity_matrix = function(avg, genes, col_pattern) {
+  m = avg[genes, grepl(col_pattern, colnames(avg)), drop = FALSE]
+  m = t(apply(m, 1, calc_gene_specificity, scale = TRUE))
+  m[is.nan(m)] = 0
+  as.matrix(m)
+}
+
+## Tip sets of every internal node of an hclust, in hclust merge order
+## (i.e. the same order as pvclust's $edges rows).
+hclust_clades = function(hc) {
+  out = vector("list", nrow(hc$merge))
+  for (i in seq_len(nrow(hc$merge))) {
+    tips = character(0)
+    for (j in hc$merge[i, ])
+      tips = c(tips, if (j < 0) hc$labels[-j] else out[[j]])
+    out[[i]] = sort(tips)
+  }
+  out
+}
+clade_key = function(tips) paste(sort(tips), collapse = "|")
+
+## Tip sets for every node of a phylo object, indexed by node number.
+phylo_tipsets = function(phy) {
+  ntip = length(phy$tip.label)
+  desc = vector("list", max(phy$edge))
+  for (i in seq_len(ntip)) desc[[i]] = phy$tip.label[i]
+  for (e in rev(seq_len(nrow(phy$edge)))) {
+    p = phy$edge[e, 1]; ch = phy$edge[e, 2]
+    desc[[p]] = c(desc[[p]], desc[[ch]])
+  }
+  desc
+}
+
+## Map hclust-ordered per-edge values (e.g. pvclust AU) onto ggtree node ids.
+edge_values_to_nodes = function(hc, values) {
+  phy = ape::as.phylo(hc)
+  hc_keys = map_chr(hclust_clades(hc), clade_key)
+  ts = phylo_tipsets(phy)
+  node_keys = map_chr(ts, ~ if (is.null(.x)) NA_character_ else clade_key(.x))
+  tibble(node = seq_along(node_keys), key = node_keys) %>%
+    filter(!is.na(key)) %>%
+    left_join(tibble(key = hc_keys, value = values), by = "key") %>%
+    filter(!is.na(value))
+}
+
+## correlation-distance ward.D tree, matching pvclust's settings
+build_tree = function(mat) {
+  d = as.dist(1 - cor(mat))
+  hclust(d, method = hclust_method)
+}
+```
+
+# Threshold sweep
+
+For each region and each song-DEG threshold, rebuild the feature set, recompute
+the cell-type tree, and run the `pvclust` multiscale bootstrap.
+
+```{r sweep}
+#| message: false
+sweep_fname = file.path(out_sub_dir, "pvclust_sweep.qs2")
+
+## Cached per analysis x threshold, so that adding an analysis does not force
+## the previously computed bootstraps to be rerun.
+sweep = if (file.exists(sweep_fname)) qs_read(sweep_fname) else list()
+sweep_new = FALSE
+for (region_cur in regions) {
+  for (thr in deg_thresholds) {
+    thr_lab = thr_label(thr)
+    key = paste(region_cur, thr_lab, sep = "_")
+    if (!is.null(sweep[[key]])) next
+    sweep_new = TRUE
+    message("== ", region_cur, " threshold ", thr_lab)
+
+    removed  = song_degs(markers_agg[[region_cur]], song_clusters[[region_cur]], thr)
+    features = select_features(markers_agg[[region_cur]], removed, nsig, feature_thresh)
+    mat      = specificity_matrix(obj_int_avg1, features, region_cols[[region_cur]])
+
+    pv = pvclust(mat, method.dist = dist_method, method.hclust = hclust_method,
+                 nboot = nboot, parallel = as.integer(n_cores))
+
+    sweep[[key]] = list(region = region_cur, threshold = thr, threshold_label = thr_lab,
+                        n_removed = length(removed), n_features = length(features),
+                        features = features, removed = removed, pv = pv)
+  }
+}
+if (sweep_new) qs_save(sweep, sweep_fname)
+## keep only the analyses requested by `regions`, in that order
+sweep = sweep[unlist(map(regions, function(r) paste(r, thr_label(deg_thresholds), sep = "_")))]
+
+sweep_df = map_dfr(sweep, function(s) {
+  au = s$pv$edges$au
+  tibble(region = s$region, threshold_label = s$threshold_label,
+         threshold = s$threshold, n_removed = s$n_removed,
+         n_features = s$n_features,
+         n_edges = length(au), mean_au = mean(au), median_au = median(au),
+         n_au95 = sum(au >= 0.95), frac_au95 = mean(au >= 0.95))
+}) %>%
+  mutate(threshold_label = factor(threshold_label, levels = lev)) %>%
+  arrange(region, threshold_label)
+
+write_csv(sweep_df, file.path(out_sub_dir, "sweep_summary.csv"))
+sweep_df
+```
+
+```{r sweep-plot}
+#| fig-width: 9
+#| fig-height: 6
+p_counts = sweep_df %>%
+  pivot_longer(c(n_removed, n_features, frac_au95), names_to = "metric") %>%
+  mutate(metric = recode(metric,
+                         n_removed  = "song DEGs removed",
+                         n_features = "genes used for clustering",
+                         frac_au95  = "fraction of branches AU >= 0.95")) %>%
+  ggplot(aes(threshold_label, value, group = region, color = region)) +
+  geom_line() + geom_point() +
+  facet_wrap(~metric, scales = "free_y") +
+  labs(x = "song-DEG adjusted-p threshold (none = no removal)", y = NULL) +
+  theme_cowplot(font_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(p_counts)
+save_plot(file.path(out_sub_dir, "sweep_summary.pdf"), p_counts,
+          base_height = 3.5, base_width = 10)
+```
+
+# Trees across thresholds
+
+Each tree is annotated with the `pvclust` approximately-unbiased (AU) support,
+in percent, at every internal branch. Tips are coloured by dissection position.
+
+```{r tree-fn}
+## Display name for each analysis
+region_name = c(ARCO = "ARCO", NIDO = "NIDO",
+                ALL = "ALL (nido + arco combined)")
+
+## Two lines, so that the longest title still fits the narrow page.
+tree_title = function(region, threshold_label) {
+  nm = if (region %in% names(region_name)) region_name[[region]] else region
+  if (threshold_label == "none")
+    sprintf("%s\nno song DEGs removed", nm)
+  else
+    sprintf("%s\nsong DEGs removed at p_adj < %s", nm, threshold_label)
+}
+
+tip_annotation = function(labels) {
+  data.frame(labels = labels) |>
+    mutate(position = str_extract(labels, "Glut-([A-Za-z]+)", group = 1)) |>
+    mutate(position = if_else(position == "Nido", "NC", position),
+           position = tolower(position)) |>
+    mutate(col = position_colors[match(position, names(position_colors))])
+}
+
+## Tree geometry, matched to celltypes_hclust_glut.qmd: geom_tiplab at offset 0,
+## hexpand(5), and a panel fixed by egg::set_panel_size so rows sit tight
+## against one another. Font sizes are given in points and converted to the mm
+## units that ggplot's `size` aesthetic expects; the per-tip row height tracks
+## the tip font so that shrinking the text does not reopen gaps between labels.
+tip_pt           = 6     # tip labels
+support_pt       = 5     # branch-support labels (absent in the original)
+tip_size         = tip_pt / .pt
+support_size     = support_pt / .pt
+tip_scale_factor = tip_pt * 1.45 / 72   # panel inches per tip (~1.45 line spacing)
+panel_width      = 2                    # panel inches
+## Branch line weight, given as an R lwd (lwd 1 = 1/96 in = 0.75 pt) and
+## converted to the mm units ggplot's `linewidth` expects. ggtree's default is
+## linewidth 0.5, i.e. lwd 1.42, which is heavier than this.
+branch_lwd       = 0.5
+branch_linewidth = branch_lwd / .pt
+
+## hc:      hclust to draw
+## values:  per-edge values in hclust merge order (e.g. pvclust AU), or NULL
+## Returns a fixed-panel gtable; print()/plot() it, and size the device with
+## tree_device_dim() so that there is no slack around the panel.
+support_tree = function(hc, values, label_color = "grey30", title = NULL, subtitle = NULL) {
+  hc_df = tip_annotation(hc$labels)
+  g = ggtree(hc, branch.length = "none", linewidth = branch_linewidth) %<+% hc_df
+  if (!is.null(values)) {
+    node_df = edge_values_to_nodes(hc, values) %>%
+      transmute(node, support_lab = as.character(round(value * 100)))
+    g = g %<+% node_df
+  }
+  g = g +
+    geom_tiplab(aes(color = col), angle = 0, hjust = 0, offset = 0,
+                show.legend = FALSE, size = tip_size) +
+    theme_dendrogram(plot.margin = margin(20, 20, 20, 20)) +
+    scale_color_identity() +
+    hexpand(5) +
+    labs(title = title, subtitle = subtitle) +
+    theme(plot.title = element_text(size = 9, face = "plain"),
+          plot.subtitle = element_text(size = 7))
+  if (!is.null(values))
+    ## the extra left expansion keeps the root's label inside the panel
+    g = g + geom_text2(aes(label = support_lab, subset = !isTip),
+                       hjust = 1.15, vjust = -0.4, size = support_size,
+                       color = label_color) +
+      ggexpand(0.25, direction = -1)
+  egg::set_panel_size(g,
+                      width  = unit(panel_width, "in"),
+                      height = unit(length(hc$labels) * tip_scale_factor, "in"))
+}
+
+## Device size that just contains the fixed panel plus margins and the title.
+tree_device_dim = function(n_tips) {
+  list(width  = panel_width + 2.0,
+       height = n_tips * tip_scale_factor + 1.4)   # room for the title block
+}
+
+## Draw fixed-panel gtables one per page. plot() would call grid.newpage()
+## before the first tree as well, leaving a blank leading page in the PDF.
+draw_pages = function(plots) {
+  for (i in seq_along(plots)) {
+    if (i > 1) grid::grid.newpage()
+    grid::grid.draw(plots[[i]])
+  }
+}
+
+plot_tree = function(s, show_au = TRUE) {
+  support_tree(s$pv$hclust,
+               values = if (show_au) s$pv$edges$au else NULL,
+               title = tree_title(s$region, s$threshold_label),
+               subtitle = sprintf("%d genes removed, %d genes clustered\nbranch labels = pvclust AU (%%)",
+                                  s$n_removed, s$n_features))
+}
+```
+
+```{r trees}
+#| fig-width: 5
+#| fig-height: 7
+#| results: hold
+for (reg in regions) {
+  keys = names(sweep)[map_chr(sweep, "region") == reg]
+  n_tips = length(sweep[[keys[1]]]$pv$hclust$labels)
+  dim = tree_device_dim(n_tips)
+  walk(keys, ~ plot(plot_tree(sweep[[.x]])))
+  pdf(file.path(out_sub_dir, sprintf("trees_%s_thresholds.pdf", tolower(reg))),
+      height = dim$height, width = dim$width)
+  draw_pages(map(keys, ~ plot_tree(sweep[[.x]])))
+  dev.off()
+}
+```
+
+# Topology agreement across thresholds
+
+Two summaries of how much the tree changes with the threshold:
+
+* **Cophenetic / Baker's gamma correlation** between the full dendrograms
+  (Pearson and Spearman correlation of the cophenetic distances).
+* **Adjusted Rand index** between the cell-type groupings obtained by cutting
+  each tree at k = 2..8.
+
+```{r topology}
+coph = map(sweep, ~ as.vector(cophenetic(.x$pv$hclust)))
+
+pairs_df = map_dfr(regions, function(reg) {
+  keys = names(sweep)[map_chr(sweep, "region") == reg]
+  expand_grid(a = keys, b = keys) %>%
+    mutate(region = reg,
+           lab_a = map_chr(a, ~ sweep[[.x]]$threshold_label),
+           lab_b = map_chr(b, ~ sweep[[.x]]$threshold_label),
+           cophenetic_r = map2_dbl(a, b, ~ cor(coph[[.x]], coph[[.y]])),
+           baker_gamma  = map2_dbl(a, b, ~ cor(coph[[.x]], coph[[.y]], method = "spearman")),
+           ari = map2_dbl(a, b, function(x, y) {
+             ks = 2:min(8, length(sweep[[x]]$pv$hclust$labels) - 1)
+             mean(map_dbl(ks, function(k)
+               mclust::adjustedRandIndex(cutree(sweep[[x]]$pv$hclust, k)[sweep[[x]]$pv$hclust$labels],
+                                         cutree(sweep[[y]]$pv$hclust, k)[sweep[[x]]$pv$hclust$labels])))
+           }))
+})
+write_csv(select(pairs_df, -a, -b), file.path(out_sub_dir, "topology_agreement_pairwise.csv"))
+
+## versus the published threshold
+ref_df = pairs_df %>%
+  filter(lab_b == ref_lab) %>%
+  select(region, threshold_label = lab_a, cophenetic_r, baker_gamma, ari)
+write_csv(ref_df, file.path(out_sub_dir, "topology_agreement_vs_published.csv"))
+ref_df
+```
+
+```{r topology-plot}
+#| fig-width: 9
+#| fig-height: 4
+p_top = ref_df %>%
+  pivot_longer(c(cophenetic_r, baker_gamma, ari)) %>%
+  mutate(threshold_label = factor(threshold_label, levels = lev),
+         name = recode(name,
+                       cophenetic_r = "cophenetic r",
+                       baker_gamma  = "Baker's gamma",
+                       ari          = "mean ARI (k = 2..min(8, n-1))")) %>%
+  ggplot(aes(threshold_label, value, color = region, group = region)) +
+  geom_line() + geom_point() +
+  facet_wrap(~name) +
+  ylim(0, 1) +
+  labs(x = "song-DEG adjusted-p threshold", y = "agreement with published tree") +
+  theme_cowplot(font_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(p_top)
+save_plot(file.path(out_sub_dir, "topology_agreement.pdf"), p_top,
+          base_height = 3.5, base_width = 10)
+```
+
+```{r topology-heatmap}
+#| fig-width: 10
+#| fig-height: 5
+for (reg in regions) {
+  m = pairs_df %>%
+    filter(region == reg) %>%
+    select(lab_a, lab_b, ari) %>%
+    pivot_wider(names_from = lab_b, values_from = ari) %>%
+    column_to_rownames("lab_a") %>%
+    as.matrix()
+  m = m[lev, lev]
+  hm = Heatmap(m, name = "ARI", cluster_rows = FALSE, cluster_columns = FALSE,
+               col = colorRamp2(c(0, 1), hcl_palette = "Blues", reverse = TRUE),
+               column_title = sprintf("%s: pairwise ARI across thresholds", reg),
+               cell_fun = function(j, i, x, y, w, h, fill)
+                 grid.text(sprintf("%.2f", m[i, j]), x, y, gp = gpar(fontsize = 8)))
+  print(hm)
+  pdf(file.path(out_sub_dir, sprintf("topology_ari_%s.pdf", tolower(reg))),
+      height = 5, width = 5.5)
+  print(hm)
+  dev.off()
+}
+```
+
+# Branch-level bootstrap support
+
+## Multiscale bootstrap over genes (pvclust)
+
+AU support for every branch of the published (p_adj < 0.1) tree, and, for
+comparison, for the same branches when they are present in the no-removal tree.
+
+```{r au-table}
+au_df = map_dfr(sweep, function(s) {
+  hc = s$pv$hclust
+  tibble(region = s$region, threshold_label = s$threshold_label,
+         clade = map_chr(hclust_clades(hc), clade_key),
+         n_tips = map_int(hclust_clades(hc), length),
+         au = s$pv$edges$au, bp = s$pv$edges$bp)
+})
+write_csv(au_df, file.path(out_sub_dir, "branch_support_all.csv"))
+
+ref_clades = au_df %>% filter(threshold_label == ref_lab)
+
+## Is each published branch recovered at other thresholds, and with what support?
+## Every published branch is crossed with every threshold, so branches that are
+## absent at a threshold show up as NA rather than being dropped.
+recovery = ref_clades %>%
+  select(region, clade, n_tips, au_published = au) %>%
+  crossing(threshold_label = lev) %>%
+  left_join(au_df %>% select(region, threshold_label, clade, au_at_threshold = au),
+            by = c("region", "clade", "threshold_label")) %>%
+  mutate(threshold_label = factor(threshold_label, levels = lev),
+         recovered = !is.na(au_at_threshold)) %>%
+  arrange(region, desc(n_tips), threshold_label)
+write_csv(recovery, file.path(out_sub_dir, "published_branch_recovery_per_branch.csv"))
+
+recovery_summary = recovery %>%
+  group_by(region, threshold_label) %>%
+  summarise(n_published_branches = n(),
+            n_recovered = sum(recovered),
+            frac_recovered = mean(recovered),
+            mean_au_when_recovered = mean(au_at_threshold, na.rm = TRUE), .groups = "drop") %>%
+  arrange(region, threshold_label)
+write_csv(recovery_summary, file.path(out_sub_dir, "published_branch_recovery.csv"))
+recovery_summary
+```
+
+```{r au-plot}
+#| fig-width: 9
+#| fig-height: 4
+p_au = au_df %>%
+  mutate(threshold_label = factor(threshold_label, levels = lev)) %>%
+  ggplot(aes(threshold_label, au)) +
+  geom_hline(yintercept = 0.95, linetype = 2, color = "grey50") +
+  geom_boxplot(outlier.shape = NA, fill = NA) +
+  geom_jitter(width = 0.15, size = 1, alpha = 0.6, aes(color = region)) +
+  facet_wrap(~region) +
+  labs(x = "song-DEG adjusted-p threshold", y = "pvclust AU support") +
+  theme_cowplot(font_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+print(p_au)
+save_plot(file.path(out_sub_dir, "branch_support_au.pdf"), p_au,
+          base_height = 3.5, base_width = 8)
+```
+
+## Bootstrap over cells
+
+`pvclust` resamples *genes*. To estimate stability with respect to the cells
+(nuclei) that were sampled, we resample cells with replacement within each cell
+type, re-aggregate the pseudobulk profiles, and rebuild the tree with the same
+feature set and the same distance/linkage. The feature set is held fixed within
+each bootstrap series (re-running the pseudobulk DESeq2 tests per replicate is
+not tractable), so this measures sampling variability in the expression
+profiles rather than in marker selection.
+
+```{r cellboot}
+#| message: false
+cellboot_fname = file.path(out_sub_dir, "cellboot.qs2")
+
+boot_tree = function(counts, cl_factor, features, keep_cols) {
+  idx = unlist(lapply(split(seq_along(cl_factor), cl_factor),
+                      function(ii) sample(ii, length(ii), replace = TRUE)),
+               use.names = FALSE)
+  cl_b = droplevels(cl_factor[idx])
+  ind = sparse.model.matrix(~ 0 + cl_b)
+  colnames(ind) = levels(cl_b)
+  agg = as.matrix(counts[, idx, drop = FALSE] %*% ind)
+  agg = log1p(agg)
+  agg = agg[features, intersect(keep_cols, colnames(agg)), drop = FALSE]
+  agg = t(apply(agg, 1, calc_gene_specificity, scale = TRUE))
+  agg[is.nan(agg)] = 0
+  build_tree(as.matrix(agg))
+}
+
+cellboot = if (file.exists(cellboot_fname)) qs_read(cellboot_fname) else list()
+cellboot_todo = unlist(map(regions, ~ paste(.x, c("none", ref_lab), sep = "_")))
+cellboot_todo = setdiff(cellboot_todo, names(cellboot))
+
+if (length(cellboot_todo)) {
+  counts_all = LayerData(obj_sub, assay = assay_to_use, layer = "counts")
+  cl_all = droplevels(as.factor(obj_sub$cluster))
+
+  for (reg in regions) {
+    for (thr_lab in c("none", ref_lab)) {
+      key = paste(reg, thr_lab, sep = "_")
+      if (!(key %in% cellboot_todo)) next
+      s = sweep[[key]]
+      keep_cols = colnames(obj_int_avg1)[grepl(region_cols[[reg]], colnames(obj_int_avg1))]
+      feats = intersect(s$features, rownames(counts_all))
+
+      ## restrict the cells to those contributing to this region's columns
+      cell_keep = which(as.character(cl_all) %in% keep_cols)
+      counts_reg = counts_all[feats, cell_keep, drop = FALSE]
+      cl_reg = droplevels(cl_all[cell_keep])
+
+      trees = map(seq_len(n_cellboot), function(i) {
+        if (i %% 50 == 0) message(key, " boot ", i)
+        boot_tree(counts_reg, cl_reg, feats, keep_cols)
+      })
+
+      ref_hc = s$pv$hclust
+      ref_keys = map_chr(hclust_clades(ref_hc), clade_key)
+      boot_keys = map(trees, ~ map_chr(hclust_clades(.x), clade_key))
+      support = map_dbl(ref_keys, function(k) mean(map_lgl(boot_keys, ~ k %in% .x)))
+
+      cellboot[[key]] = list(region = reg, threshold_label = thr_lab,
+                             clade = ref_keys,
+                             n_tips = map_int(hclust_clades(ref_hc), length),
+                             support = support, hclust = ref_hc)
+    }
+  }
+  qs_save(cellboot, cellboot_fname)
+  rm(counts_all); gc()
+}
+cellboot = cellboot[unlist(map(regions, ~ paste(.x, c("none", ref_lab), sep = "_")))]
+
+cellboot_df = map_dfr(cellboot, function(x)
+  tibble(region = x$region, threshold_label = x$threshold_label,
+         clade = x$clade, n_tips = x$n_tips, cell_bootstrap = x$support))
+write_csv(cellboot_df, file.path(out_sub_dir, "cell_bootstrap_support.csv"))
+
+cellboot_df %>%
+  group_by(region, threshold_label) %>%
+  summarise(n_branches = n(),
+            mean_support = mean(cell_bootstrap),
+            n_ge_95 = sum(cell_bootstrap >= 0.95),
+            n_ge_70 = sum(cell_bootstrap >= 0.70), .groups = "drop")
+```
+
+```{r cellboot-trees}
+#| fig-width: 5
+#| fig-height: 7
+#| results: hold
+plot_support_tree = function(x) {
+  support_tree(x$hclust, values = x$support, label_color = "firebrick",
+               title = tree_title(x$region, x$threshold_label),
+               subtitle = sprintf("branch labels = %% of %d cell\nbootstraps recovering the branch",
+                                  n_cellboot))
+}
+walk(cellboot, ~ plot(plot_support_tree(.x)))
+
+## one page per analysis, sized to the tallest tree
+cb_dim = tree_device_dim(max(map_int(cellboot, ~ length(.x$hclust$labels))))
+pdf(file.path(out_sub_dir, "trees_cell_bootstrap.pdf"),
+    height = cb_dim$height, width = cb_dim$width)
+draw_pages(map(cellboot, plot_support_tree))
+dev.off()
+```
+
+## Combined support table
+
+```{r combined-support}
+combined = ref_clades %>%
+  select(region, clade, n_tips, au_gene_bootstrap = au, bp_gene_bootstrap = bp) %>%
+  left_join(cellboot_df %>%
+              filter(threshold_label == ref_lab) %>%
+              select(region, clade, cell_bootstrap),
+            by = c("region", "clade")) %>%
+  arrange(region, desc(n_tips))
+write_csv(combined, file.path(out_sub_dir, "branch_support_published_tree.csv"))
+combined
+```
+
+# Where the song clusters sit
+
+A compact summary of the question the removal step was meant to address: which
+cell types the song-nucleus clusters group with, at each threshold.
+
+```{r song-placement}
+## Smallest clade containing a song cluster: its immediate sister group.
+sister_of = function(hc, tip) {
+  clades = hclust_clades(hc)
+  containing = keep(clades, ~ tip %in% .x)
+  if (!length(containing)) return(list(sister = character(0), clade = NA_character_))
+  smallest = containing[[which.min(map_int(containing, length))]]
+  list(sister = setdiff(smallest, tip), clade = clade_key(smallest))
+}
+
+song_tips = map(regions, function(reg)
+  grep(song_clusters[[reg]], colnames(obj_int_avg1), value = TRUE) %>%
+    intersect(colnames(obj_int_avg1)[grepl(region_cols[[reg]], colnames(obj_int_avg1))])) %>%
+  set_names(regions)
+
+## Any cluster from a song nucleus, for telling song/non-song pairs from
+## song/song pairs
+all_song_tips = unique(unlist(song_tips))
+
+placement = map_dfr(sweep, function(s) {
+  hc = s$pv$hclust
+  au_by_clade = set_names(s$pv$edges$au, map_chr(hclust_clades(hc), clade_key))
+  tips = intersect(song_tips[[s$region]], hc$labels)
+  map_dfr(tips, function(tp) {
+    r = sister_of(hc, tp)
+    tibble(region = s$region, threshold_label = s$threshold_label,
+           song_cluster = tp,
+           sister = paste(r$sister, collapse = ", "),
+           sister_list = list(r$sister),
+           clade = r$clade,
+           au = unname(au_by_clade[r$clade]),
+           ## TRUE when the song cluster pairs with non-song cell types only
+           song_nonsong = length(r$sister) > 0 && !any(r$sister %in% all_song_tips))
+  })
+}) %>%
+  mutate(threshold_label = factor(threshold_label, levels = lev)) %>%
+  arrange(region, song_cluster, threshold_label)
+
+write_csv(select(placement, -sister_list),
+          file.path(out_sub_dir, "song_cluster_placement.csv"))
+select(placement, -sister_list)
+```
+
+## Agreement of the song / non-song pairings
+
+The trees as a whole can rearrange without touching the relationships the
+manuscript actually rests on, which are local: each song-nucleus cluster and the
+non-song cell types it pairs with. This restricts the agreement measure to those
+pairings. For every song cluster, its sister group is compared with the sister
+group in the **published split trees at p_adj < `r ref_lab`** (Jaccard index of
+the two sister sets: 1 = identical partners, 0 = no partner in common). The
+same reference is used for the pooled `ALL` analysis, so that panel shows
+whether pooling reproduces the published pairings.
+
+```{r song-pair-agreement}
+#| fig-width: 5
+#| fig-height: 3.5
+#| results: hold
+jaccard = function(a, b) {
+  if (!length(union(a, b))) return(1)
+  length(intersect(a, b)) / length(union(a, b))
+}
+
+## reference = the published split trees (ARCO / NIDO) at the published threshold
+ref_pairs = placement %>%
+  filter(region %in% c("ARCO", "NIDO"), threshold_label == ref_lab) %>%
+  select(song_cluster, ref_sister = sister_list)
+
+pair_agree = placement %>%
+  left_join(ref_pairs, by = "song_cluster") %>%
+  mutate(agreement = map2_dbl(sister_list, ref_sister, jaccard),
+         region = factor(region, levels = regions),
+         song_cluster = factor(song_cluster, levels = rev(sort(unique(song_cluster)))))
+write_csv(select(pair_agree, -sister_list, -ref_sister),
+          file.path(out_sub_dir, "song_pair_agreement.csv"))
+
+## sister names, one per line and without the shared "Glut-" prefix, so that
+## they fit inside a tile
+pair_agree = pair_agree %>%
+  mutate(sister_lab = str_replace_all(str_replace_all(sister, "Glut-", ""), ", ", "\n"))
+
+## One plot per analysis, with square tiles (coord_fixed on two discrete
+## scales, each level one unit wide).
+tile_in   = 0.4   # inches per tile
+cell_pt   = 5     # in-tile text (the smallest type used anywhere here)
+axis_pt   = 6     # axis text and titles
+
+pair_plot = function(reg) {
+  d = filter(pair_agree, region == reg) %>%
+    mutate(song_cluster = factor(song_cluster, levels = rev(sort(unique(as.character(song_cluster))))))
+  ggplot(d, aes(threshold_label, song_cluster)) +
+    geom_tile(aes(fill = agreement), color = "grey70", linewidth = 0.2) +
+    geom_text(aes(label = sister_lab, color = agreement > 0.5),
+              size = cell_pt / .pt, lineheight = 0.9) +
+    ## a song cluster pairing with another song cluster rather than with
+    ## non-song cell types is marked in the corner of its tile. The nudge is in
+    ## the discrete scale's own space.
+    geom_point(data = filter(d, !song_nonsong),
+               position = position_nudge(x = -0.42, y = 0.36),
+               shape = 4, size = 1, stroke = 0.5, color = "firebrick") +
+    coord_fixed(ratio = 1) +
+    scale_fill_gradient(low = "white", high = "#2166AC", limits = c(0, 1),
+                        name = "agreement with\npublished pairing") +
+    scale_color_manual(values = c(`TRUE` = "white", `FALSE` = "grey20"), guide = "none") +
+    labs(x = "song-DEG adjusted-p threshold", y = NULL,
+         title = region_name[[reg]],
+         caption = "tile text = cell types the song cluster pairs with\nx = paired with another song cluster rather than with non-song cell types") +
+    theme_cowplot(font_size = axis_pt) +
+    theme(axis.text = element_text(size = axis_pt),
+          axis.text.x = element_text(size = axis_pt, angle = 45, hjust = 1),
+          axis.title = element_text(size = axis_pt),
+          legend.title = element_text(size = axis_pt),
+          legend.text = element_text(size = cell_pt),
+          legend.key.size = unit(0.16, "in"),
+          plot.title = element_text(size = 7),
+          plot.caption = element_text(size = cell_pt, hjust = 0))
+}
+
+for (reg in regions) {
+  p_pair = pair_plot(reg)
+  print(p_pair)
+  n_rows = n_distinct(filter(pair_agree, region == reg)$song_cluster)
+  save_plot(file.path(out_sub_dir, sprintf("song_pair_agreement_%s.pdf", tolower(reg))),
+            p_pair,
+            base_width  = length(lev) * tile_in + 1.9,   # + y labels and legend
+            base_height = n_rows * tile_in + 1.1)        # + x labels and caption
+}
+```
+
+```{r song-pair-agreement-summary}
+#| fig-width: 8
+#| fig-height: 3.5
+p_pair_mean = pair_agree %>%
+  group_by(region, threshold_label) %>%
+  summarise(mean_agreement = mean(agreement),
+            frac_song_nonsong = mean(song_nonsong), .groups = "drop") %>%
+  pivot_longer(c(mean_agreement, frac_song_nonsong)) %>%
+  mutate(name = recode(name,
+                       mean_agreement    = "mean agreement with published pairing",
+                       frac_song_nonsong = "fraction pairing with non-song types")) %>%
+  ggplot(aes(threshold_label, value, color = region, group = region)) +
+  geom_line() + geom_point() +
+  facet_wrap(~name) +
+  ylim(0, 1) +
+  labs(x = "song-DEG adjusted-p threshold", y = NULL) +
+  theme_cowplot(font_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(p_pair_mean)
+save_plot(file.path(out_sub_dir, "song_pair_agreement_summary.pdf"), p_pair_mean,
+          base_height = 3.2, base_width = 9)
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```

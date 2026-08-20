@@ -18,7 +18,7 @@ library(scales)
 library(ggrepel)
 library(scCustomize)
 
-source("../../scripts/common_aesthetics.R")
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
@@ -68,7 +68,6 @@ if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
 
 ```
 
-
 ### Export beds
 ```{r}
 bed_dir = file.path(proj_dir, "beds")
@@ -78,29 +77,6 @@ bed_fname = file.path(bed_dir, "peak_set.bed")
 gr = getPeakSet(proj)
 rtracklayer::export(gr, bed_fname)
   
-```
-
-## Base composition of peaks
-```{r}
-library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
-
-gr_extend = trim(resize(gr, 2114, fix="center" ))
-seqinfo_lsd = SeqinfoForBSGenome(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
-gr_lsd = GRanges(seqnames = seqnames(seqinfo_lsd), ranges = IRanges(start=1, end=seqlengths(seqinfo_lsd)))
-gr_extend = subsetByOverlaps(gr_extend, gr_lsd, type="within")
-gr_seq = getSeq(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc, gr_extend)
-
-gr_seq_alpha = alphabetFrequency(gr_seq)
-sum(gr_seq_alpha[,"N"])
-
-gr_seq_alpha_nind = gr_seq_alpha[,"N"]>0
-
-sum(gr_seq_alpha_nind) / length(gr_seq_alpha_nind)
-
-gr_filt = gr[!gr_seq_alpha_nind]
-
-bed_fname = file.path(bed_dir, "peak_set_noN.bed")
-rtracklayer::export(gr_filt, bed_fname)
 ```
 
 ## Differential peaks

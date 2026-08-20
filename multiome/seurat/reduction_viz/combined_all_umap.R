@@ -8,8 +8,8 @@ library(scales)
 library(here)
 theme_set(theme_cowplot())
 
-source(here::here("scripts/scRNA.R"))
-source(here::here("scripts/common_aesthetics.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "scRNA.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",

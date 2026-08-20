@@ -24,7 +24,7 @@ library(scCustomize)
 library(circlize)
 library(ggrepel)
 
-source("../../scripts/common_aesthetics.R")
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",

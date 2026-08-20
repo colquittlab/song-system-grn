@@ -1,0 +1,171 @@
+---
+title: "Xenium ROI polygons — segmentation-independent region definitions"
+format: html
+editor: source
+---
+
+The collaborator's Xenium Explorer selections are **lists of cell IDs**, not
+geometry. Cell IDs are a property of a particular segmentation run, so any
+resegmentation (Proseg, Baysor, 10x multimodal) invalidates them — this is
+exactly why the `1um_*` selection files, which came from a 1 µm expansion run,
+match essentially no cells in the delivered 5 µm nucleus-expansion outputs.
+
+This script converts each usable selection into a **polygon** in micron
+coordinates, by taking the concave hull of the selected cells' centroids. The
+polygon is segmentation-independent: it can be applied to any future
+segmentation by point-in-polygon test on the new centroids.
+
+Run this **before** resegmenting.
+
+```{r}
+library(tidyverse)
+library(qs2)
+library(sp)          # point.in.polygon; avoids an sf/GDAL system dependency
+library(cowplot)
+library(here)
+
+source(here::here("config/paths.R"))
+select = dplyr::select
+```
+
+```{r}
+script_name = "roi_polygons"
+out_dir = here::here("xenium/preprocessing", script_name)
+dir.create(out_dir, recursive = T, showWarnings = F)
+
+## The selections are convex by construction — hand-drawn outlines around a
+## single nucleus, and 1 mm rectangles — so a convex hull is sufficient and
+## avoids an sf/GDAL dependency. The recovery check below is what tells us
+## whether that assumption holds: `extra` counts cells the hull admits that the
+## original selection did not, which is where a convex hull would show strain.
+
+## The two usable selection families. `1um_*` files are excluded: different
+## segmentation, cell IDs do not exist in this object.
+roi_patterns = c(HVC = "^(orpu|oryw)_HVC_.*cells_stats.csv$",
+                 box = "^HVC&Surround.*cells_stats.csv$")
+
+seed = 10
+set.seed(seed)
+```
+
+## Cell coordinates
+
+```{r}
+md = read_csv(here::here("xenium/preprocessing/xenium_preprocess/cell_metadata.csv.gz"),
+              show_col_types = FALSE) %>%
+  mutate(cell_id = str_remove(cell, "^.*_")) %>%
+  select(cell, cell_id, section_id, x_centroid, y_centroid)
+
+nrow(md)
+```
+
+## Selections
+
+```{r}
+read_selection = function(path) {
+  hdr = readLines(path, n = 5)
+  skip = max(c(0, which(str_starts(hdr, "#"))))
+  d = suppressWarnings(read_csv(path, skip = skip, show_col_types = FALSE))
+  if (!"Cell ID" %in% colnames(d)) return(character())
+  d$`Cell ID`
+}
+
+roi_files = list.files(XENIUM_SELECTIONS_DIR, pattern = "cells_stats.csv$",
+                       full.names = TRUE)
+
+roi = imap_dfr(roi_patterns, function(pat, type) {
+  f = roi_files[str_detect(basename(roi_files), pat)]
+  map_dfr(f, ~ tibble(file = basename(.x), roi_type = type,
+                      cell_id = read_selection(.x)))
+})
+
+roi %>% count(roi_type, file)
+```
+
+Each selection is assigned to the section that actually contains its cell IDs,
+not to the section named in the file or in the `#Selection name` header — those
+disagree with each other for several files.
+
+```{r}
+roi_xy = roi %>%
+  inner_join(md, by = "cell_id", relationship = "many-to-many")
+
+roi_section = roi_xy %>%
+  count(file, roi_type, section_id) %>%
+  group_by(file) %>%
+  slice_max(n, n = 1) %>%
+  ungroup()
+
+roi_section %>% arrange(section_id, roi_type)
+```
+
+```{r}
+roi_xy = roi_xy %>% semi_join(roi_section, by = c("file", "section_id"))
+```
+
+## Hulls
+
+```{r}
+hull_of = function(d) {
+  pts = as.matrix(d[, c("x_centroid", "y_centroid")])
+  i = grDevices::chull(pts)
+  tibble(x = pts[i, 1], y = pts[i, 2])
+}
+
+polys = roi_xy %>%
+  group_by(file, roi_type, section_id) %>%
+  group_modify(~ hull_of(.x)) %>%
+  ungroup()
+
+polys %>% count(file, roi_type, section_id, name = "n_vertices")
+write_csv(polys, file.path(out_dir, "roi_polygons.csv"))
+```
+
+Verification: re-select cells by point-in-polygon and compare with the original
+cell ID list. Recovery should be near 1 — a low value means the hull is
+distorted, usually because the selection is not simply connected.
+
+```{r}
+## Reusable: assign cells to an ROI polygon by point-in-polygon. This is the
+## function to apply to any future segmentation's centroids.
+cells_in_polygon = function(cells, poly) {
+  inside = sp::point.in.polygon(cells$x_centroid, cells$y_centroid,
+                                poly$x, poly$y) > 0
+  cells$cell_id[inside]
+}
+
+recovery = polys %>%
+  group_by(file, roi_type, section_id) %>%
+  group_split() %>%
+  map_dfr(function(p) {
+    sid = p$section_id[1]; f = p$file[1]
+    cells = md %>% filter(section_id == sid)
+    inside = cells_in_polygon(cells, p)
+    orig = roi_xy %>% filter(file == f) %>% pull(cell_id)
+    tibble(file = f, section_id = sid,
+           n_original = length(orig), n_in_polygon = length(inside),
+           recovered = mean(orig %in% inside),
+           extra = mean(!inside %in% orig))
+  })
+
+recovery %>% arrange(recovered)
+write_csv(recovery, file.path(out_dir, "roi_polygon_recovery.csv"))
+```
+
+```{r}
+for (sid in unique(polys$section_id)) {
+  p = ggplot() +
+    geom_point(data = md %>% filter(section_id == sid) %>% slice_sample(n = 3e4),
+               aes(x_centroid, y_centroid), size = 0.1, colour = "grey85") +
+    geom_polygon(data = polys %>% filter(section_id == sid),
+                 aes(x, y, colour = roi_type, group = file),
+                 fill = NA, linewidth = 0.6) +
+    coord_equal() + labs(title = sid) + theme_cowplot()
+  ggsave(file.path(out_dir, paste0("roi_polygons_", sid, ".png")), p,
+         width = 9, height = 9, dpi = 150, bg = "white")
+}
+```
+
+```{r}
+sessionInfo()
+```

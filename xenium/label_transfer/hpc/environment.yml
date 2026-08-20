@@ -1,0 +1,43 @@
+## Conda/micromamba environment for the RCTD array jobs.
+##
+##   micromamba create -f environment.yml
+##   micromamba activate xenium-rctd
+##   Rscript -e 'remotes::install_github("dmcable/spacexr", upgrade = "never",
+##                                       lib = "PATH_TO_ENV/lib/R/library")'
+##
+## spacexr is not on conda-forge, so it is installed from GitHub after the env
+## exists. It compiles quickly (no heavy system deps beyond a C++ toolchain).
+##
+## The explicit lib= is NOT optional — confirmed failure mode, not a
+## hypothetical one. On any account with R_LIBS_USER set (commonly via
+## ~/.Renviron, which re-asserts it even when overridden elsewhere in the
+## shell), a bare install_github() silently installs outside this env, and
+## `library(spacexr)` only fails later, inside an array task. See README.md
+## step 3 for the full explanation and a verification command.
+##
+## Only what the array tasks need: they load a pre-sliced RCTD object and call
+## fitPixels. Seurat/BPCells are NOT required here — those are only used by
+## 01_prepare_chunks.R, which runs locally.
+name: xenium-rctd
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.4
+  - r-matrix
+  - r-tidyverse
+  - r-remotes
+  - r-doparallel
+  - r-foreach
+  - r-quadprog
+  - r-rcpp
+  - r-rcpparmadillo
+  - r-rcppeigen
+  - r-rfast
+  - r-fields
+  - r-compquadform
+  - r-mgcv
+  - r-pals
+  - r-qs2
+  - compilers
+  - make
