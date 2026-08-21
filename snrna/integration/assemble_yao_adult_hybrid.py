@@ -15,19 +15,20 @@ sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from composite_score import aggregate, summarise
 from class_benchmark import score as class_score
 
-BASE = Path("/private/groups/colquittlab/saturn/zaremba_composite")
-YAOA = Path("/private/groups/colquittlab/saturn/snrna-bf-adult_snrna-yao/analysis/macro2000_hv8000_seed0_ep50")
-SAMAP_DIR = Path("/private/groups/colquittlab/saturn/samap_bf-mature_yao/results_adult_hybrid")
+COMPOSITE = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring")
+RPCA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep")
+YAOA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-yao/analysis/macro2000_hv8000_seed0_ep50")
+SAMAP_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-mature_yao/results_adult_hybrid")
 ANN = pd.read_csv("/private/groups/colquittlab/saturn/snrna-bf-dev_snrna-yao2023/data/yao_label_annotation.csv",
                   index_col=0)
 
-gsi = pd.read_csv(BASE / "results" / "gsi_corr_yao_adult_hybrid.csv", index_col=0)
+gsi = pd.read_csv(COMPOSITE / "results" / "gsi_corr_yao_adult_hybrid.csv", index_col=0)
 sam = pd.read_csv(SAMAP_DIR / "samap_mapping_table.csv", index_col=0)
 sam = sam.loc[[i for i in sam.index if str(i).startswith("bf_")],
               [c for c in sam.columns if str(c).startswith("mm_")]]
 sam.index = [i[3:] for i in sam.index]; sam.columns = [c[3:] for c in sam.columns]
 sat = pd.read_csv(YAOA / "transfer_matrix.csv", index_col=0)
-cca = pd.read_csv(BASE / "results" / "cca" / "yao_adult_hybrid_cca_log_finch_from_mouse_ka5_kfNA_d30_matrix.csv", index_col=0)
+cca = pd.read_csv(RPCA / "results" / "cca" / "yao_adult_hybrid_cca_log_finch_from_mouse_ka5_kfNA_d30_matrix.csv", index_col=0)
 
 mats = {"gsi": gsi, "samap": sam, "saturn": sat, "cca": cca}
 idx = sorted(set.intersection(*[set(m.index) for m in mats.values()]))
@@ -35,7 +36,7 @@ cols = sorted(set.intersection(*[set(m.columns) for m in mats.values()]))
 mats = {k: m.reindex(index=idx, columns=cols).fillna(0.0) for k, m in mats.items()}
 print(f"{len(idx)} finch clusters (celltype_hybrid) x {len(cols)} Yao mouse labels\n")
 
-outdir_early = BASE / "results" / "composite_yao_adult_hybrid"
+outdir_early = COMPOSITE / "results" / "yao_adult_hybrid"
 outdir_early.mkdir(parents=True, exist_ok=True)
 for k, m in mats.items():
     m.to_csv(outdir_early / f"method_{k}_matrix.csv")
@@ -45,7 +46,7 @@ weights = {"gsi": 1.0, "samap": 1.0, "cca": 1.0, "saturn": 0.5}
 print(f"weights: {weights}  (SATURN static 0.5, NO seed-stability discount -- single seed only)")
 
 rs, bo, zs = aggregate(mats, weights=weights)
-outdir = BASE / "results" / "composite_yao_adult_hybrid"
+outdir = COMPOSITE / "results" / "yao_adult_hybrid"
 D = summarise(mats, rs, bo, zs, outdir, n_top=5)
 
 a, tab = class_score(D.top_rank_agg, ANN)

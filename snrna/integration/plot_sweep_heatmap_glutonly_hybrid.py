@@ -28,7 +28,7 @@ from position_palette import POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, C
 
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 KA = [2, 5, 10, 20, 30, 50, 75, 100]
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly_hybrid")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly_hybrid")
 
 VARIANTS = [
     ("rpca_kfNA", "RPCA (hybrid labels), log-norm, k.filter=NA"),

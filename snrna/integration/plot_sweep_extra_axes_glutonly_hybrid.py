@@ -33,8 +33,8 @@ from reciprocal_score import best_per_cluster
 from position_palette import POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, CLUSTER_POSITION
 
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
-R = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/cca")
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly_hybrid")
+R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/cca")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly_hybrid")
 TAG = "gg_glutonly_hybrid"
 BASE_KA = 30
 

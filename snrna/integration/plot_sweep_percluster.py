@@ -34,8 +34,8 @@ from reciprocal_score import best_per_cluster
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 GROUP_COLORS = {"song": "#e34948", "non-song": "#2a78d6"}
 KA = [2, 5, 10, 20, 30, 50]
-R = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/cca")
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly")
+R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/cca")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly")
 
 
 def load_variant(fwd_pattern, rev_pattern):

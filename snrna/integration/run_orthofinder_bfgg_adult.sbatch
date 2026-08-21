@@ -4,10 +4,10 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=500G
 #SBATCH --time=24:00:00
-#SBATCH --output=/private/groups/colquittlab/saturn/zaremba_composite/logs/ofggadult_%j.out
-#SBATCH --error=/private/groups/colquittlab/saturn/zaremba_composite/logs/ofggadult_%j.err
+#SBATCH --output=/private/groups/colquittlab/song-system-grn/snrna/integration/logs/ofggadult_%j.out
+#SBATCH --error=/private/groups/colquittlab/song-system-grn/snrna/integration/logs/ofggadult_%j.err
 set -euo pipefail
-cd /private/groups/colquittlab/saturn/zaremba_composite
+cd /private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring
 # of254b: python 3.10 + numpy 1.24 + scipy 1.10 -- the bioconda default env ships python
 # 3.14, whose numpy 2.x breaks OrthoFinder 2.5.4 at the gene-distance step.
 export PATH="$HOME/miniforge3/envs/of254b/bin:$PATH"

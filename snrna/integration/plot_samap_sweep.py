@@ -24,8 +24,8 @@ from assemble_glutonly import song_group, EXCLUDED_CLUSTERS
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 GROUP_COLORS = {"song": "#e34948", "non-song": "#2a78d6"}
 NI = [1, 2, 3, 5, 8, 10]
-SW = Path("/private/groups/colquittlab/saturn/samap_bf-adult_gg-adult-glutonly/results_sweep")
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly")
+SW = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult-glutonly/results_sweep")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly")
 
 rows = {}
 for ni in NI:

@@ -46,15 +46,16 @@ SONG_LABELS = {
     "Glut-CACNA1H-RA": "RA",
 }
 
-R = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/cca")
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly_hybrid")
+R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/cca")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly_hybrid")
 TAG = "gg_glutonly_hybrid"
 GREY = "#d9d9d9"
 SPECIES_COLORS = {"chicken": "#b15928", "finch": "#2a78d6"}
 
 
-def make_figure(ka, kf, dims):
-    in_path = R / f"{TAG}_rpca_ka{ka}_kf{kf}_d{dims}_umap.csv"
+def make_figure(ka, kf, dims, norm="log"):
+    norm_suffix = "_SCT" if norm == "SCT" else ""
+    in_path = R / f"{TAG}_rpca_ka{ka}_kf{kf}_d{dims}{norm_suffix}_umap.csv"
     if not in_path.exists():
         print(f"SKIP: {in_path} not found")
         return
@@ -120,22 +121,24 @@ def make_figure(ka, kf, dims):
             ax.spines[side].set_visible(False)
         ax.set_aspect("equal", adjustable="datalim")
 
+    norm_label = "SCTransform (SEPARATE from log-norm)" if norm == "SCT" else "log-norm"
     fig.suptitle("Joint RPCA embedding (hybrid labels), Glut(finch) x Excitatory(chicken)\n"
-                f"k.anchor={ka}, k.filter={kf}, log-norm, dims={dims} -- IntegrateEmbeddings + UMAP",
+                f"k.anchor={ka}, k.filter={kf}, {norm_label}, dims={dims} -- IntegrateEmbeddings + UMAP",
                 fontsize=9.5, y=1.08)
     fig.tight_layout()
-    stub = f"rpca_umap_ka{ka}_kf{kf}_d{dims}"
+    stub = f"rpca_umap_ka{ka}_kf{kf}_d{dims}{norm_suffix}"
     for ext in ("pdf", "png"):
         fig.savefig(OUT / f"{stub}.{ext}", dpi=220, bbox_inches="tight")
     plt.close(fig)
     print(f"wrote {OUT}/{stub}.pdf / .png")
 
 
-def make_song_split_figure(ka, kf, dims):
+def make_song_split_figure(ka, kf, dims, norm="log"):
     """Variation on panel 4 of make_figure(): song and non-song finch clusters drawn in
     SEPARATE panels rather than sharing one, so the two groups' territories can be
     compared without their points competing for the same pixels."""
-    in_path = R / f"{TAG}_rpca_ka{ka}_kf{kf}_d{dims}_umap.csv"
+    norm_suffix = "_SCT" if norm == "SCT" else ""
+    in_path = R / f"{TAG}_rpca_ka{ka}_kf{kf}_d{dims}{norm_suffix}_umap.csv"
     if not in_path.exists():
         print(f"SKIP: {in_path} not found")
         return
@@ -174,11 +177,12 @@ def make_song_split_figure(ka, kf, dims):
             ax.spines[side].set_visible(False)
         ax.set_aspect("equal", adjustable="datalim")
 
+    norm_label = "SCTransform (SEPARATE from log-norm)" if norm == "SCT" else "log-norm"
     fig.suptitle("Joint RPCA embedding (hybrid labels), Glut(finch) x Excitatory(chicken)\n"
-                f"k.anchor={ka}, k.filter={kf}, log-norm, dims={dims} -- song vs. non-song split",
+                f"k.anchor={ka}, k.filter={kf}, {norm_label}, dims={dims} -- song vs. non-song split",
                 fontsize=9.5, y=1.08)
     fig.tight_layout()
-    stub = f"rpca_umap_songsplit_ka{ka}_kf{kf}_d{dims}"
+    stub = f"rpca_umap_songsplit_ka{ka}_kf{kf}_d{dims}{norm_suffix}"
     for ext in ("pdf", "png"):
         fig.savefig(OUT / f"{stub}.{ext}", dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -191,3 +195,12 @@ if __name__ == "__main__":
     for ka in [20, 30, 50, 75]:
         make_figure(ka=ka, kf=200, dims=40)
         make_song_split_figure(ka=ka, kf=200, dims=40)
+    # SCTransform variant (separate analysis, kept out of the log-norm loops above so a
+    # re-run of this script never silently regenerates SCT figures unless explicitly
+    # requested). Two k.filter values computed: 50 (this project's original "manuscript
+    # config" for SCT) and 200 (added per explicit request, to match the k.filter used
+    # throughout the log-norm analysis and make the two directly comparable).
+    for kf in [50, 200]:
+        for ka in [20, 30, 50, 75]:
+            make_figure(ka=ka, kf=kf, dims=40, norm="SCT")
+            make_song_split_figure(ka=ka, kf=kf, dims=40, norm="SCT")

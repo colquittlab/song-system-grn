@@ -16,7 +16,7 @@ sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from assemble_glutonly import song_group  # reuse the exact, already-corrected grouping
 
 import sys as _sys
-R = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/cca")
+R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/cca")
 KA = [2, 5, 10, 20, 30, 50]
 REDUCTION = _sys.argv[1] if len(_sys.argv) > 1 else "cca"
 
@@ -65,7 +65,7 @@ print(X.sort_values(["group", "k_anchor_first_above_0.5"]).to_string())
 print("\nmean crossing point by group (NaN = never crossed, excluded from mean):")
 print(X.groupby("group")["k_anchor_first_above_0.5"].agg(["mean", "count", lambda s: s.isna().sum()]))
 
-out = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly")
+out = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly")
 piv.to_csv(out / f"{REDUCTION}_kanchor_sweep_per_cluster.csv")
 curve.to_csv(out / f"{REDUCTION}_kanchor_sweep_group_mean.csv")
 print(f"\nwrote {out}/{REDUCTION}_kanchor_sweep_*.csv")

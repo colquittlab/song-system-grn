@@ -28,8 +28,8 @@ from assemble_glutonly import song_group, EXCLUDED_CLUSTERS
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 GROUP_COLORS = {"song": "#e34948", "non-song": "#2a78d6"}
 EP = [25, 50, 75, 100, 125, 150]
-GGA = Path("/private/groups/colquittlab/saturn/snrna-bf-adult_snrna-gg-adult-glutonly/analysis")
-OUT = Path("/private/groups/colquittlab/saturn/zaremba_composite/results/composite_gg_glutonly")
+GGA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult-glutonly/analysis")
+OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep/results/gg_glutonly")
 
 rows = {}
 for ep in EP:

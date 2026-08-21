@@ -21,19 +21,20 @@ sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from composite_score import aggregate, summarise
 from class_benchmark import score as class_score
 
-BASE = Path("/private/groups/colquittlab/saturn/zaremba_composite")
-GGA = Path("/private/groups/colquittlab/saturn/snrna-bf-adult_snrna-gg-adult/analysis/macro2000_hv8000_seed0")
-SAMAP_DIR = Path("/private/groups/colquittlab/saturn/samap_bf-adult_gg-adult/results")
-ANN = pd.read_csv("/private/groups/colquittlab/saturn/snrna-bf-adult_snrna-gg-adult/data/gg_adult_label_annotation.csv",
+COMPOSITE = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring")
+RPCA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep")
+GGA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult/analysis/macro2000_hv8000_seed0")
+SAMAP_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult/results")
+ANN = pd.read_csv("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult/data/gg_adult_label_annotation.csv",
                   index_col=0)
 
-gsi = pd.read_csv(BASE / "results" / "gsi_corr_gg_adult.csv", index_col=0)
+gsi = pd.read_csv(COMPOSITE / "results" / "gsi_corr_gg_adult.csv", index_col=0)
 sam = pd.read_csv(SAMAP_DIR / "samap_mapping_table.csv", index_col=0)
 sam = sam.loc[[i for i in sam.index if str(i).startswith("bf_")],
               [c for c in sam.columns if str(c).startswith("gg_")]]
 sam.index = [i[3:] for i in sam.index]; sam.columns = [c[3:] for c in sam.columns]
 sat = pd.read_csv(GGA / "transfer_matrix.csv", index_col=0)
-cca = pd.read_csv(BASE / "results" / "cca" / "gg_adult_cca_matrix_finch_from_mouse.csv", index_col=0)
+cca = pd.read_csv(RPCA / "results" / "cca" / "gg_adult_cca_matrix_finch_from_mouse.csv", index_col=0)
 
 mats = {"gsi": gsi, "samap": sam, "saturn": sat, "cca": cca}
 idx = sorted(set.intersection(*[set(m.index) for m in mats.values()]))
@@ -45,7 +46,7 @@ weights = {"gsi": 1.0, "samap": 1.0, "cca": 1.0, "saturn": 0.5}
 print(f"weights: {weights}  (SATURN static 0.5, NO seed-stability discount -- single seed only)")
 
 rs, bo, zs = aggregate(mats, weights=weights)
-outdir = BASE / "results" / "composite_gg_adult"
+outdir = COMPOSITE / "results" / "gg_adult"
 D = summarise(mats, rs, bo, zs, outdir, n_top=5)
 
 a, tab = class_score(D.top_rank_agg, ANN)
