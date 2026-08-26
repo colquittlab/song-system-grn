@@ -44,11 +44,11 @@ def load_sam(h5ad: Path, label_col: str, name: str, preprocess: bool) -> SAM:
     return sam
 
 
-def main(out_dir: Path, numiters: int, crossk: int, ncpus: int, seed: int, finch_h5ad: str):
+def main(out_dir: Path, numiters: int, crossk: int, ncpus: int, seed: int, finch_h5ad: str, chicken_h5ad: str):
     out_dir.mkdir(parents=True, exist_ok=True)
     sams = {
         "bf": load_sam(Path(finch_h5ad), "cluster", "finch", True),
-        "gg": load_sam(GG / "gg_adult_ex.h5ad", "cluster", "chicken", True),
+        "gg": load_sam(Path(chicken_h5ad), "cluster", "chicken", True),
     }
     keys = {"bf": "cluster", "gg": "cluster"}
 
@@ -101,4 +101,5 @@ if __name__ == "__main__":
     p.add_argument("--ncpus", type=int, default=32)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--finch_h5ad", type=str, default=str(LM / "bf_adult_glut.h5ad"))
+    p.add_argument("--chicken_h5ad", type=str, default=str(GG / "gg_adult_ex.h5ad"))
     main(**vars(p.parse_args()))
