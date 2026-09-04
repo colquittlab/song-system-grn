@@ -87,6 +87,8 @@ library(Matrix)
 library(ComplexHeatmap)
 library(circlize)
 library(cowplot)
+library(ggforce)
+library(ggrepel)
 library(here)
 set.seed(10)
 theme_set(theme_cowplot())
@@ -115,35 +117,60 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 ## changing -- the same silent-staleness reasoning applied to the caches in snrna/naming/exploratory/apply_composite_labels.qmd.
 redo = list(anchors = FALSE)
 
-## Cluster order for figures, identical to celltypes_hclust_all_hybrid.qmd's ct_order so the figures
-## can be read against each other. Excluded/artifact clusters are absent by construction
-## (celltype_hybrid is NA for them and those cells are dropped below).
-ct_order = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+## Figure ordering for this notebook, per direct instruction:
+##   new dataset: Glut-DACH2 -> Glut-CACNA1H -> Glut neurogenic -> GABA -> non-neuronal
+##   published:   HVC Glut   -> RA Glut      -> Glut neurogenic -> GABA -> non-neuronal
+## so the two axes of the alluvials/heatmaps below are grouped the same way and read against each
+## other block for block.
+##
+## NOTE: this deliberately no longer matches celltypes_hclust_all_hybrid.qmd's ct_order (which
+## interleaves Glut-SATB2-1 into the DACH2 block and puts the neurogenic clusters after Glut-GABA).
+## The reorder was asked for here, so it is applied here only rather than propagated to figures that
+## were already reviewed under the old order -- but that means the tree/dotplot figures and these are
+## no longer row-comparable, which is worth knowing when placing them side by side.
+##
+## Two labels are not named in the requested grouping and are placed on explicit reasoning rather
+## than silently: Glut-SATB2-1 is a third excitatory division, so it follows CACNA1H at the end of the
+## division blocks; Glut-GABA (the dual-transmitter population) keeps the "end of the Glut section"
+## slot it was given earlier, immediately before the neurogenic clusters.
+ct_order = c(## Glut-DACH2
+             "Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
              "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
              "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
-             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",
+             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8",
+             ## Glut-CACNA1H
              "Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-CACNA1H-3", "Glut-CACNA1H-4",
-             "Glut-GABA",
+             ## remaining Glut divisions / dual-transmitter, end of the Glut section
+             "Glut-SATB2-1", "Glut-GABA",
+             ## Glut neurogenic
              "Glut-Im", "Glut-NB", "Glut-NSC",
+             ## GABA
              "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
              "GABA-3", "GABA-4-1", "GABA-4-2",
              "GABA-5-1", "GABA-5-2",
              "GABA-6", "GABA-7", "GABA-8",
              "GABA-Im",
+             ## non-neuronal
              "Astro-1", "Astro-2", "Astro-3", "Epen",
              "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
              "Micro", "Endo")
 
-## Published labels grouped Glut (HVC then RA) -> GABA -> precursor -> non-neuronal, so the block
-## structure is legible rather than alphabetical.
-pub_order = c(paste0("HVC_Glut-", 1:5), paste0("RA_Glut-", 1:3),
+pub_order = c(## HVC Glut, then RA Glut
+              paste0("HVC_Glut-", 1:5), paste0("RA_Glut-", 1:3),
+              ## Glut neurogenic (the published "Pre-*" series)
+              paste0("Pre-", 1:4),
+              ## GABA -- GABA-Pre kept inside the GABA block as its GABAergic precursor, not moved
+              ## into the Glut neurogenic block above
               "GABA-1-1", "GABA-1-2", "GABA-2", "GABA-3", "GABA-4",
               "GABA-5-1", "GABA-5-2", "GABA-5-3", "GABA-6", "GABA-7", "GABA-8", "GABA-Pre",
-              paste0("Pre-", 1:4),
+              ## non-neuronal
               "Astro", "Epen", "Oligo", "OPC", "Micro", "Endo", "Mural", "VLMC", "RBC")
 
 song_hybrid = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
                 "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco")
+## Its own group in the ordering above, so it gets its own flow colour below too rather than being
+## lumped into "other Glut" -- otherwise the colour blocks and the row blocks would disagree.
+glut_neurogenic = c("Glut-Im", "Glut-NB", "Glut-NSC")
 ```
 
 # Load
@@ -347,8 +374,13 @@ composition = function(df, from_col, to_col, from_order, to_order) {
   sweep(m, 1, rowSums(m), FUN = "/")
 }
 
+## Cell size is derived from the label size rather than set independently: at label_pt with ~1.3 line
+## spacing, one row/column is exactly as tall/wide as its own label needs, so shrinking the text
+## closes the gaps between labels instead of leaving the whitespace the previous fixed 0.16in cells
+## produced. Same convention as celltypes_hclust_glut_robustness_hybrid.qmd's tip_scale_factor.
+label_pt = 5
 comp_heatmap = function(m, row_title, column_title, fname) {
-  scale_factor = 0.16
+  scale_factor = label_pt * 1.3 / 72
   hm = Heatmap(m, name = "frac of\nsource cluster",
                cluster_rows = FALSE, cluster_columns = FALSE,
                col = colorRamp2(seq(0, 1, length.out = 9),
@@ -356,12 +388,19 @@ comp_heatmap = function(m, row_title, column_title, fname) {
                border = TRUE, border_gp = gpar(lwd = 0.5),
                height = unit(nrow(m) * scale_factor, "in"),
                width = unit(ncol(m) * scale_factor, "in"),
-               row_names_gp = gpar(fontsize = 6), column_names_gp = gpar(fontsize = 6),
-               row_title = row_title, row_title_gp = gpar(fontsize = 8),
-               column_title = column_title, column_title_gp = gpar(fontsize = 8))
+               row_names_gp = gpar(fontsize = label_pt),
+               column_names_gp = gpar(fontsize = label_pt),
+               row_title = row_title, row_title_gp = gpar(fontsize = 7),
+               column_title = column_title, column_title_gp = gpar(fontsize = 7),
+               heatmap_legend_param = list(labels_gp = gpar(fontsize = label_pt),
+                                           title_gp = gpar(fontsize = label_pt + 1),
+                                           grid_width = unit(0.12, "in")))
   draw(hm)
+  ## Padding still has to clear the longest label (~20 chars at 5pt) plus the legend, so it does not
+  ## scale down with the cells -- shrinking it too would just clip the labels the change is meant to
+  ## tighten.
   pdf(file.path(out_dir, fname),
-      height = nrow(m) * scale_factor + 3, width = ncol(m) * scale_factor + 3)
+      height = nrow(m) * scale_factor + 2.2, width = ncol(m) * scale_factor + 2.4)
   draw(hm)
   dev.off()
   invisible(hm)
@@ -369,19 +408,171 @@ comp_heatmap = function(m, row_title, column_title, fname) {
 ```
 
 ```{r composition-fwd}
-#| fig-width: 10
-#| fig-height: 9
+#| fig-width: 5
+#| fig-height: 7
 m_fwd = composition(fwd, "own_label", "pred_pub_cluster", ct_order, pub_order)
 comp_heatmap(m_fwd, "hybrid label (new dataset)", "predicted Colquitt 2021 label",
              "composition_pub_to_new.pdf")
 ```
 
 ```{r composition-rev}
-#| fig-width: 11
-#| fig-height: 8
+#| fig-width: 7
+#| fig-height: 5.5
 m_rev = composition(rev_, "own_label", "pred_new_label", pub_order, ct_order)
 comp_heatmap(m_rev, "Colquitt 2021 label", "predicted hybrid label (new dataset)",
              "composition_new_to_pub.pdf")
+```
+
+# Alluvial: label correspondences
+
+The same correspondences as the heatmaps above, drawn as flows so that a cluster splitting across
+several counterparts (or several clusters collapsing onto one) is visible as geometry rather than as
+a row of greys. Built with `ggforce::geom_parallel_sets` -- `ggalluvial` is not in this project's
+library, and `ggforce` already is, so this needs no new dependency.
+
+Flow width is cell count, and flows are coloured by the **source** cluster's class, so the reading is
+"where do this class's cells go". Both directions are drawn, matching the two heatmaps.
+
+**Small flows are dropped for legibility, and the amount dropped is reported** rather than left
+implicit -- an alluvial with every 1-cell flow in it is unreadable, but a filtered one that does not
+say what it filtered reads as if it showed everything.
+
+```{r alluvial-fn}
+## Class of a source cluster, for flow colour. Two schemes, because the two directions have different
+## label vocabularies on their source axis -- passed in explicitly rather than guessed from the
+## strings, so neither direction silently mislabels the other's categories.
+class_hybrid = function(x) {
+  ## Order matters: neurogenic before the generic "^Glut" catch-all, and song before both. Glut-GABA
+  ## falls through to "other Glut" (it starts with "Glut"), which is the intended treatment -- it is a
+  ## dual-transmitter Glut population, not a GABA cluster.
+  case_when(x %in% song_hybrid ~ "song nucleus",
+            x %in% glut_neurogenic ~ "Glut neurogenic",
+            grepl("^Glut", x) ~ "other Glut",
+            grepl("^GABA", x) ~ "GABA",
+            TRUE ~ "non-neuronal")
+}
+class_pub = function(x) {
+  case_when(grepl("^HVC_Glut", x) ~ "HVC Glut",
+            grepl("^RA_Glut", x) ~ "RA Glut",
+            grepl("^GABA", x) ~ "GABA",
+            grepl("^Pre-", x) ~ "precursor",
+            TRUE ~ "non-neuronal")
+}
+
+## min_frac / min_cells: a flow is kept if it is at least min_frac of its source cluster AND at least
+## min_cells cells. Both, not either -- min_frac alone keeps noise out of tiny clusters, min_cells
+## alone keeps noise out of large ones.
+alluvial_plot = function(df, from_col, to_col, from_order, to_order,
+                         from_title, to_title, class_fn, fname,
+                         min_frac = 0.02, min_cells = 10,
+                         width = 3.4, height = 6.0) {
+  all_flows = df %>%
+    count(.data[[from_col]], .data[[to_col]], name = "n") %>%
+    group_by(.data[[from_col]]) %>%
+    mutate(frac = n / sum(n)) %>%
+    ungroup()
+
+  flows = all_flows %>% filter(frac >= min_frac, n >= min_cells)
+
+  dropped = tibble(
+    flows_total = nrow(all_flows), flows_kept = nrow(flows),
+    cells_total = sum(all_flows$n), cells_kept = sum(flows$n),
+    frac_cells_kept = sum(flows$n) / sum(all_flows$n)
+  )
+
+  ## Each axis's strata are namespaced ("L::" / "R::") before being turned into factors. This is not
+  ## cosmetic: `gather_set_data()` stacks BOTH axes into a single `y` factor, and the two datasets
+  ## genuinely share label names (GABA-1-1, GABA-1-2, GABA-3, GABA-6..8, Epen, OPC, Micro, Endo, ...).
+  ## Shared names therefore collapse onto shared level positions, and one level order cannot satisfy
+  ## two different desired orders -- which is exactly how the reverse plot's right axis came out
+  ## scrambled (its Glut blocks were pushed below every label that also exists in the published set).
+  ## Namespacing gives each axis its own level range, so from_order and to_order are honoured
+  ## independently. Levels are passed un-reversed: parallel sets stack the first level at the top
+  ## (verified directly), so this puts Glut at the top and non-neuronal at the bottom on both axes,
+  ## matching the composition heatmaps above, which order rows by intersect(from_order, ...).
+  flows = flows %>%
+    transmute(class = class_fn(.data[[from_col]]),
+              L = factor(paste0("L::", .data[[from_col]]),
+                         levels = c(paste0("L::", from_order), paste0("R::", to_order))),
+              R = factor(paste0("R::", .data[[to_col]]),
+                         levels = c(paste0("L::", from_order), paste0("R::", to_order))),
+              n = n)
+
+  gs = flows %>%
+    select(L, R, n, class) %>%
+    gather_set_data(x = 1:2)
+  gs$xf = factor(gs$x, levels = c("L", "R"))
+
+  ## sep is the gap between strata as a fraction of the stack, and it is the main source of vertical
+  ## whitespace here (default 0.05 x ~40 strata eats most of the axis). Tightened, and set from one
+  ## variable because the flows geom and the axes geom must agree on it -- passing different values
+  ## silently shifts the bars off the ribbons they belong to.
+  sep_frac = 0.015
+  p0 = ggplot(gs, aes(x = as.integer(xf), id = id, split = y, value = n)) +
+    geom_parallel_sets(aes(fill = class), alpha = 0.45, axis.width = 0.05, lwd = 0.1,
+                       sep = sep_frac) +
+    geom_parallel_sets_axes(axis.width = 0.05, fill = "grey85", color = "grey40", lwd = 0.15,
+                            sep = sep_frac)
+
+  ## Labels are drawn from the axes layer's own computed geometry rather than with
+  ## geom_parallel_sets_labels(): that geom takes its text from `split`, ignores an aes(label = ...)
+  ## override (checked), and would therefore print the "L::"/"R::" keys. Pulling ymin/ymax back out of
+  ## ggplot_build() gives the real stratum positions, so the text sits exactly on the bars it belongs
+  ## to while showing the stripped label. Opposite hjust per axis keeps each side's labels outside its
+  ## bar -- centred labels overprint the bars and flows.
+  ax = ggplot_build(p0)$data[[2]] %>%
+    distinct(x, label, ymin, ymax) %>%
+    mutate(axis = round(x), ymid = (ymin + ymax) / 2,
+           txt = sub("^[LR]::", "", label)) %>%
+    distinct(axis, txt, ymid)
+
+  ## geom_text_repel, not geom_text: compacting the figure vertically packs ~47 labels into an axis
+  ## barely taller than the text itself, and plain text then collides on the small strata. Repelling
+  ## nudges only along y (direction = "y") and is confined to the label gutter by xlim, so labels stay
+  ## outside the bars. max.overlaps = Inf is deliberate -- ggrepel's default of 10 SILENTLY DROPS
+  ## excess labels, which on a 47-stratum axis would quietly delete most of them.
+  p = p0 +
+    geom_text_repel(data = filter(ax, axis == 1), aes(x = 1 - 0.05, y = ymid, label = txt),
+                    inherit.aes = FALSE, hjust = 1, size = label_pt / .pt, color = "black",
+                    direction = "y", xlim = c(-Inf, 1 - 0.05), max.overlaps = Inf,
+                    min.segment.length = 0.05, segment.size = 0.12, segment.color = "grey55",
+                    box.padding = 0.04, point.padding = 0, seed = 1) +
+    geom_text_repel(data = filter(ax, axis == 2), aes(x = 2 + 0.05, y = ymid, label = txt),
+                    inherit.aes = FALSE, hjust = 0, size = label_pt / .pt, color = "black",
+                    direction = "y", xlim = c(2 + 0.05, Inf), max.overlaps = Inf,
+                    min.segment.length = 0.05, segment.size = 0.12, segment.color = "grey55",
+                    box.padding = 0.04, point.padding = 0, seed = 1) +
+    scale_fill_brewer(palette = "Set2", name = NULL) +
+    scale_x_continuous(breaks = c(1, 2), labels = c(from_title, to_title),
+                       expand = expansion(add = c(0.72, 0.72))) +
+    theme_void(base_size = 7) +
+    theme(axis.text.x = element_text(size = 6, vjust = 1),
+          legend.position = "bottom",
+          legend.text = element_text(size = label_pt),
+          legend.key.size = unit(0.10, "in"),
+          plot.margin = margin(4, 4, 4, 4))
+
+  print(p)
+  save_plot(file.path(out_dir, fname), p, base_width = width, base_height = height)
+  dropped
+}
+```
+
+```{r alluvial-fwd}
+#| fig-width: 3.4
+#| fig-height: 6.0
+alluvial_plot(fwd, "own_label", "pred_pub_cluster", ct_order, pub_order,
+              "hybrid label\n(new dataset)", "predicted\nColquitt 2021",
+              class_fn = class_hybrid, fname = "alluvial_pub_to_new.pdf")
+```
+
+```{r alluvial-rev}
+#| fig-width: 3.4
+#| fig-height: 4.6
+alluvial_plot(rev_, "own_label", "pred_new_label", pub_order, ct_order,
+              "Colquitt 2021\nlabel", "predicted hybrid\n(new dataset)",
+              class_fn = class_pub, fname = "alluvial_new_to_pub.pdf",
+              height = 4.6)
 ```
 
 # Reciprocal best match

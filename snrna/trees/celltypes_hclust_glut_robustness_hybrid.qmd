@@ -904,56 +904,80 @@ write_csv(select(placement, -sister_list),
 select(placement, -sister_list)
 ```
 
-## Agreement of the song / non-song pairings
+## Bootstrap support for the song / non-song pairings
 
 The trees as a whole can rearrange without touching the relationships the
-manuscript actually rests on, which are local: each song-nucleus cluster and the
-non-song cell types it pairs with. This restricts the agreement measure to those
-pairings. For every song cluster, its sister group is compared with the sister
-group in the **published split trees at p_adj < `r ref_lab`** (Jaccard index of
-the two sister sets: 1 = identical partners, 0 = no partner in common). The
-same reference is used for the pooled `ALL` analysis, so that panel shows
-whether pooling reproduces the published pairings.
+manuscript rests on, which are local: each song-nucleus cluster and the non-song
+cell types it pairs with. These panels show, for every song cluster and every
+song-DEG threshold, which cell types it pairs with (tile text) and how well
+supported that pairing is (tile fill). Support is the `pvclust` approximately
+unbiased (AU) value for the smallest clade containing the song cluster, i.e. the
+branch that joins it to the cell types named in the tile, from multiscale
+bootstrap resampling of genes (`r nboot` replicates at each of 10 scaling
+levels). The cell-level bootstrap support is added to the accompanying CSV for
+the two thresholds where it was run.
 
-```{r song-pair-agreement}
+```{r song-pair-support}
 #| fig-width: 5
 #| fig-height: 3.5
 #| results: hold
+## Jaccard overlap of a pairing with the same song cluster's pairing at the
+## reference threshold *within the same analysis*; carried in the CSV as a
+## convenience, not shown in the plot.
 jaccard = function(a, b) {
   if (!length(union(a, b))) return(1)
   length(intersect(a, b)) / length(union(a, b))
 }
-
-## reference = the published split trees (ARCO / NIDO) at the published threshold
 ref_pairs = placement %>%
-  filter(region %in% c("ARCO", "NIDO"), threshold_label == ref_lab) %>%
-  select(song_cluster, ref_sister = sister_list)
+  filter(threshold_label == ref_lab) %>%
+  select(region, song_cluster, ref_sister = sister_list)
 
-pair_agree = placement %>%
-  left_join(ref_pairs, by = "song_cluster") %>%
-  mutate(agreement = map2_dbl(sister_list, ref_sister, jaccard),
+pair_support = placement %>%
+  left_join(ref_pairs, by = c("region", "song_cluster")) %>%
+  ## cell-level bootstrap support, where that bootstrap was run for this clade
+  left_join(cellboot_df %>%
+              mutate(threshold_label = factor(threshold_label, levels = lev)) %>%
+              select(region, threshold_label, clade, cell_bootstrap),
+            by = c("region", "threshold_label", "clade")) %>%
+  mutate(au_pct = 100 * au,
+         jaccard_vs_ref_threshold = map2_dbl(sister_list, ref_sister, jaccard),
          region = factor(region, levels = regions),
          song_cluster = factor(song_cluster, levels = rev(sort(unique(song_cluster)))))
-write_csv(select(pair_agree, -sister_list, -ref_sister),
-          file.path(out_sub_dir, "song_pair_agreement.csv"))
+write_csv(select(pair_support, -sister_list, -ref_sister),
+          file.path(out_sub_dir, "song_pair_support.csv"))
 
 ## sister names, one per line and without the shared "Glut-" prefix, so that
 ## they fit inside a tile
-pair_agree = pair_agree %>%
+pair_support = pair_support %>%
   mutate(sister_lab = str_replace_all(str_replace_all(sister, "Glut-", ""), ", ", "\n"))
 
-## One plot per analysis, with square tiles (coord_fixed on two discrete
-## scales, each level one unit wide).
-tile_in   = 0.4   # inches per tile
+## One plot per analysis. Tiles are wider than they are tall: the column count
+## is fixed at the threshold series, while the row pitch is kept tight so the
+## row labels sit close together. No coord_fixed, so the tile aspect follows the
+## saved device size directly.
+tile_w_in = 0.55  # inches per column
+tile_h_in = 0.22  # inches per row (the row pitch)
 cell_pt   = 5     # in-tile text (the smallest type used anywhere here)
 axis_pt   = 6     # axis text and titles
 
-pair_plot = function(reg) {
-  d = filter(pair_agree, region == reg) %>%
-    mutate(song_cluster = factor(song_cluster, levels = rev(sort(unique(as.character(song_cluster))))))
+## Standard position colours for the song nuclei (HVC / LMAN / RA), the same
+## ones used for the tree tips.
+song_position = function(x) case_when(grepl("LMAN", x) ~ "lman",
+                                      grepl("HVC", x)  ~ "hvc",
+                                      grepl("RA", x)   ~ "ra",
+                                      TRUE             ~ NA_character_)
+
+pair_plot = function(d, ttl) {
+  ## rows grouped by song nucleus; the discrete y scale runs bottom to top, so
+  ## the level order is the reverse of the reading order
+  lv = unique(as.character(d$song_cluster))
+  lv = rev(lv[order(match(song_position(lv), c("hvc", "lman", "ra")), lv)])
+  d = mutate(d, song_cluster = factor(as.character(song_cluster), levels = lv))
+  axis_cols = unname(position_colors[song_position(lv)])
+
   ggplot(d, aes(threshold_label, song_cluster)) +
-    geom_tile(aes(fill = agreement), color = "grey70", linewidth = 0.2) +
-    geom_text(aes(label = sister_lab, color = agreement > 0.5),
+    geom_tile(aes(fill = au_pct), color = "grey70", linewidth = 0.2) +
+    geom_text(aes(label = sister_lab, color = au_pct > 60),
               size = cell_pt / .pt, lineheight = 0.9) +
     ## a song cluster pairing with another song cluster rather than with
     ## non-song cell types is marked in the corner of its tile. The nudge is in
@@ -961,16 +985,16 @@ pair_plot = function(reg) {
     geom_point(data = filter(d, !song_nonsong),
                position = position_nudge(x = -0.42, y = 0.36),
                shape = 4, size = 1, stroke = 0.5, color = "firebrick") +
-    coord_fixed(ratio = 1) +
-    scale_fill_gradient(low = "white", high = "#2166AC", limits = c(0, 1),
-                        name = "agreement with\npublished pairing") +
+    scale_fill_gradient(low = "white", high = "#2166AC", limits = c(0, 100),
+                        name = "AU support\nfor the pairing (%)") +
     scale_color_manual(values = c(`TRUE` = "white", `FALSE` = "grey20"), guide = "none") +
     labs(x = "song-DEG adjusted-p threshold", y = NULL,
-         title = region_name[[reg]],
+         title = ttl,
          caption = "tile text = cell types the song cluster pairs with\nx = paired with another song cluster rather than with non-song cell types") +
     theme_cowplot(font_size = axis_pt) +
     theme(axis.text = element_text(size = axis_pt),
           axis.text.x = element_text(size = axis_pt, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = axis_pt, color = axis_cols),
           axis.title = element_text(size = axis_pt),
           legend.title = element_text(size = axis_pt),
           legend.text = element_text(size = cell_pt),
@@ -979,31 +1003,55 @@ pair_plot = function(reg) {
           plot.caption = element_text(size = cell_pt, hjust = 0))
 }
 
-for (reg in regions) {
-  p_pair = pair_plot(reg)
-  print(p_pair)
-  n_rows = n_distinct(filter(pair_agree, region == reg)$song_cluster)
-  save_plot(file.path(out_sub_dir, sprintf("song_pair_agreement_%s.pdf", tolower(reg))),
-            p_pair,
-            base_width  = length(lev) * tile_in + 1.9,   # + y labels and legend
-            base_height = n_rows * tile_in + 1.1)        # + x labels and caption
+## The ARCO and NIDO song clusters go into ONE heatmap -- their pairings still
+## come from the two separate clusterings, this only puts them on a single set
+## of axes, which sidesteps having to match tile geometry across files. The
+## pooled ALL analysis stays in its own panel, since it is a different tree.
+##
+## set_panel_size() pins the panel to ncol x nrow tiles of exactly
+## tile_w_in x tile_h_in; sizing the page instead (panel = page minus
+## title/axis/caption) lets whatever those elements do not use be absorbed by
+## the panel and split across its rows, which made a one-row panel's tiles
+## taller than a four-row panel's.
+gt_width_in  = function(g) grid::convertWidth(sum(g$widths), "in", valueOnly = TRUE)
+gt_height_in = function(g) grid::convertHeight(sum(g$heights), "in", valueOnly = TRUE)
+
+save_pair_plot = function(d, ttl, fname) {
+  n_rows = n_distinct(d$song_cluster)
+  gt = egg::set_panel_size(pair_plot(d, ttl),
+                           width  = unit(length(lev) * tile_w_in, "in"),
+                           height = unit(n_rows * tile_h_in, "in"))
+  plot(gt)
+  save_plot(file.path(out_sub_dir, fname), gt,
+            base_width  = gt_width_in(gt),
+            base_height = gt_height_in(gt))
 }
+
+## single heatmap: every song cluster, each from its own (ARCO or NIDO) tree
+save_pair_plot(filter(pair_support, region %in% c("ARCO", "NIDO")),
+               "song / non-song pairings, separate ARCO and NIDO clusterings",
+               "song_pair_support_split.pdf")
+
+## the pooled analysis, for comparison
+save_pair_plot(filter(pair_support, region == "ALL"),
+               region_name[["ALL"]],
+               "song_pair_support_all.pdf")
 ```
 
-```{r song-pair-agreement-summary}
+```{r song-pair-support-summary}
 #| fig-width: 8
 #| fig-height: 3.5
 ## ALL dropped from this summary plot specifically (per direct instruction, same as sweep_summary
-## above) -- it stays in pair_agree itself and in the per-region song_pair_agreement_<region>.pdf
+## above) -- it stays in pair_support itself and in the per-region song_pair_support_<region>.pdf
 ## tile plots above.
-p_pair_mean = pair_agree %>%
+p_pair_mean = pair_support %>%
   filter(region != "ALL") %>%
   group_by(region, threshold_label) %>%
-  summarise(mean_agreement = mean(agreement),
+  summarise(mean_au = mean(au, na.rm = TRUE),
             frac_song_nonsong = mean(song_nonsong), .groups = "drop") %>%
-  pivot_longer(c(mean_agreement, frac_song_nonsong)) %>%
+  pivot_longer(c(mean_au, frac_song_nonsong)) %>%
   mutate(name = recode(name,
-                       mean_agreement    = "mean agreement with published pairing",
+                       mean_au           = "mean AU support for the pairing",
                        frac_song_nonsong = "fraction pairing with non-song types")) %>%
   ggplot(aes(threshold_label, value, color = region, group = region)) +
   geom_line() + geom_point() +
@@ -1013,7 +1061,7 @@ p_pair_mean = pair_agree %>%
   theme_cowplot(font_size = 10) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 print(p_pair_mean)
-save_plot(file.path(out_sub_dir, "song_pair_agreement_summary.pdf"), p_pair_mean,
+save_plot(file.path(out_sub_dir, "song_pair_support_summary.pdf"), p_pair_mean,
           base_height = 3.2, base_width = 9)
 ```
 
