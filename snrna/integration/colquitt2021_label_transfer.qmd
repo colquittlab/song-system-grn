@@ -25,7 +25,7 @@ published dataset already defined (`HVC_Glut-1..5`, `RA_Glut-1..3`)?
 
 ## Reference dataset, checked before use
 
-`/mnt/nest/sc_datasets/colquitt_2021/HVC_RA_paper.qs`. Facts below were confirmed directly against
+`/mnt/nest/common/sc_datasets/colquitt_2021/HVC_RA_paper.qs`. Facts below were confirmed directly against
 the object rather than assumed, because several change what the transfer has to do:
 
 - **Format.** The original is `.qs` (old format); this project's environment has `qs2` but not `qs`.
@@ -98,7 +98,7 @@ options(future.globals.maxSize = 50 * 1e9)
 # Parameters
 
 ```{r params}
-pub_fname = "/mnt/nest/sc_datasets/colquitt_2021/HVC_RA_paper.qs2"
+pub_fname = "/mnt/nest/common/sc_datasets/colquitt_2021/HVC_RA_paper.qs2"
 new_fname = here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
 
 new_label = "celltype_hybrid"    # this project's new labels
@@ -145,10 +145,11 @@ ct_order = c(## Glut-DACH2
              ## Glut neurogenic
              "Glut-Im", "Glut-NB", "Glut-NSC",
              ## GABA
-             "GABA-1-1", "GABA-1-2", "GABA-2-1", "GABA-2-2", "GABA-2-3",
-             "GABA-3", "GABA-4-1", "GABA-4-2",
-             "GABA-5-1", "GABA-5-2",
-             "GABA-6", "GABA-7", "GABA-8",
+             "GABA-LGE-MAML2", "GABA-LGE-MDGA1",
+             "GABA-MGE-SST-SLC12A5", "GABA-MGE-SST-SHISA9", "GABA-MGE-SST-DIAPH3",
+             "GABA-MGE-PVALB-UNC5C", "GABA-MGE-PVALB-CHRM2", "GABA-MGE-PVALB-IL1RAP",
+             "GABA-MGE-LAMP5", "GABA-MGE-ST18", "GABA-MGE-LHX8",
+             "GABA-CGE-PENK", "GABA-CGE-STK32C",
              "GABA-Im",
              ## non-neuronal
              "Astro-1", "Astro-2", "Astro-3", "Epen",
@@ -482,7 +483,9 @@ alluvial_plot = function(df, from_col, to_col, from_order, to_order,
 
   ## Each axis's strata are namespaced ("L::" / "R::") before being turned into factors. This is not
   ## cosmetic: `gather_set_data()` stacks BOTH axes into a single `y` factor, and the two datasets
-  ## genuinely share label names (GABA-1-1, GABA-1-2, GABA-3, GABA-6..8, Epen, OPC, Micro, Endo, ...).
+  ## genuinely share label names (Epen, OPC, Micro, Endo, ... -- the GABA side no longer coincides
+  ## after the hybrid scheme's GABA relabel added LGE/MGE/CGE divisions, but the non-neuronal names
+  ## still do).
   ## Shared names therefore collapse onto shared level positions, and one level order cannot satisfy
   ## two different desired orders -- which is exactly how the reverse plot's right axis came out
   ## scrambled (its Glut blocks were pushed below every label that also exists in the published set).
