@@ -38,5 +38,11 @@ bpcells/
 *.gz
 comparative_genomics/deeptools/output/
 
+# Raw count matrices / pickled objects (SAMap, MetaNeighbor, RPCA exports) --
+# regenerable from the export scripts, GB-scale, must not be tracked.
+*.mtx
+*.pkl
+*.npy
+
 # ArchR
 ArchRLogs/
