@@ -102,30 +102,24 @@ own copy, never writing back to the canonical object.
   - **Every remaining collision group (`GABA-1-1`/`GABA-1-2` on `LGE_FOXP2`,
     `GABA-2-1`/`GABA-2-2`/`GABA-2-3` on `SST_SLC24A2`/`SST_ABI3BP`, `GABA-3`/`GABA-4-1`/`GABA-4-2` on
     `SST_PVALB` after the override above, and `GABA-5-1`/`GABA-5-2` on `CGE_MAN1A1`/`CGE_CACNA1B`)
-    gets a real distinguishing gene from this object's own within-group differential expression**
-    (the same `cluster_de()`/`select_naming_genes()` machinery `exploratory/apply_composite_labels.qmd`
-    uses), **not the chicken match's own suggested second gene**, which already failed verification
-    for exactly this reason for three of the four groups (`SLC24A2`, `ABI3BP`, `MAN1A1`/`CACNA1B`):
-    `GABA-1-1` -> `MAML2`, `GABA-1-2` -> `MDGA1`, `GABA-2-1` -> `SLC12A5`, `GABA-2-2` -> `SHISA9`,
-    `GABA-2-3` -> `DIAPH3`, `GABA-3` -> `UNC5C`, `GABA-4-1` -> `CHRM2`, `GABA-4-2` -> `IL1RAP`,
-    `GABA-5-1` -> `PTPRK`, `GABA-5-2` -> `STK32C` (all real DESeq2 pseudobulk hits, padj <= 1e-4, and
-    confirmed directly by detection rate against their own group siblings, not merely a
-    significance-test artifact).
-  - **The two MGE groups additionally keep a real class marker for the whole group as a prefix on
-    top of that within-group pick** (`SST`, `PVALB` -- both real per the QC section above, unlike the
-    chicken match's own more specific second gene), giving `GABA-MGE-SST-SLC12A5` etc. **LGE and CGE
-    use a single gene with no class-marker prefix instead**, per direct instruction (a class marker
-    was tried for both -- `MEIS2` for LGE, `DPF3` for CGE, each found the same "ask the data, not the
-    chicken match" way, a group-vs-rest differential expression -- but was dropped again for looking
-    inconsistent alongside a single-gene LGE/CGE name): `GABA-LGE-MAML2`, `GABA-LGE-MDGA1`,
-    `GABA-CGE-PTPRK` (before the `GABA-5-1` override just below), `GABA-CGE-STK32C`.
-  - **`GABA-5-1`'s own within-group DE pick (`PTPRK`) is overridden by hand to `PENK`**: requested by
-    name and **confirmed directly against this object's own expression** -- not assumed -- `PENK` is
-    detected in 99.1% of `GABA-5-1`'s own cells (mean SCT 2.79) versus 53.6% in `GABA-5-2` (its only
-    group sibling) and 50.3% in the next-highest GABA cluster overall (`GABA-7`), a dramatically
-    cleaner, more specific signal than `PTPRK`'s own within-group numbers (93%/22%). `GABA-5-2` keeps
-    its own algorithmic pick (`STK32C`), unaffected by this and independently well verified (63%
-    vs. 22% within the group).
+    gets a plain sequential number instead of a specific gene**, per direct instruction, for a
+    shorter and simpler name: `GABA-LGE-1`/`-2`, `GABA-MGE-SST-1`/`-2`/`-3`, `GABA-MGE-PVALB-1`/`-2`/`-3`,
+    `GABA-CGE-1`/`-2`. A real distinguishing gene was tried here first for every group (within-group
+    differential expression, the same `cluster_de()`/`select_naming_genes()` machinery
+    `exploratory/apply_composite_labels.qmd` uses -- e.g. `GABA-MGE-SST-SLC12A5`/`-SHISA9`/`-DIAPH3`,
+    `GABA-LGE-MAML2`/`-MDGA1`, and it worked cleanly for all four groups, unlike the chicken match's
+    own suggested second gene, which already failed verification for three of the four
+    (`SLC24A2`/`ABI3BP`, `MAN1A1`/`CACNA1B`) -- but the gene-based names were dropped again in favor
+    of the shorter numeral.
+  - **The two MGE groups keep their real, broadly-shared class marker as a prefix on the number**
+    (`SST`, `PVALB` -- both real per the QC section above, unlike the chicken match's own more
+    specific second gene, which is exactly what the within-group DE step above was routing around).
+    LGE and CGE get a bare `GABA-<division>-<n>` instead, since neither's own composite class marker
+    held up under verification in the first place (`FOXP2`, LGE's own `top_rank_agg` gene, is broadly
+    LGE-specific but bleeds into `GABA-2-2` at 41% detection; `MAN1A1`/`CACNA1B`, CGE's own, already
+    failed outright per the rules above) -- a class marker was found for both anyway (`MEIS2` for LGE,
+    `DPF3` for CGE, the same "ask the data, not the chicken match" way, a group-vs-rest differential
+    expression), but was dropped along with the gene-based names for the same reason.
 - **Untouched**: `Glut-Nido-2` (`Glut-GABA`, the dual-transmitter override -- not a single division to
   begin with), the three Glut precursor clusters (`Glut-NSC`/`Glut-NB`/`Glut-Im`, developmental-stage
   labels independent of this scheme), and all non-neuronal clusters.
@@ -137,19 +131,6 @@ library(Seurat)
 library(tidyverse)
 library(qs2)
 library(knitr)
-
-source(here::here("scripts/cluster_curation.R"))
-source(here::here("scripts/cluster_naming.R"))
-
-## Excludes annotation placeholders (`^LOC[0-9]` NCBI-style loci, `^nbis-`/`-gr[0-9]+$` NBIS-pipeline
-## loci -- every chrM gene in this genome's annotation gets one of these) and ribosomal protein genes
-## (`^RP[SL][0-9]`/`^MRP[SL][0-9]`, sparing the `RPS6K*` kinase family) from candidacy as a GABA
-## within-group naming gene below -- same definition `exploratory/apply_composite_labels.qmd` uses,
-## so a housekeeping or contamination-associated gene cannot become a cluster's name here either.
-is_named_gene <- function(gene) {
-  !grepl("^LOC[0-9]", gene) & !grepl("^nbis-", gene, ignore.case = TRUE) & !grepl("-gr[0-9]+$", gene) &
-    !grepl("^RP[SL][0-9]+[A-Z]?[0-9]?$", gene) & !grepl("^MRP[SL][0-9]+[A-Z]?[0-9]?$", gene)
-}
 ```
 
 ## Parameters
@@ -220,14 +201,6 @@ stopifnot(
   "gg_adult_hybrid composite$query does not cover this object's own (non-precursor) GABA clusters" =
     all(setdiff(gaba_clusters_raw, "GABA-Pre") %in% gaba_composite$query)
 )
-
-## Library-qualified souporcell assignment for the GABA within-group naming DE below -- this backup
-## object predates the souporcell reprocessing (no `individual`/`batch` columns), so raw `assignment`
-## alone is a *per-library* index and would silently pool distinct birds across libraries if used
-## directly. Qualifying it by library first is what makes it valid: within one library, distinct
-## `assignment` values are genuinely distinct known birds (that library's own souporcell run). Same
-## construction as exploratory/apply_composite_labels.qmd.
-obj$replicate_lib <- paste(obj$sample_name, obj$assignment, sep = "_")
 ```
 
 ## Major division per cluster
@@ -382,65 +355,38 @@ kable(gaba_named %>% select(cluster, body, distinguishing_gene, verified, use_sp
 ```{r}
 #| label: gaba-final-labels
 ## Two pools now. (1) A cluster whose composite-derived candidate gene is confirmed and exclusive to
-## it keeps that name as-is. (2) Every other group (both MGE collisions, and now LGE/CGE too) gets a
-## real distinguishing gene from this object's own within-group differential expression, prefixed by
-## a real class marker for the whole group -- see the two chunks below. A bare division-numeral
-## (tried first here for LGE/CGE, since neither's composite class marker held up under verification)
-## was rejected as looking inconsistent next to the MGE groups' gene-based names, once real
-## discriminating genes turned out to exist for LGE/CGE too (see class-marker discovery below).
+## it keeps that name as-is (ST18, LHX8; LAMP5 below is a hand override of what would otherwise be
+## ANO1). (2) Every other cluster -- one of four collision groups -- gets a plain sequential number
+## instead of a specific gene. A real distinguishing gene was tried here first (within-group
+## differential expression, the same cluster_de()/select_naming_genes() machinery
+## exploratory/apply_composite_labels.qmd uses) and worked for all four groups (e.g.
+## GABA-MGE-SST-SLC12A5/-SHISA9/-DIAPH3, GABA-LGE-MAML2/-MDGA1), but was dropped again in favor of a
+## shorter, simpler name, per direct instruction. The two MGE groups still keep their real,
+## broadly-shared class marker (SST, PVALB -- see the QC section above) as a prefix on top of the
+## number; LGE and CGE, whose composite class marker never held up under verification in the first
+## place (see the rules above), get a bare GABA-<division>-<n>.
 gaba_specific <- gaba_named %>% filter(use_specific) %>% mutate(new_label = paste0("GABA-", body)) %>%
   select(cluster, new_label)
 
-## Real distinguishing gene per cluster within a collision group, from this object's own differential
-## expression -- the same cluster_de()/select_naming_genes() machinery
-## exploratory/apply_composite_labels.qmd uses -- not the chicken match's own suggested second gene,
-## which already failed verification above for exactly this reason (SLC24A2, ABI3BP, MAN1A1/CACNA1B:
-## real, confident chicken matches that are simply not real discriminating markers in this species).
-## class_label is an optional extra prefix on top of the group's own within-group pick, kept only for
-## the two MGE groups below (SST, PVALB): both are real, broadly-shared markers across their whole
-## group (see the QC section above), unlike LGE/CGE, where no group-wide marker held up well enough
-## to be worth the extra length -- LGE and CGE get a single gene each instead.
-within_group_gene_family <- function(obj, cluster_col, clusters, division, class_label = NULL,
-                                     filters = naming_filters(max_genes = 1)) {
-  cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% clusters]
-  og <- subset(obj, cells = cells)
-  og@meta.data[[cluster_col]] <- droplevels(factor(og@meta.data[[cluster_col]]))
-  DefaultAssay(og) <- "SCT"
-  de <- cluster_de(og, cluster_col, replicate_col = "replicate_lib")
-  excl <- unique(de$feature)[!is_named_gene(unique(de$feature))]
-  nm <- select_naming_genes(de, filters = filters, exclude_genes = excl)
-  stopifnot(
-    "No naming gene cleared naming_filters() for at least one cluster in this group" =
-      !anyNA(nm$naming_genes)
-  )
-  prefix <- if (is.null(class_label)) division else paste0(division, "-", class_label)
-  tibble(cluster = nm$cluster, new_label = paste0("GABA-", prefix, "-", nm$naming_genes))
+numbered_group <- function(clusters, prefix) {
+  tibble(cluster = clusters) %>%
+    arrange(cluster) %>%
+    mutate(new_label = paste0(prefix, "-", dplyr::row_number()))
 }
 
-mge_sst_family <- within_group_gene_family(obj, cluster_col, c("GABA-2-1", "GABA-2-2", "GABA-2-3"), "MGE", "SST")
-mge_pvalb_family <- within_group_gene_family(obj, cluster_col, c("GABA-3", "GABA-4-1", "GABA-4-2"), "MGE", "PVALB")
-lge_family <- within_group_gene_family(obj, cluster_col, c("GABA-1-1", "GABA-1-2"), "LGE")
-cge_family <- within_group_gene_family(obj, cluster_col, c("GABA-5-1", "GABA-5-2"), "CGE")
+lge_family <- numbered_group(c("GABA-1-1", "GABA-1-2"), "GABA-LGE")
+mge_sst_family <- numbered_group(c("GABA-2-1", "GABA-2-2", "GABA-2-3"), "GABA-MGE-SST")
+mge_pvalb_family <- numbered_group(c("GABA-3", "GABA-4-1", "GABA-4-2"), "GABA-MGE-PVALB")
+cge_family <- numbered_group(c("GABA-5-1", "GABA-5-2"), "GABA-CGE")
 
-## GABA-5-1's own within-group DE pick (PTPRK) is overridden to PENK here: checked directly, PENK is
-## detected in 99.1% of GABA-5-1's own cells (mean SCT 2.79) versus 53.6% in GABA-5-2 (its only group
-## sibling) and 50.3% in the next-highest GABA cluster overall (GABA-7) -- a dramatically cleaner,
-## more specific signal than PTPRK's own within-group numbers (93%/22%), and requested by name.
-## GABA-5-2 keeps its own algorithmic pick (STK32C), unaffected by this -- still well verified
-## (63% vs. 22% within the group) independent of what GABA-5-1 ends up called.
-cge_family <- cge_family %>%
-  mutate(new_label = if_else(cluster == "GABA-5-1", "GABA-CGE-PENK", new_label))
-
-kable(bind_rows(mge_sst_family, mge_pvalb_family, lge_family, cge_family),
-      caption = paste("Every collision group's own within-group differential-expression naming gene,",
-                      "replacing the chicken match's own second gene (already shown not to",
-                      "discriminate in this species above)."))
+kable(bind_rows(lge_family, mge_sst_family, mge_pvalb_family, cge_family),
+      caption = "Every collision group's plain sequential fallback numbering, class-marker-prefixed where one applies.")
 
 gaba_named <- bind_rows(
   gaba_specific,
+  lge_family,
   mge_sst_family,
   mge_pvalb_family,
-  lge_family,
   cge_family
 ) %>%
   left_join(gaba_named %>% select(cluster, division, confidence_tier), by = "cluster")
@@ -462,57 +408,7 @@ gaba_named <- gaba_named %>%
                                     unname(gaba_label_overrides[cluster]), new_label))
 
 kable(gaba_named %>% arrange(new_label) %>% select(cluster, new_label, confidence_tier),
-      caption = "Final GABA labels: a verified composite gene, or a within-group DE gene.")
-```
-
-**Confirmed, not assumed**: the `GABA-5-1` -> `PENK` override above, checked directly against its
-algorithmic replacement (`PTPRK`) and its only group sibling, `GABA-5-2`.
-
-```{r}
-#| label: gaba-penk-qc
-penk_ptprk_mat <- GetAssayData(obj, assay = "SCT", layer = "data")[c("PENK", "PTPRK"), gaba_cells, drop = FALSE]
-tibble(cluster = as.character(obj@meta.data[gaba_cells, cluster_col]),
-      PENK = penk_ptprk_mat["PENK", ], PTPRK = penk_ptprk_mat["PTPRK", ]) %>%
-  group_by(cluster) %>%
-  summarise(n = n(), pct_PENK = mean(PENK > 0) * 100, pct_PTPRK = mean(PTPRK > 0) * 100, .groups = "drop") %>%
-  arrange(desc(pct_PENK)) %>%
-  kable(digits = 1, caption = paste(
-    "PENK and PTPRK detection rate across all eligible GABA clusters -- PENK should read as more",
-    "specific to GABA-5-1 than PTPRK was, which is why it replaced PTPRK as GABA-5-1's own name."
-  ))
-```
-
-**Confirmed, not assumed**: the eight within-group naming genes above (two MGE groups of three, one
-LGE pair, one CGE pair), checked directly against detection rate within their own group -- each own
-cluster should read as the clear top, not merely "detected".
-
-```{r}
-#| label: gaba-family-qc
-## Built from the family tibbles themselves (not a separately hardcoded gene list), so this can't
-## silently drift from what gaba-final-labels actually picked. The naming gene is always the last
-## "-"-delimited token of new_label (division and class-marker tokens never contain a literal "-").
-family_groups <- list(
-  list(label = "MGE-SST", clusters = c("GABA-2-1", "GABA-2-2", "GABA-2-3"), df = mge_sst_family),
-  list(label = "MGE-PVALB", clusters = c("GABA-3", "GABA-4-1", "GABA-4-2"), df = mge_pvalb_family),
-  list(label = "LGE", clusters = c("GABA-1-1", "GABA-1-2"), df = lge_family),
-  list(label = "CGE", clusters = c("GABA-5-1", "GABA-5-2"), df = cge_family)
-)
-map_dfr(family_groups, function(g) {
-  genes <- setNames(sub(".*-", "", g$df$new_label), g$df$cluster)
-  cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% g$clusters]
-  mat <- GetAssayData(obj, assay = "SCT", layer = "data")[unique(genes), cells, drop = FALSE]
-  ids <- obj@meta.data[cells, cluster_col]
-  map_dfr(names(genes), function(cl) {
-    gene <- genes[[cl]]
-    tibble(group = g$label, own_cluster = cl, gene = gene,
-          pct_in_own = mean(mat[gene, ids == cl] > 0) * 100,
-          pct_in_others = mean(mat[gene, ids != cl] > 0) * 100)
-  })
-}) %>%
-  kable(digits = 1, caption = paste(
-    "Each within-group naming gene's detection rate in the cluster it names versus every other",
-    "cluster in its own group."
-  ))
+      caption = "Final GABA labels: a verified composite gene, or a class-marker-prefixed / bare sequential number.")
 ```
 
 **Confirmed, not assumed**: the direct evidence behind the `GABA-6` -> `GABA-LAMP5` override above --
