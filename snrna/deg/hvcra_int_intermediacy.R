@@ -64,8 +64,11 @@ theme_viz <- function(base_size = 9) {
       panel.grid.major = element_line(colour = grid_col, linewidth = 0.25),
       axis.line = element_line(colour = axis_col, linewidth = 0.3),
       axis.ticks = element_line(colour = axis_col, linewidth = 0.3),
-      axis.text = element_text(colour = ink_muted),
-      axis.title = element_text(colour = ink_secondary),
+      ## Lab standard: axis labels at 6 pt. element_text(size = ) is in points;
+      ## geom_text()/annotate(size = ) is in MILLIMETRES, so on-plot annotations
+      ## below are set to size/.pt equivalents rather than to 6 directly.
+      axis.text = element_text(colour = ink_muted, size = 6),
+      axis.title = element_text(colour = ink_secondary, size = 6),
       plot.title = element_text(colour = ink_primary, face = "bold", size = base_size + 1),
       plot.subtitle = element_text(colour = ink_secondary, size = base_size - 0.5),
       plot.tag = element_text(colour = ink_primary, face = "bold", size = base_size + 3),
@@ -258,6 +261,43 @@ three_labels <- three_stats %>%
                          sprintf("median %.2f   95%% CI [%.2f, %.2f]", median, lo, hi),
                          NA_character_))
 
+## Mann-Whitney U (Wilcoxon rank-sum) between the three groups, all three
+## pairs, Benjamini-Hochberg corrected across them.
+##
+## Read the effect size, not the p-value. Each group is hundreds to thousands of
+## *cells* drawn from three birds in a single library per dissection, so cells
+## are not independent samples: n is inflated relative to the number of animals
+## and any real difference is guaranteed to come back astronomically significant.
+## The p-value is a statement about cells, not about birds. `prob_superiority`
+## (U / n1n2 -- the chance a random cell from group 2 scores above a random cell
+## from group 1) is the number that is comparable across pairs and unaffected by
+## that inflation.
+##
+## Note also what this test can and cannot establish. It shows HVCra-Int differs
+## from BOTH anchors, which rules out "it is really just one of them". It does
+## NOT establish intermediacy -- a cluster off one end of the axis would give the
+## same two rejections. Intermediacy is carried by the position estimate (0.42,
+## CI [0.40, 0.45]), not by these p-values.
+mwu_pairs <- list(c(LOW, MID), c(MID, HIGH), c(LOW, HIGH))
+mwu <- map_dfr(mwu_pairs, function(p) {
+  x <- three$score[three$celltype == p[1]]
+  y <- three$score[three$celltype == p[2]]
+  w <- suppressWarnings(wilcox.test(x, y, alternative = "two.sided", exact = FALSE))
+  tibble(group1 = p[1], group2 = p[2], n1 = length(x), n2 = length(y),
+         U = unname(w$statistic), p_value = w$p.value,
+         prob_superiority = 1 - unname(w$statistic) / (length(x) * length(y)),
+         median_diff = median(y) - median(x))
+}) %>%
+  mutate(p_adj = p.adjust(p_value, method = "BH"),
+         rank_biserial = 2 * prob_superiority - 1)
+write_csv(mwu, file.path(out_dir, "three_way_mannwhitney.csv"))
+
+fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
+mwu_caption <- sprintf(
+  "Mann–Whitney U (BH-adjusted): HVCra-Int vs DACH2-1 p %s; HVCra-Int vs HVCra p %s.\nn is cells, not birds — see prob_superiority in three_way_mannwhitney.csv for the effect size.",
+  fmt_p(mwu$p_adj[mwu$group2 == MID & mwu$group1 == LOW]),
+  fmt_p(mwu$p_adj[mwu$group1 == MID & mwu$group2 == HIGH]))
+
 three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
   geom_vline(xintercept = c(0, 1), colour = axis_col, linewidth = 0.35, linetype = "22") +
   geom_violin(scale = "width", width = 0.8, colour = NA, alpha = 0.9) +
@@ -272,7 +312,7 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
              size = 1.7, colour = ink_primary, inherit.aes = FALSE) +
   geom_text(data = three_labels %>% filter(!is.na(label)),
             aes(median, celltype, label = label),
-            vjust = -2.0, size = 3.2, colour = ink_primary,
+            vjust = -2.0, size = 6.5 / .pt, colour = ink_primary,
             fontface = "bold", inherit.aes = FALSE) +
   scale_fill_manual(values = pal, guide = "none") +
   scale_y_discrete(labels = function(x) {
@@ -281,29 +321,32 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
   }) +
   scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
   annotate("text", x = 0, y = 3.58, label = "DACH2-1 anchor (0)", hjust = 0.5, vjust = 0,
-           size = 2.8, colour = ink_muted) +
+           size = 6 / .pt, colour = ink_muted) +
   annotate("text", x = 1, y = 3.58, label = "HVCra anchor (1)", hjust = 0.5, vjust = 0,
-           size = 2.8, colour = ink_muted) +
+           size = 6 / .pt, colour = ink_muted) +
   coord_cartesian(ylim = c(0.62, 3.78), clip = "off") +
   labs(title = "Glut-DACH2-HVCra-Int sits between its two anchors",
        subtitle = paste0("Per-cell score on ", 2 * N_AXIS_GENES,
-                         " genes differential between Glut-DACH2-1 and Glut-DACH2-HVCra alone,\n",
-                         "rescaled so the anchor medians are 0 and 1 — so the anchors are fixed by definition and\n",
-                         "only HVCra-Int's position is a measurement. Point and bar are its median with a bootstrap\n",
-                         "95% CI (2000 resamples); box is the IQR."),
-       x = "Position on the DACH2-1 → HVCra axis", y = NULL) +
-  theme_viz(base_size = 10) +
+                         " genes differential between the two anchors alone,\n",
+                         "rescaled so their medians are 0 and 1 — only HVCra-Int's position is a\n",
+                         "measurement. Bar = bootstrap 95% CI of the median (2000×); box = IQR."),
+       x = "Position on the DACH2-1 → HVCra axis", y = NULL,
+       caption = mwu_caption) +
+  theme_viz(base_size = 7) +
   theme(panel.grid.major.y = element_blank(),
-        axis.text.y = element_text(colour = ink_primary, face = "bold", size = 9.5),
-        plot.margin = margin(5.5, 12, 5.5, 5.5))
+        axis.text.y = element_text(colour = ink_primary, face = "bold", size = 6),
+        plot.caption = element_text(colour = ink_muted, size = 5.2, hjust = 0),
+        plot.margin = margin(4, 9, 4, 4))
 
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.pdf"), three_violin,
-       width = 7.4, height = 4.2, device = cairo_pdf)
+       width = 5, height = 3.4, device = cairo_pdf)
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.png"), three_violin,
-       width = 7.4, height = 4.2, dpi = 300, bg = surface)
+       width = 5, height = 3.4, dpi = 300, bg = surface)
 write_csv(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 4))),
           file.path(out_dir, "three_way_axis_medians.csv"))
 
+message("Mann-Whitney U:")
+print(as.data.frame(mwu %>% mutate(across(c(prob_superiority, median_diff, rank_biserial), ~round(.x, 3)))))
 message("three-way medians [95% CI]:")
 print(as.data.frame(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 3)))))
 
