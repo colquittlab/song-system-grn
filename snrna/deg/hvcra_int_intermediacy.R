@@ -211,5 +211,101 @@ cells %>%
   write_csv(file.path(out_dir, "axis_position_by_celltype.csv"))
 write_csv(shift, file.path(out_dir, "per_gene_shift.csv"))
 
+## ---------------------------------------------------------------------------
+## Focused three-way violin: the hypothesis on its own terms
+##
+## Panel A above deliberately shows all 23 glutamatergic clusters, because the
+## honest version of the claim has to survive the whole dataset being in frame.
+## This is the same axis restricted to the three clusters the hypothesis is
+## actually about, for when that is the question being asked.
+##
+## The medians carry a bootstrap 95% CI so this reads as a test rather than a
+## picture: the question "is HVCra-Int strictly between the anchors" is answered
+## by whether its interval excludes 0 and 1, not by whether the violin looks
+## like it sits in the middle. Note the axis is defined by DE between the two
+## anchors alone -- HVCra-Int contributes nothing to it, so its position is a
+## prediction that could have come back at either end.
+## ---------------------------------------------------------------------------
+
+boot_median_ci <- function(x, n_boot = 2000, seed = 1) {
+  set.seed(seed)
+  b <- replicate(n_boot, median(sample(x, length(x), replace = TRUE)))
+  c(lo = unname(quantile(b, 0.025)), hi = unname(quantile(b, 0.975)))
+}
+
+three <- cells %>%
+  filter(celltype %in% c(LOW, MID, HIGH)) %>%
+  mutate(celltype = factor(as.character(celltype), levels = c(LOW, MID, HIGH)))
+
+three_stats <- three %>%
+  group_by(celltype) %>%
+  summarise(n_cells = n(),
+            median = median(score),
+            lo = boot_median_ci(score)[["lo"]],
+            hi = boot_median_ci(score)[["hi"]],
+            q25 = quantile(score, 0.25),
+            q75 = quantile(score, 0.75),
+            iqr_width = q75 - q25,
+            .groups = "drop")
+
+## Only HVCra-Int carries a numeric label. The two anchors are 0 and 1 *by
+## construction* of the rescaling, so printing a CI on them would invite reading
+## them as independent measurements of something -- they are the definition of
+## the scale, and their bootstrap interval is just sampling noise around a fixed
+## point. HVCra-Int's interval is the only one that is a result.
+three_labels <- three_stats %>%
+  mutate(label = if_else(celltype == MID,
+                         sprintf("median %.2f   95%% CI [%.2f, %.2f]", median, lo, hi),
+                         NA_character_))
+
+three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
+  geom_vline(xintercept = c(0, 1), colour = axis_col, linewidth = 0.35, linetype = "22") +
+  geom_violin(scale = "width", width = 0.8, colour = NA, alpha = 0.9) +
+  geom_boxplot(width = 0.09, outlier.shape = NA, colour = ink_primary,
+               fill = surface, linewidth = 0.3) +
+  geom_linerange(data = three_stats,
+                 aes(y = celltype, xmin = lo, xmax = hi),
+                 colour = ink_primary, linewidth = 1.1, inherit.aes = FALSE) +
+  geom_point(data = three_stats, aes(median, celltype),
+             size = 2.6, colour = surface, inherit.aes = FALSE) +
+  geom_point(data = three_stats, aes(median, celltype),
+             size = 1.7, colour = ink_primary, inherit.aes = FALSE) +
+  geom_text(data = three_labels %>% filter(!is.na(label)),
+            aes(median, celltype, label = label),
+            vjust = -2.0, size = 3.2, colour = ink_primary,
+            fontface = "bold", inherit.aes = FALSE) +
+  scale_fill_manual(values = pal, guide = "none") +
+  scale_y_discrete(labels = function(x) {
+    n <- three_stats$n_cells[match(x, as.character(three_stats$celltype))]
+    paste0(str_remove(x, "^Glut-"), "\n(n = ", n, ")")
+  }) +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  annotate("text", x = 0, y = 3.58, label = "DACH2-1 anchor (0)", hjust = 0.5, vjust = 0,
+           size = 2.8, colour = ink_muted) +
+  annotate("text", x = 1, y = 3.58, label = "HVCra anchor (1)", hjust = 0.5, vjust = 0,
+           size = 2.8, colour = ink_muted) +
+  coord_cartesian(ylim = c(0.62, 3.78), clip = "off") +
+  labs(title = "Glut-DACH2-HVCra-Int sits between its two anchors",
+       subtitle = paste0("Per-cell score on ", 2 * N_AXIS_GENES,
+                         " genes differential between Glut-DACH2-1 and Glut-DACH2-HVCra alone,\n",
+                         "rescaled so the anchor medians are 0 and 1 — so the anchors are fixed by definition and\n",
+                         "only HVCra-Int's position is a measurement. Point and bar are its median with a bootstrap\n",
+                         "95% CI (2000 resamples); box is the IQR."),
+       x = "Position on the DACH2-1 → HVCra axis", y = NULL) +
+  theme_viz(base_size = 10) +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y = element_text(colour = ink_primary, face = "bold", size = 9.5),
+        plot.margin = margin(5.5, 12, 5.5, 5.5))
+
+ggsave(file.path(out_dir, "hvcra_int_three_way_violin.pdf"), three_violin,
+       width = 7.4, height = 4.2, device = cairo_pdf)
+ggsave(file.path(out_dir, "hvcra_int_three_way_violin.png"), three_violin,
+       width = 7.4, height = 4.2, dpi = 300, bg = surface)
+write_csv(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 4))),
+          file.path(out_dir, "three_way_axis_medians.csv"))
+
+message("three-way medians [95% CI]:")
+print(as.data.frame(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 3)))))
+
 message("slope (fraction of the way HVCra-Int sits): ", round(fit, 3))
 message("Wrote ", out_dir)
