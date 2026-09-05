@@ -47,35 +47,20 @@ HIGH <- "Glut-DACH2-HVCra"      # the song-nucleus projection neurons
 N_AXIS_GENES <- 100             # per direction, for the axis score
 N_HEATMAP_GENES <- 20           # per direction, for panel B
 
-## Palette ------------------------------------------------------------------
-pal <- c("#2a78d6", "#eb6834", "#1baf7a")           # slots 1-3, fixed order
-names(pal) <- c(LOW, MID, HIGH)
-ink_primary <- "#0b0b0b"; ink_secondary <- "#52514e"; ink_muted <- "#898781"
-grid_col <- "#e1e0d9"; axis_col <- "#c3c2b7"; surface <- "#fcfcfb"
-neutral_fill <- "#c9c8c2"                            # context clusters
-div_low <- "#2a78d6"; div_mid <- "#f0efec"; div_high <- "#e34948"
+## Style --------------------------------------------------------------------
+## Type, palette and theme come from the shared project standard rather than
+## being re-declared here, so a change to the standard reaches every figure.
+source(here::here("config/figure_theme.R"))
 
-theme_viz <- function(base_size = 9) {
-  theme_minimal(base_size = base_size) +
-    theme(
-      plot.background = element_rect(fill = surface, colour = NA),
-      panel.background = element_rect(fill = surface, colour = NA),
-      panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(colour = grid_col, linewidth = 0.25),
-      axis.line = element_line(colour = axis_col, linewidth = 0.3),
-      axis.ticks = element_line(colour = axis_col, linewidth = 0.3),
-      ## Lab standard: axis labels at 6 pt. element_text(size = ) is in points;
-      ## geom_text()/annotate(size = ) is in MILLIMETRES, so on-plot annotations
-      ## below are set to size/.pt equivalents rather than to 6 directly.
-      axis.text = element_text(colour = ink_muted, size = 6),
-      axis.title = element_text(colour = ink_secondary, size = 6),
-      plot.title = element_text(colour = ink_primary, face = "bold", size = base_size + 1),
-      plot.subtitle = element_text(colour = ink_secondary, size = base_size - 0.5),
-      plot.tag = element_text(colour = ink_primary, face = "bold", size = base_size + 3),
-      legend.text = element_text(colour = ink_secondary),
-      legend.title = element_text(colour = ink_secondary)
-    )
-}
+## Local aliases, so the plotting code below reads in its own terms.
+pal <- FIG_PAL[seq_len(FIG_PAL_ALLPAIRS_MAX)]        # slots 1-3, fixed order
+names(pal) <- c(LOW, MID, HIGH)
+ink_primary <- FIG_INK_PRIMARY; ink_secondary <- FIG_INK_SECONDARY
+ink_muted <- FIG_INK_MUTED; grid_col <- FIG_GRID; axis_col <- FIG_AXIS
+surface <- FIG_SURFACE; neutral_fill <- FIG_NEUTRAL_FILL
+div_low <- FIG_DIV_LOW; div_mid <- FIG_DIV_MID; div_high <- FIG_DIV_HIGH
+FONT <- FIG_FONT
+theme_viz <- theme_fig
 
 ## Data ---------------------------------------------------------------------
 obj <- qs_read(obj_fname, nthreads = 8)
@@ -196,13 +181,50 @@ panel_c <- ggplot(shift, aes(hvcra, int)) +
        x = "HVCra vs DACH2-1", y = "HVCra-Int vs DACH2-1", tag = "C") +
   theme_viz()
 
+## ---------------------------------------------------------------------------
+## Compact standalone version of panel C, for use on its own at figure scale.
+## Same data and same fit as the panel above -- only the text budget and the
+## mark sizes are re-cut for a 2.8 in measure, so the two cannot disagree.
+## ---------------------------------------------------------------------------
+sx_max <- max(shift$hvcra)
+sx_diag <- min(sx_max, max(shift$int)) * 0.92
+scatter_compact <- ggplot(shift, aes(hvcra, int)) +
+  geom_hline(yintercept = 0, colour = axis_col, linewidth = 0.25) +
+  geom_abline(slope = 1, intercept = 0, colour = axis_col,
+              linewidth = 0.3, linetype = "22") +
+  geom_point(colour = ink_secondary, alpha = 0.3, size = 0.45, stroke = 0) +
+  geom_abline(slope = fit, intercept = 0, colour = pal[[MID]], linewidth = 0.7) +
+  ## Anchor the reference labels inside the panel. The y = x line leaves the top
+  ## of the panel well before the x data end, so labelling it at max(hvcra)
+  ## places the text outside the drawing area and it is silently cropped.
+  annotate("text", x = sx_diag, y = sx_diag, label = "= HVCra",
+           hjust = 1, vjust = -0.5, size = 5 / .pt, colour = ink_muted) +
+  annotate("text", x = sx_max, y = 0, label = "= DACH2-1",
+           hjust = 1, vjust = -0.7, size = 5 / .pt, colour = ink_muted) +
+  annotate("text", x = sx_max, y = sx_max * fit,
+           label = sprintf("%.0f%% of the way", 100 * fit),
+           hjust = 1, vjust = -0.8, size = 6 / .pt,
+           colour = pal[[MID]], fontface = "bold") +
+  scale_x_continuous(expand = expansion(mult = 0.02)) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.06))) +
+  labs(title = "Each axis gene shifts part-way",
+       subtitle = "log2 fold-change from DACH2-1, per gene",
+       x = "HVCra vs DACH2-1", y = "HVCra-Int vs DACH2-1") +
+  theme_viz(base_size = 7) +
+  theme(plot.margin = margin(2, 4, 2, 2))
+
+ggsave(file.path(out_dir, "hvcra_int_gene_shift_scatter.pdf"), scatter_compact,
+       width = 2.8, height = 2.2, device = cairo_pdf, family = FONT)
+ggsave(file.path(out_dir, "hvcra_int_gene_shift_scatter.png"), scatter_compact,
+       width = 2.8, height = 2.2, dpi = 600, bg = surface)
+
 ## Compose ------------------------------------------------------------------
 fig <- panel_a | (panel_b / panel_c + plot_layout(heights = c(1.15, 1)))
 fig <- fig + plot_layout(widths = c(1.1, 1)) &
   theme(plot.background = element_rect(fill = surface, colour = NA))
 
 ggsave(file.path(out_dir, "hvcra_int_intermediacy.pdf"), fig,
-       width = 11, height = 7.5, device = cairo_pdf)
+       width = 11, height = 7.5, device = cairo_pdf, family = FONT)
 ggsave(file.path(out_dir, "hvcra_int_intermediacy.png"), fig,
        width = 11, height = 7.5, dpi = 300, bg = surface)
 
@@ -258,7 +280,7 @@ three_stats <- three %>%
 ## point. HVCra-Int's interval is the only one that is a result.
 three_labels <- three_stats %>%
   mutate(label = if_else(celltype == MID,
-                         sprintf("median %.2f   95%% CI [%.2f, %.2f]", median, lo, hi),
+                         sprintf("%.2f [%.2f, %.2f]", median, lo, hi),
                          NA_character_))
 
 ## Mann-Whitney U (Wilcoxon rank-sum) between the three groups, all three
@@ -294,14 +316,13 @@ write_csv(mwu, file.path(out_dir, "three_way_mannwhitney.csv"))
 
 fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
 mwu_caption <- sprintf(
-  "Mann–Whitney U (BH-adjusted): HVCra-Int vs DACH2-1 p %s; HVCra-Int vs HVCra p %s.\nn is cells, not birds — see prob_superiority in three_way_mannwhitney.csv for the effect size.",
-  fmt_p(mwu$p_adj[mwu$group2 == MID & mwu$group1 == LOW]),
-  fmt_p(mwu$p_adj[mwu$group1 == MID & mwu$group2 == HIGH]))
+  "Anchors are 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nMann–Whitney U (BH-adj.) p %s vs both anchors; n is cells, not birds.",
+  fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])))
 
 three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
   geom_vline(xintercept = c(0, 1), colour = axis_col, linewidth = 0.35, linetype = "22") +
-  geom_violin(scale = "width", width = 0.8, colour = NA, alpha = 0.9) +
-  geom_boxplot(width = 0.09, outlier.shape = NA, colour = ink_primary,
+  geom_violin(scale = "width", width = 0.95, colour = NA, alpha = 0.9) +
+  geom_boxplot(width = 0.10, outlier.shape = NA, colour = ink_primary,
                fill = surface, linewidth = 0.3) +
   geom_linerange(data = three_stats,
                  aes(y = celltype, xmin = lo, xmax = hi),
@@ -312,36 +333,36 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
              size = 1.7, colour = ink_primary, inherit.aes = FALSE) +
   geom_text(data = three_labels %>% filter(!is.na(label)),
             aes(median, celltype, label = label),
-            vjust = -2.0, size = 6.5 / .pt, colour = ink_primary,
+            vjust = -1.7, size = 6 / .pt, colour = ink_primary,
             fontface = "bold", inherit.aes = FALSE) +
   scale_fill_manual(values = pal, guide = "none") +
+  ## Explicit short labels rather than a prefix strip -- stripping "Glut-DACH2-"
+  ## turns Glut-DACH2-1 into a bare "1", which reads as a number, not a cluster.
   scale_y_discrete(labels = function(x) {
+    short <- c("DACH2-1", "HVCra-Int", "HVCra")
+    names(short) <- c(LOW, MID, HIGH)
     n <- three_stats$n_cells[match(x, as.character(three_stats$celltype))]
-    paste0(str_remove(x, "^Glut-"), "\n(n = ", n, ")")
+    paste0(short[x], "\n(", n, ")")
   }) +
-  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
-  annotate("text", x = 0, y = 3.58, label = "DACH2-1 anchor (0)", hjust = 0.5, vjust = 0,
-           size = 6 / .pt, colour = ink_muted) +
-  annotate("text", x = 1, y = 3.58, label = "HVCra anchor (1)", hjust = 0.5, vjust = 0,
-           size = 6 / .pt, colour = ink_muted) +
-  coord_cartesian(ylim = c(0.62, 3.78), clip = "off") +
-  labs(title = "Glut-DACH2-HVCra-Int sits between its two anchors",
-       subtitle = paste0("Per-cell score on ", 2 * N_AXIS_GENES,
-                         " genes differential between the two anchors alone,\n",
-                         "rescaled so their medians are 0 and 1 — only HVCra-Int's position is a\n",
-                         "measurement. Bar = bootstrap 95% CI of the median (2000×); box = IQR."),
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1),
+                     expand = expansion(mult = 0.02)) +
+  coord_cartesian(ylim = c(0.5, 3.5), clip = "off") +
+  labs(title = "HVCra-Int is intermediate",
+       subtitle = paste0("Per-cell score, ", 2 * N_AXIS_GENES, " anchor-differential genes"),
        x = "Position on the DACH2-1 → HVCra axis", y = NULL,
        caption = mwu_caption) +
   theme_viz(base_size = 7) +
   theme(panel.grid.major.y = element_blank(),
         axis.text.y = element_text(colour = ink_primary, face = "bold", size = 6),
-        plot.caption = element_text(colour = ink_muted, size = 5.2, hjust = 0),
-        plot.margin = margin(4, 9, 4, 4))
+        plot.caption = element_text(colour = ink_muted, size = 4.6, hjust = 0,
+                                    margin = margin(t = 1.5)),
+        plot.margin = margin(2, 4, 2, 2))
 
+## 40% off both dimensions of the previous 5.0 x 3.4 in.
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.pdf"), three_violin,
-       width = 5, height = 3.4, device = cairo_pdf)
+       width = 3, height = 2.04, device = cairo_pdf, family = FONT)
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.png"), three_violin,
-       width = 5, height = 3.4, dpi = 300, bg = surface)
+       width = 3, height = 2.04, dpi = 600, bg = surface)
 write_csv(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 4))),
           file.path(out_dir, "three_way_axis_medians.csv"))
 
