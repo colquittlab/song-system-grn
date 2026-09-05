@@ -805,8 +805,9 @@ save_plot(file.path(out_dir, "split_fold_matched_vs_unmatched.png"), gg, base_he
 ## Ranking of the matched F ratio, which is the version comparable across cell types.
 ##
 ## Class comes from the explicit precursor set in snrna/naming/hybrid_division_naming.qmd
-## (`precursor_overrides`), not from a name pattern: "-Pre" would misfile Glut-DACH2-HVCra-Pre, which
-## is a subtype of the HVCra projection neurons rather than a precursor.
+## (`precursor_overrides`), not from a name pattern. Glut-DACH2-HVCra-Int is an HVC population
+## transcriptionally intermediate between HVCra and the surrounding nidopallium, not a precursor; a
+## "-Pre" name pattern misfiled it back when that cluster was called Glut-DACH2-HVCra-Int.
 neurogenic_types = c("Glut-NSC", "Glut-NB", "Glut-Im", "GABA-Im")
 cell_class = function(x) {
   case_when(x %in% neurogenic_types ~ "Neurogenic",

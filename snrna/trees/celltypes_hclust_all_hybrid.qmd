@@ -111,7 +111,7 @@ together) and so share one label, `Glut-DACH2-1` -- listed once here, not twice,
 
 ```{r}
 #| label: ct-order
-ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
              "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
              "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
              "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",

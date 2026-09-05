@@ -36,8 +36,13 @@ own copy, never writing back to the canonical object.
   the chicken match**, since these are the clusters where the chicken correspondence is weakest to
   begin with (see the QC section below -- confirmed directly, not assumed):
   - `Glut-HVC-1` -> `Glut-DACH2-HVCra` (RA-projecting)
-  - `Glut-HVC-1a` -> `Glut-DACH2-HVCra-Pre` (a distinct sub-label for this HVC-1 subtype, not merged
-    into HVCra, per direct instruction)
+  - `Glut-HVC-1a` -> `Glut-DACH2-HVCra-Int` (a distinct sub-label for this HVC-1 subtype, not merged
+    into HVCra). The `-Int` suffix is for *intermediate*: this cluster sits transcriptionally between
+    `Glut-DACH2-HVCra` and the surrounding nidopallial `Glut-DACH2-1`/`Glut-DACH2-2` clusters, and is
+    **not** an immature/precursor population -- see the HVCra-Int section below, where that was
+    checked directly rather than assumed. It was previously labelled `-Pre`, which asserted a
+    precursor relationship the data do not support (and which had already broken one downstream
+    `"Pre"`-substring filter by accident; see `snrna/trees/celltypes_hclust_glut_robustness_hybrid.qmd`).
   - `Glut-HVC-2` -> `Glut-DACH2-HVCx` (Area X-projecting)
   - `Glut-RA` -> `Glut-CACNA1H-RA`
   - `Glut-LMAN-1` -> `Glut-DACH2-LMANsh` (shelf)
@@ -162,7 +167,7 @@ excluded_clusters <- c("Glut-Nido-3", "Glut-Arco-4")
 ## for the confirmed mismatch between these and each cluster's own top_rank_agg.
 song_region_overrides <- c(
   "Glut-HVC-1"  = "Glut-DACH2-HVCra",
-  "Glut-HVC-1a" = "Glut-DACH2-HVCra-Pre",
+  "Glut-HVC-1a" = "Glut-DACH2-HVCra-Int",
   "Glut-HVC-2"  = "Glut-DACH2-HVCx",
   "Glut-RA"     = "Glut-CACNA1H-RA",
   "Glut-LMAN-1" = "Glut-DACH2-LMANsh",
@@ -558,6 +563,123 @@ the `genes_missing` warning above -- this genome's own annotation has no `CACNA1
 (confirmed against `rownames(obj)` and the other seven `CACNA1<A,C,D,E,G,H,I,S>` paralogs, all
 present), so that specific label cannot be sanity-checked against expression the way every other one
 here can; see the rules section above.
+
+## QC: why `Glut-DACH2-HVCra-Int` is `-Int` (intermediate) and not `-Pre` (precursor)
+
+This cluster (`Glut-HVC-1a`) was previously labelled `Glut-DACH2-HVCra-Int`, asserting that it is an
+immature population on its way to becoming `Glut-DACH2-HVCra`. That claim was checked directly
+against this object's own expression -- not assumed -- and it does not hold. Three independent
+checks, all reproduced below:
+
+1. **It carries no immature-neuron signature at all.** The real precursor clusters do
+   (`Glut-NSC` = radial glia, `Glut-NB` = neuroblast, `Glut-Im` = immature neuron); this cluster does
+   not, and on maturity markers it scores at or above `Glut-DACH2-HVCra` itself.
+2. **It is transcriptionally intermediate between `Glut-DACH2-HVCra` and the surrounding
+   nidopallium** (`Glut-DACH2-1`/`Glut-DACH2-2`), on both its nearest-neighbour composition and a
+   direct interpolation score.
+3. **It has almost no private markers.** Genes up in it against *all three* of `Glut-DACH2-HVCra`,
+   `Glut-DACH2-1` and `Glut-DACH2-2` number in the single digits, versus several hundred for
+   `Glut-DACH2-HVCx` -- a genuinely discrete type run through the identical test as a yardstick.
+   That is what an intermediate population looks like, not a distinct cell type and not a precursor.
+
+Two further, independent lines of evidence sit outside this notebook and are noted here only so the
+name's basis is recorded in one place:
+
+- **Cross-species.** In `snrna/integration/colquitt2021_label_transfer.qmd`, 94% of this cluster's
+  cells transfer to the published `HVC_Glut-2`, not to `HVC_Glut-1` (= `Glut-DACH2-HVCra`, itself a
+  clean reciprocal match). `Glut-Im`, by contrast, is a reciprocal best match with the published
+  precursor cluster `Pre-4` -- so the published data already separates this cluster from the
+  precursor pool.
+- **HVC/shelf.** Lovell et al. 2008 (PLoS ONE 3(10):e3440) compared HVC against the adjacent auditory
+  shelf by LCM/microarray. Their shelf-enriched genes are strongly enriched among the genes *up* in
+  this cluster relative to `Glut-DACH2-HVCra`, and their HVC-enriched genes among the genes *down*
+  (Fisher OR ~13, p < 1e-20 each way, with no enrichment in either opposite direction) -- consistent
+  with the Xenium mapping, where this cluster forms a border around HVC.
+
+Note what is *not* claimed: transcriptional intermediacy is not directional. Nothing here says
+`Glut-DACH2-1` -> `Glut-DACH2-HVCra` rather than the reverse, or that the axis is developmental at
+all rather than a spatial gradient across the HVC border. `-Int` is deliberately the weaker,
+non-directional name; `-Pre` was not.
+
+```{r}
+#| label: hvcra-int-maturity
+## Canonical immature/mature markers, percent of cells detecting each, in this cluster against the
+## three real developmental-stage clusters and against HVCra itself. Percent detection rather than
+## mean expression, so this does not turn into a statement about sequencing depth.
+int_sel <- c("Glut-NSC", "Glut-NB", "Glut-Im", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCra")
+maturity_genes <- list(
+  proliferation = c("MKI67", "TOP2A", "ASPM", "CENPF"),
+  radial_glia   = c("SOX2", "FABP7", "SLC1A3", "VIM", "PAX6", "NOTCH1"),
+  neuroblast    = c("SOX4", "SOX11", "DCX", "CD24", "DPYSL3", "STMN1", "NEUROD2"),
+  mature        = c("RBFOX3", "SNAP25", "SLC17A6", "CPLX1", "GRIN1", "CAMK2A")
+)
+maturity_present <- intersect(unlist(maturity_genes, use.names = FALSE), rownames(obj))
+int_mat <- LayerData(obj, assay = "SCT", layer = "data")[maturity_present, , drop = FALSE]
+int_ct <- obj$celltype_hybrid
+maturity_pct <- sapply(int_sel, function(k)
+  round(100 * Matrix::rowMeans(int_mat[, which(int_ct == k), drop = FALSE] > 0), 1))
+kable(maturity_pct, caption = "Percent of cells detecting each marker (SCT data)")
+```
+
+`Glut-DACH2-HVCra-Int` should show essentially zero on the proliferation, radial-glia and neuroblast
+blocks (`SOX4`, `SOX11`, `CD24`, `DPYSL3`, `STMN1` all < 1% of its own cells, versus tens of percent
+in `Glut-NB`) while sitting at or above `Glut-DACH2-HVCra` on the mature block. `DCX` is the one
+marker that looks superficially supportive of a precursor reading and is not: it is detected at a
+similar rate in mature `Glut-DACH2-HVCra`, so it does not discriminate here.
+
+```{r}
+#| label: hvcra-int-intermediate
+## Where this cluster sits on a direct Glut-DACH2-1 -> Glut-DACH2-HVCra interpolation: score every
+## cell on the top DE genes in each direction, then rescale so the two anchors are 0 and 1. A
+## precursor of HVCra has no reason to land mid-way between HVCra and the surrounding nidopallium;
+## an intermediate population does.
+Idents(obj) <- "celltype_hybrid"
+int_axis <- function(a, b, n = 100) {
+  de <- FindMarkers(obj, ident.1 = b, ident.2 = a, min.pct = 0.2, logfc.threshold = 0.5) %>%
+    filter(p_val_adj < 0.01)
+  up <- rownames(de %>% arrange(desc(avg_log2FC)))[seq_len(n)]
+  dn <- rownames(de %>% arrange(avg_log2FC))[seq_len(n)]
+  scored <- AddModuleScore(obj, features = list(up, dn), name = "ax", assay = "SCT", seed = 1)
+  s <- tapply(scored$ax1 - scored$ax2, obj$celltype_hybrid, median)
+  round((s - s[[a]]) / (s[[b]] - s[[a]]), 2)
+}
+axis_sel <- c("Glut-DACH2-1", "Glut-DACH2-2", "Glut-Im", "Glut-NB",
+              "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx", "Glut-DACH2-HVCra")
+kable(data.frame(
+  celltype              = axis_sel,
+  `DACH2_1_to_HVCra`    = int_axis("Glut-DACH2-1", "Glut-DACH2-HVCra")[axis_sel],
+  `NB_to_HVCra`         = int_axis("Glut-NB",      "Glut-DACH2-HVCra")[axis_sel],
+  check.names = FALSE
+), row.names = FALSE,
+caption = "Position on each axis, rescaled so the two anchor clusters are 0 and 1")
+```
+
+On the `Glut-DACH2-1` -> `Glut-DACH2-HVCra` axis this cluster lands near the middle and no other
+cluster does, which is the positive evidence for `-Int`. On the immaturity axis
+(`Glut-NB` -> `Glut-DACH2-HVCra`) it lands *past* every generic cluster, on the mature side --
+`Glut-Im` is the cluster that sits low there, which is the negative evidence against `-Pre`.
+
+```{r}
+#| label: hvcra-int-private-markers
+## Private markers: genes up in this cluster against all three of its neighbours at once. Run
+## identically for Glut-DACH2-HVCx, a cluster nobody disputes is its own type, as a yardstick --
+## the comparison is the point, not the raw count.
+int_private <- function(target, others) {
+  Reduce(intersect, lapply(others, function(o)
+    rownames(FindMarkers(obj, ident.1 = target, ident.2 = o,
+                         min.pct = 0.2, logfc.threshold = 0.5) %>%
+             filter(p_val_adj < 0.01, avg_log2FC > 0))))
+}
+int_neighbours <- c("Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-2")
+int_markers <- int_private("Glut-DACH2-HVCra-Int", int_neighbours)
+hvcx_markers <- int_private("Glut-DACH2-HVCx", int_neighbours)
+kable(data.frame(
+  celltype = c("Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx (yardstick)"),
+  n_private_markers = c(length(int_markers), length(hvcx_markers)),
+  genes = c(paste(int_markers, collapse = ", "),
+            paste(head(hvcx_markers, 10), collapse = ", "))
+), caption = "Genes up against Glut-DACH2-HVCra, Glut-DACH2-1 and Glut-DACH2-2 simultaneously")
+```
 
 ```{r}
 #| label: session-info

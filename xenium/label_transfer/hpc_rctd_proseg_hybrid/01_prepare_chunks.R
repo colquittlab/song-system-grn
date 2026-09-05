@@ -33,7 +33,7 @@
 ##  * Song-region labels are anatomical rather than positional, which is the
 ##    main reason to prefer this reference for interpretation:
 ##      Glut-HVC-1  -> Glut-DACH2-HVCra    (HVC -> RA projecting)
-##      Glut-HVC-1a -> Glut-DACH2-HVCra-Pre
+##      Glut-HVC-1a -> Glut-DACH2-HVCra-Int
 ##      Glut-HVC-2  -> Glut-DACH2-HVCx     (HVC -> Area X)
 ##      Glut-RA     -> Glut-CACNA1H-RA
 ##      Glut-LMAN-1 -> Glut-DACH2-LMANsh   (shell)

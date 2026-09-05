@@ -7,7 +7,7 @@ batch1,hvc_run1,Astro-2,3,9,255
 batch1,hvc_run1,GABA-1-1,3,9,306
 batch1,hvc_run1,Glut-DACH2-2,3,9,479
 batch1,hvc_run1,Glut-DACH2-HVCra,3,9,3017
-batch1,hvc_run1,Glut-DACH2-HVCra-Pre,3,9,664
+batch1,hvc_run1,Glut-DACH2-HVCra-Int,3,9,664
 batch1,hvc_run1,Glut-DACH2-HVCx,3,9,341
 batch1,hvc_run1,Glut-NB,3,9,434
 batch1,hvc_run1,Glut-NSC,3,9,224

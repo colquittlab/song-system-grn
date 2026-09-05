@@ -32,7 +32,7 @@ batch1,arco_run1,bird1,Glut-DACH2-6,0,0
 batch1,arco_run1,bird1,Glut-DACH2-7,0,0
 batch1,arco_run1,bird1,Glut-DACH2-8,0,0
 batch1,arco_run1,bird1,Glut-DACH2-HVCra,0,0
-batch1,arco_run1,bird1,Glut-DACH2-HVCra-Pre,3,0.002061855670103093
+batch1,arco_run1,bird1,Glut-DACH2-HVCra-Int,3,0.002061855670103093
 batch1,arco_run1,bird1,Glut-DACH2-HVCx,0,0
 batch1,arco_run1,bird1,Glut-DACH2-LMANco,0,0
 batch1,arco_run1,bird1,Glut-DACH2-LMANsh,0,0
@@ -79,7 +79,7 @@ batch1,arco_run1,bird2,Glut-DACH2-6,0,0
 batch1,arco_run1,bird2,Glut-DACH2-7,0,0
 batch1,arco_run1,bird2,Glut-DACH2-8,0,0
 batch1,arco_run1,bird2,Glut-DACH2-HVCra,0,0
-batch1,arco_run1,bird2,Glut-DACH2-HVCra-Pre,0,0
+batch1,arco_run1,bird2,Glut-DACH2-HVCra-Int,0,0
 batch1,arco_run1,bird2,Glut-DACH2-HVCx,0,0
 batch1,arco_run1,bird2,Glut-DACH2-LMANco,0,0
 batch1,arco_run1,bird2,Glut-DACH2-LMANsh,0,0
@@ -126,7 +126,7 @@ batch1,arco_run1,bird3,Glut-DACH2-6,0,0
 batch1,arco_run1,bird3,Glut-DACH2-7,0,0
 batch1,arco_run1,bird3,Glut-DACH2-8,0,0
 batch1,arco_run1,bird3,Glut-DACH2-HVCra,0,0
-batch1,arco_run1,bird3,Glut-DACH2-HVCra-Pre,0,0
+batch1,arco_run1,bird3,Glut-DACH2-HVCra-Int,0,0
 batch1,arco_run1,bird3,Glut-DACH2-HVCx,0,0
 batch1,arco_run1,bird3,Glut-DACH2-LMANco,0,0
 batch1,arco_run1,bird3,Glut-DACH2-LMANsh,0,0
@@ -173,7 +173,7 @@ batch1,hvc_run1,bird1,Glut-DACH2-6,0,0
 batch1,hvc_run1,bird1,Glut-DACH2-7,0,0
 batch1,hvc_run1,bird1,Glut-DACH2-8,0,0
 batch1,hvc_run1,bird1,Glut-DACH2-HVCra,1690,0.4179030662710188
-batch1,hvc_run1,bird1,Glut-DACH2-HVCra-Pre,264,0.06528189910979229
+batch1,hvc_run1,bird1,Glut-DACH2-HVCra-Int,264,0.06528189910979229
 batch1,hvc_run1,bird1,Glut-DACH2-HVCx,163,0.04030662710187933
 batch1,hvc_run1,bird1,Glut-DACH2-LMANco,0,0
 batch1,hvc_run1,bird1,Glut-DACH2-LMANsh,0,0
@@ -220,7 +220,7 @@ batch1,hvc_run1,bird2,Glut-DACH2-6,0,0
 batch1,hvc_run1,bird2,Glut-DACH2-7,4,0.002564102564102564
 batch1,hvc_run1,bird2,Glut-DACH2-8,0,0
 batch1,hvc_run1,bird2,Glut-DACH2-HVCra,594,0.38076923076923075
-batch1,hvc_run1,bird2,Glut-DACH2-HVCra-Pre,151,0.0967948717948718
+batch1,hvc_run1,bird2,Glut-DACH2-HVCra-Int,151,0.0967948717948718
 batch1,hvc_run1,bird2,Glut-DACH2-HVCx,81,0.051923076923076926
 batch1,hvc_run1,bird2,Glut-DACH2-LMANco,0,0
 batch1,hvc_run1,bird2,Glut-DACH2-LMANsh,0,0
@@ -267,7 +267,7 @@ batch1,hvc_run1,bird3,Glut-DACH2-6,1,4.23908435777872e-4
 batch1,hvc_run1,bird3,Glut-DACH2-7,1,4.23908435777872e-4
 batch1,hvc_run1,bird3,Glut-DACH2-8,0,0
 batch1,hvc_run1,bird3,Glut-DACH2-HVCra,733,0.3107248834251802
-batch1,hvc_run1,bird3,Glut-DACH2-HVCra-Pre,249,0.10555320050869012
+batch1,hvc_run1,bird3,Glut-DACH2-HVCra-Int,249,0.10555320050869012
 batch1,hvc_run1,bird3,Glut-DACH2-HVCx,97,0.04111911827045358
 batch1,hvc_run1,bird3,Glut-DACH2-LMANco,0,0
 batch1,hvc_run1,bird3,Glut-DACH2-LMANsh,0,0
@@ -314,7 +314,7 @@ batch1,nc_run1,bird1,Glut-DACH2-6,0,0
 batch1,nc_run1,bird1,Glut-DACH2-7,3,0.0010351966873706005
 batch1,nc_run1,bird1,Glut-DACH2-8,1,3.450655624568668e-4
 batch1,nc_run1,bird1,Glut-DACH2-HVCra,0,0
-batch1,nc_run1,bird1,Glut-DACH2-HVCra-Pre,13,0.004485852311939268
+batch1,nc_run1,bird1,Glut-DACH2-HVCra-Int,13,0.004485852311939268
 batch1,nc_run1,bird1,Glut-DACH2-HVCx,1,3.450655624568668e-4
 batch1,nc_run1,bird1,Glut-DACH2-LMANco,0,0
 batch1,nc_run1,bird1,Glut-DACH2-LMANsh,0,0
@@ -361,7 +361,7 @@ batch1,nc_run1,bird2,Glut-DACH2-6,0,0
 batch1,nc_run1,bird2,Glut-DACH2-7,2,0.0016764459346186086
 batch1,nc_run1,bird2,Glut-DACH2-8,0,0
 batch1,nc_run1,bird2,Glut-DACH2-HVCra,0,0
-batch1,nc_run1,bird2,Glut-DACH2-HVCra-Pre,5,0.004191114836546521
+batch1,nc_run1,bird2,Glut-DACH2-HVCra-Int,5,0.004191114836546521
 batch1,nc_run1,bird2,Glut-DACH2-HVCx,0,0
 batch1,nc_run1,bird2,Glut-DACH2-LMANco,0,0
 batch1,nc_run1,bird2,Glut-DACH2-LMANsh,0,0
@@ -408,7 +408,7 @@ batch1,nc_run1,bird3,Glut-DACH2-6,0,0
 batch1,nc_run1,bird3,Glut-DACH2-7,2,0.0011554015020219526
 batch1,nc_run1,bird3,Glut-DACH2-8,1,5.777007510109763e-4
 batch1,nc_run1,bird3,Glut-DACH2-HVCra,0,0
-batch1,nc_run1,bird3,Glut-DACH2-HVCra-Pre,5,0.0028885037550548816
+batch1,nc_run1,bird3,Glut-DACH2-HVCra-Int,5,0.0028885037550548816
 batch1,nc_run1,bird3,Glut-DACH2-HVCx,0,0
 batch1,nc_run1,bird3,Glut-DACH2-LMANco,0,0
 batch1,nc_run1,bird3,Glut-DACH2-LMANsh,0,0
@@ -455,7 +455,7 @@ batch1,ra_run1,bird1,Glut-DACH2-6,0,0
 batch1,ra_run1,bird1,Glut-DACH2-7,0,0
 batch1,ra_run1,bird1,Glut-DACH2-8,0,0
 batch1,ra_run1,bird1,Glut-DACH2-HVCra,0,0
-batch1,ra_run1,bird1,Glut-DACH2-HVCra-Pre,2,0.0010438413361169101
+batch1,ra_run1,bird1,Glut-DACH2-HVCra-Int,2,0.0010438413361169101
 batch1,ra_run1,bird1,Glut-DACH2-HVCx,0,0
 batch1,ra_run1,bird1,Glut-DACH2-LMANco,0,0
 batch1,ra_run1,bird1,Glut-DACH2-LMANsh,0,0
@@ -502,7 +502,7 @@ batch1,ra_run1,bird2,Glut-DACH2-6,0,0
 batch1,ra_run1,bird2,Glut-DACH2-7,0,0
 batch1,ra_run1,bird2,Glut-DACH2-8,0,0
 batch1,ra_run1,bird2,Glut-DACH2-HVCra,0,0
-batch1,ra_run1,bird2,Glut-DACH2-HVCra-Pre,0,0
+batch1,ra_run1,bird2,Glut-DACH2-HVCra-Int,0,0
 batch1,ra_run1,bird2,Glut-DACH2-HVCx,0,0
 batch1,ra_run1,bird2,Glut-DACH2-LMANco,0,0
 batch1,ra_run1,bird2,Glut-DACH2-LMANsh,0,0
@@ -549,7 +549,7 @@ batch1,ra_run1,bird3,Glut-DACH2-6,0,0
 batch1,ra_run1,bird3,Glut-DACH2-7,0,0
 batch1,ra_run1,bird3,Glut-DACH2-8,0,0
 batch1,ra_run1,bird3,Glut-DACH2-HVCra,0,0
-batch1,ra_run1,bird3,Glut-DACH2-HVCra-Pre,0,0
+batch1,ra_run1,bird3,Glut-DACH2-HVCra-Int,0,0
 batch1,ra_run1,bird3,Glut-DACH2-HVCx,0,0
 batch1,ra_run1,bird3,Glut-DACH2-LMANco,0,0
 batch1,ra_run1,bird3,Glut-DACH2-LMANsh,0,0
@@ -596,7 +596,7 @@ batch2,lman_run1,bird4,Glut-DACH2-6,120,0.05788712011577424
 batch2,lman_run1,bird4,Glut-DACH2-7,14,0.006753497346840328
 batch2,lman_run1,bird4,Glut-DACH2-8,174,0.08393632416787265
 batch2,lman_run1,bird4,Glut-DACH2-HVCra,0,0
-batch2,lman_run1,bird4,Glut-DACH2-HVCra-Pre,0,0
+batch2,lman_run1,bird4,Glut-DACH2-HVCra-Int,0,0
 batch2,lman_run1,bird4,Glut-DACH2-HVCx,0,0
 batch2,lman_run1,bird4,Glut-DACH2-LMANco,287,0.1384466956102267
 batch2,lman_run1,bird4,Glut-DACH2-LMANsh,443,0.21369995176073323
@@ -643,7 +643,7 @@ batch2,lman_run1,bird5,Glut-DACH2-6,10,0.013477088948787063
 batch2,lman_run1,bird5,Glut-DACH2-7,0,0
 batch2,lman_run1,bird5,Glut-DACH2-8,22,0.029649595687331536
 batch2,lman_run1,bird5,Glut-DACH2-HVCra,0,0
-batch2,lman_run1,bird5,Glut-DACH2-HVCra-Pre,0,0
+batch2,lman_run1,bird5,Glut-DACH2-HVCra-Int,0,0
 batch2,lman_run1,bird5,Glut-DACH2-HVCx,0,0
 batch2,lman_run1,bird5,Glut-DACH2-LMANco,127,0.1711590296495957
 batch2,lman_run1,bird5,Glut-DACH2-LMANsh,183,0.24663072776280323
@@ -690,7 +690,7 @@ batch2,lman_run1,bird6,Glut-DACH2-6,64,0.030754444978375782
 batch2,lman_run1,bird6,Glut-DACH2-7,11,0.005285920230658337
 batch2,lman_run1,bird6,Glut-DACH2-8,154,0.07400288322921672
 batch2,lman_run1,bird6,Glut-DACH2-HVCra,0,0
-batch2,lman_run1,bird6,Glut-DACH2-HVCra-Pre,0,0
+batch2,lman_run1,bird6,Glut-DACH2-HVCra-Int,0,0
 batch2,lman_run1,bird6,Glut-DACH2-HVCx,0,0
 batch2,lman_run1,bird6,Glut-DACH2-LMANco,265,0.1273426237385872
 batch2,lman_run1,bird6,Glut-DACH2-LMANsh,510,0.245074483421432
@@ -737,7 +737,7 @@ batch2,nr_run1,bird4,Glut-DACH2-6,190,0.2646239554317549
 batch2,nr_run1,bird4,Glut-DACH2-7,62,0.08635097493036212
 batch2,nr_run1,bird4,Glut-DACH2-8,29,0.0403899721448468
 batch2,nr_run1,bird4,Glut-DACH2-HVCra,0,0
-batch2,nr_run1,bird4,Glut-DACH2-HVCra-Pre,0,0
+batch2,nr_run1,bird4,Glut-DACH2-HVCra-Int,0,0
 batch2,nr_run1,bird4,Glut-DACH2-HVCx,0,0
 batch2,nr_run1,bird4,Glut-DACH2-LMANco,0,0
 batch2,nr_run1,bird4,Glut-DACH2-LMANsh,7,0.009749303621169917
@@ -784,7 +784,7 @@ batch2,nr_run1,bird5,Glut-DACH2-6,205,0.09094942324755989
 batch2,nr_run1,bird5,Glut-DACH2-7,324,0.14374445430346053
 batch2,nr_run1,bird5,Glut-DACH2-8,57,0.025288376220053237
 batch2,nr_run1,bird5,Glut-DACH2-HVCra,0,0
-batch2,nr_run1,bird5,Glut-DACH2-HVCra-Pre,0,0
+batch2,nr_run1,bird5,Glut-DACH2-HVCra-Int,0,0
 batch2,nr_run1,bird5,Glut-DACH2-HVCx,0,0
 batch2,nr_run1,bird5,Glut-DACH2-LMANco,0,0
 batch2,nr_run1,bird5,Glut-DACH2-LMANsh,5,0.0022182786157941437
@@ -831,7 +831,7 @@ batch2,nr_run1,bird6,Glut-DACH2-6,314,0.10244698205546493
 batch2,nr_run1,bird6,Glut-DACH2-7,418,0.13637846655791191
 batch2,nr_run1,bird6,Glut-DACH2-8,234,0.07634584013050572
 batch2,nr_run1,bird6,Glut-DACH2-HVCra,0,0
-batch2,nr_run1,bird6,Glut-DACH2-HVCra-Pre,0,0
+batch2,nr_run1,bird6,Glut-DACH2-HVCra-Int,0,0
 batch2,nr_run1,bird6,Glut-DACH2-HVCx,0,0
 batch2,nr_run1,bird6,Glut-DACH2-LMANco,5,0.0016313213703099511
 batch2,nr_run1,bird6,Glut-DACH2-LMANsh,24,0.007830342577487765

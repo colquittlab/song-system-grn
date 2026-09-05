@@ -9,7 +9,7 @@ module's song/non-song membership is keyed to the OLD flat 'cluster' scheme (Glu
 Glut-RA-*, Glut-LMAN-*), which does not exist under the hybrid celltype_hybrid labels.
 Song membership here matches the set used throughout this hybrid-label analysis: the six
 position-restricted song-nucleus populations identified in bf_adult_hybrid.h5ad's own
-labelling (see prepare_finch_adult_hybrid.py) -- Glut-DACH2-HVCra, -HVCra-Pre, -HVCx,
+labelling (see prepare_finch_adult_hybrid.py) -- Glut-DACH2-HVCra, -HVCra-Int, -HVCx,
 Glut-CACNA1H-RA, Glut-DACH2-LMANco, and Glut-DACH2-LMANsh (LMAN shell, reclassified song
 per explicit user request -- overriding this project's earlier non-song call on LMAN
 shell, e.g. the old scheme's Glut-LMAN-1).
@@ -33,12 +33,13 @@ R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_gluto
 OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/rpca/results/gg_glutonly_hybrid")
 OUT.mkdir(parents=True, exist_ok=True)
 
-SONG_CLUSTERS = {"Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+SONG_CLUSTERS = {"Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
                  "Glut-CACNA1H-RA", "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh"}
-# HVCra-Pre is a putative HVCra precursor population (per bf_adult_hybrid.h5ad's own
-# naming) -- an edge case excluded from the song-vs-non-song comparison at the user's
-# request, same mechanism as assemble_glutonly.py's EXCLUDED_CLUSTERS.
-EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Pre"}
+# HVCra-Int is transcriptionally intermediate between HVCra and the surrounding
+# nidopallium (per bf_adult_hybrid.h5ad's own naming; formerly mislabelled `-Pre`, an
+# HVCra precursor) -- an edge case excluded from the song-vs-non-song comparison at the
+# user's request, same mechanism as assemble_glutonly.py's EXCLUDED_CLUSTERS.
+EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Int"}
 
 
 def song_group(c):

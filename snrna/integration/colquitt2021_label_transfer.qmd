@@ -134,7 +134,7 @@ redo = list(anchors = FALSE)
 ## division blocks; Glut-GABA (the dual-transmitter population) keeps the "end of the Glut section"
 ## slot it was given earlier, immediately before the neurogenic clusters.
 ct_order = c(## Glut-DACH2
-             "Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+             "Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
              "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
              "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
              "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8",
@@ -167,7 +167,7 @@ pub_order = c(## HVC Glut, then RA Glut
               ## non-neuronal
               "Astro", "Epen", "Oligo", "OPC", "Micro", "Endo", "Mural", "VLMC", "RBC")
 
-song_hybrid = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
+song_hybrid = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
                 "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco")
 ## Its own group in the ordering above, so it gets its own flow colour below too rather than being
 ## lumped into "other Glut" -- otherwise the colour blocks and the row blocks would disagree.

@@ -33,9 +33,9 @@ from position_palette import (POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, 
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 
 # The 5 song-nucleus clusters labelled on-plot in the 4-panel figure's rightmost panel --
-# same set used throughout this analysis's heatmaps/stats (Glut-DACH2-HVCra-Pre excluded
+# same set used throughout this analysis's heatmaps/stats (Glut-DACH2-HVCra-Int excluded
 # as an edge case there, per earlier explicit request). The dedicated song/non-song split
-# figure below labels all 6 SONG_CLUSTERS members instead, since HVCra-Pre genuinely
+# figure below labels all 6 SONG_CLUSTERS members instead, since HVCra-Int genuinely
 # belongs to the song group being displayed there and excluding it would leave an
 # unexplained coloured-but-unlabelled population.
 SONG_LABELS = {

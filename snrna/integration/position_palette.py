@@ -31,7 +31,7 @@ POSITION_ORDER = ["hvc", "lman", "ra", "nc", "nr", "arco"]
 
 CLUSTER_POSITION = {
     "Glut-DACH2-HVCra": "hvc",
-    "Glut-DACH2-HVCra-Pre": "hvc",
+    "Glut-DACH2-HVCra-Int": "hvc",
     "Glut-DACH2-HVCx": "hvc",
     "Glut-DACH2-LMANco": "lman",
     "Glut-DACH2-LMANsh": "lman",
@@ -45,9 +45,11 @@ CLUSTER_POSITION = {
 # throughout this analysis's heatmaps/stats.
 SONG_CLUSTERS = {c for c, p in CLUSTER_POSITION.items() if p in ("hvc", "lman", "ra")}
 
-# Glut-DACH2-HVCra-Pre: an edge-case putative HVCra precursor population, excluded
-# everywhere in this analysis (heatmaps, stats, and now UMAPs) per explicit user request.
-EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Pre"}
+# Glut-DACH2-HVCra-Int: an edge-case HVC population that is transcriptionally intermediate
+# between Glut-DACH2-HVCra and the surrounding nidopallium (formerly mislabelled as an HVCra
+# precursor), excluded everywhere in this analysis (heatmaps, stats, and now UMAPs) per
+# explicit user request.
+EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Int"}
 
 
 def cluster_color(c):

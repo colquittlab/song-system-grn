@@ -1,0 +1,191 @@
+---
+title: "Glut-DACH2-HVCra-Int against Lovell et al. 2008's HVC-vs-Shelf gene lists"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+`snrna/naming/hybrid_division_naming.qmd` renamed `Glut-HVC-1a` to `Glut-DACH2-HVCra-Int`
+(*intermediate*, replacing an earlier `-Pre`/precursor name that the data did not support): a
+population sitting transcriptionally between `Glut-DACH2-HVCra` and the surrounding nidopallial
+`Glut-DACH2-1`/`Glut-DACH2-2` clusters. In the Xenium mapping this cluster forms a border around HVC.
+
+The classical anatomical name for the tissue immediately around HVC is the **shelf**, and it has a
+published transcriptional description: Lovell PV, Clayton DF, Replogle KL, Mello CV (2008),
+"Birdsong 'transcriptomics': neurochemical specializations of the oscine song system", *PLoS ONE*
+3(10):e3440, which used laser-capture microdissection plus microarray on six adult male zebra finches
+to compare HVC against the adjacent shelf. This notebook asks whether `Glut-DACH2-HVCra-Int`'s
+position relative to `Glut-DACH2-HVCra` lines up with that published HVC/shelf axis.
+
+Independent of the naming notebook, by the same convention used throughout this project: reads its
+output (`obj_hybrid_labels.qs2`) read-only and writes only its own results.
+
+**Gene lists.** `lovell2008_hvc_shelf/lovell2008_tableS1_genes.csv` is the paper's Table S1 (the
+primary FDR < 0.05 list), parsed from the journal's own supplementary file: 255 unique annotated
+genes, 119 with `+` regulation (enriched in HVC) and 136 with `-` (enriched in the shelf, i.e. lower
+in HVC). The secondary/ND supplementary lists (Tables S2/S5) are deliberately not used -- the primary
+list is the one with a stated FDR.
+
+**Two caveats, up front.** (1) The paper's contrast is a bulk tissue contrast, so its "shelf" list is
+whatever is higher in the surrounding tissue than in HVC; it is not a marker set for one cell type,
+and generic nidopallial clusters score high on it too. So the informative statistic is where
+`Glut-DACH2-HVCra-Int` falls *between* HVCra and the surrounding nidopallium, not its shelf score in
+isolation. (2) The shelf proper is the ventral auditory region below HVC, while the Xenium border is
+a ring; agreement with this gene list is evidence about the HVC/surround axis, not proof that this
+cluster is the auditory shelf specifically.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(knitr)
+```
+
+## Parameters
+
+```{r}
+#| label: params
+obj_fname <- here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
+genes_fname <- here::here("snrna/deg/lovell2008_hvc_shelf", "lovell2008_tableS1_genes.csv")
+
+out_dir <- here::here("snrna/deg", "lovell2008_hvc_shelf")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+target <- "Glut-DACH2-HVCra-Int"
+reference <- "Glut-DACH2-HVCra"
+```
+
+```{r}
+#| label: load
+obj <- qs_read(obj_fname, nthreads = 8)
+DefaultAssay(obj) <- "SCT"
+obj <- obj[, !is.na(obj$celltype_hybrid)]
+Idents(obj) <- obj$celltype_hybrid
+
+lovell <- read_csv(genes_fname, show_col_types = FALSE)
+stopifnot(setequal(lovell$enriched_in, c("HVC", "Shelf")), !anyDuplicated(lovell$gene))
+
+hvc_genes <- intersect(lovell$gene[lovell$enriched_in == "HVC"], rownames(obj))
+shelf_genes <- intersect(lovell$gene[lovell$enriched_in == "Shelf"], rownames(obj))
+tibble(list = c("HVC-enriched (+)", "Shelf-enriched (-)"),
+       n_published = c(sum(lovell$enriched_in == "HVC"), sum(lovell$enriched_in == "Shelf")),
+       n_in_this_object = c(length(hvc_genes), length(shelf_genes))) %>%
+  kable(caption = "Lovell 2008 Table S1 genes recoverable in this object's own annotation")
+```
+
+Genes are matched on symbol. Some of the paper's genes have no symbol-matched entry in this genome's
+annotation and are simply dropped -- the loss is reported above rather than assumed away, and it
+applies to both lists roughly evenly, so it does not bias the direction of the test below.
+
+## Is the HVCra-Int vs. HVCra difference the published HVC/shelf difference?
+
+```{r}
+#| label: de
+de <- FindMarkers(obj, ident.1 = target, ident.2 = reference,
+                  min.pct = 0.15, logfc.threshold = 0.4) %>%
+  rownames_to_column("gene") %>%
+  filter(p_val_adj < 0.05)
+de_up <- de$gene[de$avg_log2FC > 0]    # higher in HVCra-Int than in HVCra
+de_dn <- de$gene[de$avg_log2FC < 0]    # lower in HVCra-Int than in HVCra
+write_csv(de, file.path(out_dir, "de_hvcra_int_vs_hvcra.csv"))
+```
+
+```{r}
+#| label: enrichment
+## One-sided Fisher tests against the whole detected transcriptome. All four combinations are run,
+## not just the two that are expected to be positive -- the two "wrong-direction" tests are the
+## control, and are what would catch a result driven by list size or by generic gene properties
+## rather than by direction.
+universe <- rownames(obj)
+enrich <- function(gene_set, de_set, set_label, de_label) {
+  a <- length(intersect(gene_set, de_set))
+  tab <- matrix(c(a, length(setdiff(de_set, gene_set)),
+                  length(setdiff(gene_set, de_set)),
+                  length(universe) - a - length(setdiff(de_set, gene_set)) -
+                    length(setdiff(gene_set, de_set))), nrow = 2)
+  ft <- fisher.test(tab, alternative = "greater")
+  tibble(published_list = set_label, de_direction = de_label, overlap = a,
+         odds_ratio = round(unname(ft$estimate), 2), p_value = signif(ft$p.value, 3))
+}
+bind_rows(
+  enrich(shelf_genes, de_up, "Shelf-enriched", paste("up in", target)),
+  enrich(hvc_genes, de_dn, "HVC-enriched", paste("down in", target)),
+  enrich(hvc_genes, de_up, "HVC-enriched", paste("up in", target)),
+  enrich(shelf_genes, de_dn, "Shelf-enriched", paste("down in", target))
+) %>%
+  kable(caption = paste0("Lovell 2008 lists vs. ", target, " differential expression against ",
+                         reference, " (one-sided Fisher, universe = all detected genes)"))
+```
+
+The first two rows are the test; the last two are the control and should be unremarkable. A cluster
+that differs from HVCra along the published HVC/shelf axis gives strong enrichment in the first two
+and none in the last two.
+
+```{r}
+#| label: overlap-genes
+tibble(gene = sort(intersect(shelf_genes, de_up)), published = "Shelf-enriched",
+       direction = paste("up in", target)) %>%
+  bind_rows(tibble(gene = sort(intersect(hvc_genes, de_dn)), published = "HVC-enriched",
+                   direction = paste("down in", target))) %>%
+  write_csv(file.path(out_dir, "lovell_overlap_genes.csv")) %>%
+  kable(caption = "The individual genes driving the two concordant overlaps")
+```
+
+## Where each cluster sits on the published axis
+
+```{r}
+#| label: module-scores
+## Score every cell on both published lists, then take the difference. This puts the target cluster
+## on the same axis as HVCra and as the surrounding nidopallium, which is the comparison that
+## matters -- an absolute shelf score on its own is not interpretable (see the caveats above).
+scored <- AddModuleScore(obj, features = list(hvc_genes, shelf_genes),
+                         name = "lovell", assay = "SCT", seed = 1)
+score_sel <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA", "Glut-DACH2-LMANco",
+               "Glut-DACH2-HVCra-Int", "Glut-DACH2-LMANsh", "Glut-DACH2-1", "Glut-DACH2-2",
+               "Glut-DACH2-3", "Glut-DACH2-4", "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7",
+               "Glut-DACH2-8", "Glut-SATB2-1", "Glut-Im", "Glut-NB", "Glut-NSC")
+scores <- tibble(celltype = scored$celltype_hybrid,
+                 hvc_score = scored$lovell1, shelf_score = scored$lovell2) %>%
+  filter(celltype %in% score_sel) %>%
+  group_by(celltype) %>%
+  summarise(n_cells = n(),
+            hvc_score = round(median(hvc_score), 3),
+            shelf_score = round(median(shelf_score), 3),
+            hvc_minus_shelf = round(median(hvc_score - shelf_score), 3)) %>%
+  arrange(desc(hvc_minus_shelf))
+write_csv(scores, file.path(out_dir, "lovell_module_scores.csv"))
+kable(scores, caption = "Median per-cluster Lovell 2008 HVC and Shelf module scores")
+```
+
+```{r}
+#| label: module-score-plot
+#| fig-width: 7
+#| fig-height: 5
+scores %>%
+  mutate(celltype = fct_reorder(celltype, hvc_minus_shelf),
+         highlight = case_when(celltype == target ~ "HVCra-Int",
+                               celltype %in% c("Glut-DACH2-HVCra", "Glut-DACH2-1",
+                                               "Glut-DACH2-2") ~ "anchor",
+                               TRUE ~ "other")) %>%
+  ggplot(aes(hvc_minus_shelf, celltype, fill = highlight)) +
+  geom_col() +
+  geom_vline(xintercept = 0, linewidth = 0.3) +
+  scale_fill_manual(values = c(`HVCra-Int` = "#d1495b", anchor = "#30638e", other = "grey70")) +
+  labs(x = "Lovell 2008 HVC score - Shelf score (median per cluster)", y = NULL,
+       title = "Position on the published HVC/shelf axis") +
+  theme_bw()
+ggsave(file.path(out_dir, "lovell_axis_barplot.pdf"), width = 7, height = 5)
+```
+
+`Glut-DACH2-HVCra-Int` is expected to land between `Glut-DACH2-HVCra` (most HVC-like) and
+`Glut-DACH2-1`/`Glut-DACH2-2` (the surrounding nidopallium, most shelf-like) -- the same intermediate
+position the naming notebook's own DE-based axis puts it in, reached here from an entirely
+independent, published, cross-study gene set.
+
+```{r}
+#| label: session-info
+sessionInfo()
+```

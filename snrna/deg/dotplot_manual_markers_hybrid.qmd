@@ -41,7 +41,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 ## Identical to celltypes_hclust_all_hybrid.qmd's ct_order -- not re-derived, so this can't
 ## silently drift from the cluster set/order that notebook's vertical heatmap uses.
-ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
              "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
              "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
              "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",

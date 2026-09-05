@@ -1,7 +1,7 @@
 """Confidence and rank-score heatmaps for the plusSATB2_noPre 3-method composite (GSI +
 SAMap + CCA/RPCA), in this analysis's own custom heatmap style -- same conventions as
 plot_gsi_sct_heatmaps.py (fixed-inch geometry via fig.add_axes, square cells, fixed
-biological row order with Glut-DACH2-HVCra-Pre excluded, columns hierarchically clustered
+biological row order with Glut-DACH2-HVCra-Int excluded, columns hierarchically clustered
 via scipy linkage for a legible order, black border, max-per-row bar panel coloured by
 row label, outside-right legend) -- rather than finch-integration-toolkit's
 plot_rank_heatmap.py (a general clustermap-based tool this project's other datasets use,

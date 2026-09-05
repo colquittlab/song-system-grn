@@ -1,7 +1,7 @@
 """Cluster x k.anchor heatmap of the reciprocity-weighted RPCA sweep, SCTransform variant
 -- kept as a FULLY SEPARATE analysis/plot from the log-norm version
 (plot_sweep_heatmap_glutonly_hybrid.py), per explicit user request. Same conventions
-(fixed biological row order, Glut-DACH2-HVCra-Pre excluded, square cells, 6pt labels,
+(fixed biological row order, Glut-DACH2-HVCra-Int excluded, square cells, 6pt labels,
 anatomical-position row colours), but only ONE k.filter panel: SCT was only ever run at
 k.filter=50 (the manuscript's own setting, matching this project's established
 "manuscript config" convention for SCT -- see cca_transfer.R's docstring), not the

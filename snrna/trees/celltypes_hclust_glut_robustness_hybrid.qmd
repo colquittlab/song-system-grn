@@ -21,9 +21,10 @@ this project's naming work: reads their outputs read-only, writes its own copy.
   `Glut-HVC-1a` by matching `"Pre"`/`"1a"` as literal substrings of the `cluster` label. Under the
   hybrid scheme this substring match is broken two different ways at once: the precursor labels
   (`Glut-NSC`/`Glut-NB`/`Glut-Im`) no longer contain `"Pre"` at all (so the old pattern would silently
-  stop excluding them), and `Glut-HVC-1a` itself is now named `Glut-DACH2-HVCra-Pre` (so it newly
-  *does* contain `"Pre"`, which happens to still exclude it, but only by accident, not because the
-  pattern still means what it used to). Replaced with an explicit name list -- see `glut_exclude`
+  stop excluding them), and `Glut-HVC-1a` is now named `Glut-DACH2-HVCra-Int`, which does not contain
+  `"Pre"` either (so the old pattern would silently stop excluding it too). An interim `-Pre` name for
+  that cluster did match, but only by accident, not because the pattern still meant what it used to --
+  which is exactly why the substring match is not trusted here. Replaced with an explicit name list -- see `glut_exclude`
   below -- so this can't silently drift the way `celltypes_hclust_all_hybrid.qmd` already found once
   with the `"Pre"`-substring GABA/Glut bar-color classification. `glut_exclude` also drops
   `Glut-SATB2-1` and `Glut-GABA` entirely (per direct instruction) -- neither is a `DACH2`/`CACNA1H`
@@ -63,7 +64,7 @@ this project's naming work: reads their outputs read-only, writes its own copy.
   `replicate_lib = paste(sample_name, assignment)`.
 - **Marker cache.** The published analysis reuses `celltypes_hclust_glut_no1a`'s cached DESeq2 marker
   tables (`markers_cache`/`markers_cache_all`) as a shortcut. Those were computed on the *raw* cluster
-  grouping, which is a genuinely different grouping now (NC-1/Nido-1 merged, Arco-4/Nido-3/HVCra-Pre
+  grouping, which is a genuinely different grouping now (NC-1/Nido-1 merged, Arco-4/Nido-3/HVCra-Int
   dropped) -- reusing them would silently mix marker calls computed against one cell/cluster
   partition into an analysis using another. Dropped; markers are recomputed fresh for this notebook
   and cached locally instead (`markers_fname`, as the published notebook itself already does for its
@@ -134,7 +135,7 @@ regions = c("ARCO", "NIDO", "ALL")
 ## Excluded from the Glut set entirely, matching the published analysis's own
 ## exclusion of the "Pre" precursor clusters and Glut-HVC-1a -- by explicit
 ## name now, not a substring that no longer means what it used to (see above).
-glut_exclude = c("Glut-NSC", "Glut-NB", "Glut-Im", "Glut-DACH2-HVCra-Pre",
+glut_exclude = c("Glut-NSC", "Glut-NB", "Glut-Im", "Glut-DACH2-HVCra-Int",
                  "Glut-SATB2-1", "Glut-GABA")
 
 ## Element-wise label for a threshold (format() on a vector pads to a common
