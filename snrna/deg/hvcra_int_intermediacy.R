@@ -383,7 +383,7 @@ fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
 ## %.2f rounded 5.7e-04 to "0.00"; keep two significant figures instead.
 fmt_p_sig <- function(p) sprintf("%.2g", p)
 mwu_caption <- sprintf(
-  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nPoints above = per-bird medians (%2$s, n = %3$d, paired; lines join birds).\nPaired t on bird medians p = %4$s / %5$s; cell-wise MWU p %1$s but inflated.\nA rank test on 3 pairs cannot go below p = 0.25 — 3/3 ordering is the evidence.",
+  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nPoints above = per-bird medians (%2$s, n = %3$d birds, paired).\nPaired t on bird medians p = %4$s / %5$s; cell-wise MWU p %1$s but inflated.\nA rank test on 3 pairs cannot go below p = 0.25 — 3/3 ordering is the evidence.",
   fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])),
   BIRD_LIB, length(paired_birds),
   fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == LOW & bird_test$group2 == MID]),
@@ -406,12 +406,9 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
             aes(median, celltype, label = label),
             vjust = 2.6, size = 6 / .pt, colour = ink_primary,
             fontface = "bold", inherit.aes = FALSE) +
-  ## Per-bird medians, offset above each violin. The joining lines are the point:
-  ## a paired design is only convincing if the same bird moves the same way, and
-  ## with n = 3 that is visible directly in a way no p-value on 3 pairs can be.
-  geom_line(data = bird_med,
-            aes(x = median, y = as.numeric(celltype) + BIRD_OFFSET, group = bird),
-            colour = ink_muted, linewidth = 0.2, alpha = 0.7, inherit.aes = FALSE) +
+  ## Per-bird medians, offset above each violin. With n = 3 the spread of these
+  ## points is the bird-level evidence -- see three_way_bird_level_test.csv for
+  ## the paired tests, and note a rank test on 3 pairs floors at p = 0.25.
   geom_point(data = bird_med,
              aes(x = median, y = as.numeric(celltype) + BIRD_OFFSET),
              size = 1.5, colour = surface, inherit.aes = FALSE) +
