@@ -83,8 +83,14 @@ scored <- AddModuleScore(obj, features = list(high_genes, low_genes),
 anchor_med <- tapply(scored$axis1 - scored$axis2, obj$celltype_hybrid, median)
 rescale_axis <- function(x) (x - anchor_med[[LOW]]) / (anchor_med[[HIGH]] - anchor_med[[LOW]])
 
+## `assignment` is souporcell's per-library index: the same numeral means a
+## different bird in a different library, so a bird is (sample_name, assignment)
+## and bird identity is only comparable WITHIN a library. Carried through here so
+## the bird-level test below can key on it.
 cells <- tibble(celltype = as.character(obj$celltype_hybrid),
-                score = rescale_axis(scored$axis1 - scored$axis2)) %>%
+                score = rescale_axis(scored$axis1 - scored$axis2),
+                library = as.character(obj$sample_name),
+                bird = paste0(obj$sample_name, "|", obj$assignment)) %>%
   filter(str_starts(celltype, "Glut"))
 
 ## Panel A ------------------------------------------------------------------
@@ -273,6 +279,65 @@ three_stats <- three %>%
             iqr_width = q75 - q25,
             .groups = "drop")
 
+## ---------------------------------------------------------------------------
+## Bird-level test: the same comparison with birds, not cells, as the replicate.
+##
+## The cell-level Mann-Whitney above is inflated -- cells within a bird are not
+## independent draws -- so this repeats it on per-bird medians.
+##
+## What the design actually allows, checked rather than assumed:
+## Glut-DACH2-HVCra exists ONLY in the hvc_run1 library, and bird identity is not
+## comparable across libraries, so the only design in which all three clusters
+## share the same birds is within hvc_run1. That is n = 3 birds, paired. The
+## DACH2-1 arm is therefore its hvc-library cells (34/121/170 per bird), i.e. the
+## surrounding nidopallium captured in the HVC dissection, not the whole cluster.
+##
+## n = 3 is the honest limit here, and it is a hard one: a paired rank test on
+## three pairs cannot return a two-sided p below 0.25 no matter how large the
+## effect, because there are only 2^3 = 8 sign assignments. Both tests are
+## reported below so that floor is visible rather than hidden behind whichever
+## one happens to look better. The paired t-test on three bird medians can clear
+## 0.05, but it buys that by assuming normality of three differences, which three
+## points cannot evidence. Treat the per-bird points on the figure -- 3/3 birds
+## ordered the same way, tightly grouped -- as the real bird-level evidence, and
+## these p-values as a formality.
+BIRD_LIB <- "hvc_run1"
+BIRD_MIN_CELLS <- 20
+
+bird_cells <- three %>% filter(library == BIRD_LIB)
+bird_med <- bird_cells %>%
+  group_by(celltype, bird) %>%
+  summarise(n_cells = n(), median = median(score), .groups = "drop") %>%
+  filter(n_cells >= BIRD_MIN_CELLS)
+
+## Keep only birds seen in all three clusters, so the test is genuinely paired.
+paired_birds <- bird_med %>% count(bird) %>% filter(n == 3) %>% pull(bird)
+bird_med <- bird_med %>% filter(bird %in% paired_birds) %>%
+  mutate(celltype = factor(as.character(celltype), levels = c(LOW, MID, HIGH)))
+message("bird-level replicates (", BIRD_LIB, ", >= ", BIRD_MIN_CELLS,
+        " cells in all three clusters): n = ", length(paired_birds))
+
+bird_wide <- bird_med %>%
+  select(celltype, bird, median) %>%
+  pivot_wider(names_from = celltype, values_from = median)
+
+bird_test <- map_dfr(list(c(LOW, MID), c(MID, HIGH), c(LOW, HIGH)), function(p) {
+  x <- bird_wide[[p[1]]]; y <- bird_wide[[p[2]]]
+  tt <- t.test(x, y, paired = TRUE)
+  wt <- suppressWarnings(wilcox.test(x, y, paired = TRUE, exact = TRUE))
+  tibble(group1 = p[1], group2 = p[2], n_birds = length(x),
+         mean_diff = mean(y - x),
+         t_p = tt$p.value, wilcox_p = wt$p.value,
+         same_direction_in_all_birds = all((y - x) > 0) || all((y - x) < 0))
+}) %>%
+  mutate(t_p_adj = p.adjust(t_p, method = "BH"),
+         wilcox_p_adj = p.adjust(wilcox_p, method = "BH"))
+write_csv(bird_test, file.path(out_dir, "three_way_bird_level_test.csv"))
+write_csv(bird_med, file.path(out_dir, "three_way_bird_medians.csv"))
+
+message("bird-level paired tests:")
+print(as.data.frame(bird_test %>% mutate(across(where(is.numeric), ~signif(.x, 3)))))
+
 ## Only HVCra-Int carries a numeric label. The two anchors are 0 and 1 *by
 ## construction* of the rescaling, so printing a CI on them would invite reading
 ## them as independent measurements of something -- they are the definition of
@@ -315,14 +380,20 @@ mwu <- map_dfr(mwu_pairs, function(p) {
 write_csv(mwu, file.path(out_dir, "three_way_mannwhitney.csv"))
 
 fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
+## %.2f rounded 5.7e-04 to "0.00"; keep two significant figures instead.
+fmt_p_sig <- function(p) sprintf("%.2g", p)
 mwu_caption <- sprintf(
-  "Anchors are 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nMann–Whitney U (BH-adj.) p %s vs both anchors; n is cells, not birds.",
-  fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])))
+  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nPoints above = per-bird medians (%2$s, n = %3$d, paired; lines join birds).\nPaired t on bird medians p = %4$s / %5$s; cell-wise MWU p %1$s but inflated.\nA rank test on 3 pairs cannot go below p = 0.25 — 3/3 ordering is the evidence.",
+  fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])),
+  BIRD_LIB, length(paired_birds),
+  fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == LOW & bird_test$group2 == MID]),
+  fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == MID & bird_test$group2 == HIGH]))
 
+BIRD_OFFSET <- 0.38
 three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
   geom_vline(xintercept = c(0, 1), colour = axis_col, linewidth = 0.35, linetype = "22") +
-  geom_violin(scale = "width", width = 0.95, colour = NA, alpha = 0.9) +
-  geom_boxplot(width = 0.10, outlier.shape = NA, colour = ink_primary,
+  geom_violin(scale = "width", width = 0.7, colour = NA, alpha = 0.9) +
+  geom_boxplot(width = 0.09, outlier.shape = NA, colour = ink_primary,
                fill = surface, linewidth = 0.3) +
   geom_linerange(data = three_stats,
                  aes(y = celltype, xmin = lo, xmax = hi),
@@ -333,8 +404,20 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
              size = 1.7, colour = ink_primary, inherit.aes = FALSE) +
   geom_text(data = three_labels %>% filter(!is.na(label)),
             aes(median, celltype, label = label),
-            vjust = -1.7, size = 6 / .pt, colour = ink_primary,
+            vjust = 2.6, size = 6 / .pt, colour = ink_primary,
             fontface = "bold", inherit.aes = FALSE) +
+  ## Per-bird medians, offset above each violin. The joining lines are the point:
+  ## a paired design is only convincing if the same bird moves the same way, and
+  ## with n = 3 that is visible directly in a way no p-value on 3 pairs can be.
+  geom_line(data = bird_med,
+            aes(x = median, y = as.numeric(celltype) + BIRD_OFFSET, group = bird),
+            colour = ink_muted, linewidth = 0.2, alpha = 0.7, inherit.aes = FALSE) +
+  geom_point(data = bird_med,
+             aes(x = median, y = as.numeric(celltype) + BIRD_OFFSET),
+             size = 1.5, colour = surface, inherit.aes = FALSE) +
+  geom_point(data = bird_med,
+             aes(x = median, y = as.numeric(celltype) + BIRD_OFFSET),
+             size = 0.85, colour = ink_primary, inherit.aes = FALSE) +
   scale_fill_manual(values = pal, guide = "none") +
   ## Explicit short labels rather than a prefix strip -- stripping "Glut-DACH2-"
   ## turns Glut-DACH2-1 into a bare "1", which reads as a number, not a cluster.
@@ -346,7 +429,7 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
   }) +
   scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1),
                      expand = expansion(mult = 0.02)) +
-  coord_cartesian(ylim = c(0.5, 3.5), clip = "off") +
+  coord_cartesian(ylim = c(0.55, 3.62), clip = "off") +
   labs(title = "HVCra-Int is intermediate",
        subtitle = paste0("Per-cell score, ", 2 * N_AXIS_GENES, " anchor-differential genes"),
        x = "Position on the DACH2-1 → HVCra axis", y = NULL,
@@ -360,9 +443,9 @@ three_violin <- ggplot(three, aes(score, celltype, fill = celltype)) +
 
 ## 40% off both dimensions of the previous 5.0 x 3.4 in.
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.pdf"), three_violin,
-       width = 3, height = 2.04, device = cairo_pdf, family = FONT)
+       width = 3, height = 2.5, device = cairo_pdf, family = FONT)
 ggsave(file.path(out_dir, "hvcra_int_three_way_violin.png"), three_violin,
-       width = 3, height = 2.04, dpi = 600, bg = surface)
+       width = 3, height = 2.5, dpi = 600, bg = surface)
 write_csv(three_stats %>% mutate(across(median:iqr_width, ~round(.x, 4))),
           file.path(out_dir, "three_way_axis_medians.csv"))
 
