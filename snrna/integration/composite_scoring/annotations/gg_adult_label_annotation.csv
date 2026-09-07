@@ -1,0 +1,54 @@
+mouse_label,n_cells,anno_level_1,class,dissection_top,description
+Astrocytes,3918,Astrocytes,Non-neuronal,A,Non-neuronal / Astrocytes / Astrocytes
+COPs+NFOLs,137,Oligodendrocyte lineage,Non-neuronal,B,Non-neuronal / Oligodendrocyte lineage / COPs+NFOLs
+Ex_BCL6,574,Ex_CACNA1H,Excitatory neurons,A,Excitatory neurons / Ex_CACNA1H / Ex_BCL6
+Ex_CACNA1H_CPA6,226,Ex_CACNA1H,Excitatory neurons,B,Excitatory neurons / Ex_CACNA1H / Ex_CACNA1H_CPA6
+Ex_CACNA1H_KIT,424,Ex_CACNA1H,Excitatory neurons,Hippocampal areas,Excitatory neurons / Ex_CACNA1H / Ex_CACNA1H_KIT
+Ex_CACNA1H_LHX9,377,Ex_CACNA1H,Excitatory neurons,C,Excitatory neurons / Ex_CACNA1H / Ex_CACNA1H_LHX9
+Ex_CACNA1H_MCTP2,416,Ex_CACNA1H,Excitatory neurons,Hippocampal areas,Excitatory neurons / Ex_CACNA1H / Ex_CACNA1H_MCTP2
+Ex_CACNA1H_PROX1,588,Ex_CACNA1H,Excitatory neurons,C,Excitatory neurons / Ex_CACNA1H / Ex_CACNA1H_PROX1
+Ex_DACH2_ADAMTS5,5588,Ex_DACH2_SV2C,Excitatory neurons,A,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_ADAMTS5
+Ex_DACH2_CEMIP,622,Ex_DACH2_CALCR,Excitatory neurons,A,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_CEMIP
+Ex_DACH2_GRIK4,2025,Ex_DACH2_SV2C,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_GRIK4
+Ex_DACH2_ITGA9,1500,Ex_DACH2_CALCR,Excitatory neurons,A,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_ITGA9
+Ex_DACH2_LHX2,1296,Ex_DACH2_SV2C,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_LHX2
+Ex_DACH2_LUZP2,836,Ex_DACH2_SV2C,Excitatory neurons,ArcoP,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_LUZP2
+Ex_DACH2_MGAT4C,8950,Ex_DACH2_SV2C,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_MGAT4C
+Ex_DACH2_NR4A3,1947,Ex_DACH2_SV2C,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_SV2C / Ex_DACH2_NR4A3
+Ex_DACH2_RORB,562,Ex_DACH2_CALCR,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_RORB
+Ex_DACH2_SLIT2,545,Ex_DACH2_CALCR,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_SLIT2
+Ex_DACH2_TAC1,610,Ex_DACH2_CALCR,Excitatory neurons,A,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_TAC1
+Ex_DACH2_ZMAT4,2606,Ex_DACH2_CALCR,Excitatory neurons,B,Excitatory neurons / Ex_DACH2_CALCR / Ex_DACH2_ZMAT4
+Ex_KIAA1217,1222,Ex_SATB2_KIAA1217,Excitatory neurons,A,Excitatory neurons / Ex_SATB2_KIAA1217 / Ex_KIAA1217
+Ex_KIAA1217_BCL6,292,Ex_SATB2_KIAA1217,Excitatory neurons,A,Excitatory neurons / Ex_SATB2_KIAA1217 / Ex_KIAA1217_BCL6
+Ex_Pre_KCNH7,1578,Ex_Pre,Excitatory neurons,A,Excitatory neurons / Ex_Pre / Ex_Pre_KCNH7
+Ex_Pre_SATB2,317,Ex_Pre,Excitatory neurons,A,Excitatory neurons / Ex_Pre / Ex_Pre_SATB2
+Ex_SATB2_FOXP2,1798,Ex_SATB2,Excitatory neurons,A,Excitatory neurons / Ex_SATB2 / Ex_SATB2_FOXP2
+Ex_SATB2_OVOA,1714,Ex_SATB2,Excitatory neurons,A,Excitatory neurons / Ex_SATB2 / Ex_SATB2_OVOA
+Ex_SATB2_SOX6,6751,Ex_SATB2,Excitatory neurons,A,Excitatory neurons / Ex_SATB2 / Ex_SATB2_SOX6
+Ex_SATB2_ZNF385B,1564,Ex_SATB2,Excitatory neurons,A,Excitatory neurons / Ex_SATB2 / Ex_SATB2_ZNF385B
+Ex_TCF7L2,387,Ex_TCF7L2,Excitatory neurons,C,Excitatory neurons / Ex_TCF7L2 / Ex_TCF7L2
+Ex_TSHZ2_NR4A2,110,Ex_CACNA1H,Excitatory neurons,A,Excitatory neurons / Ex_CACNA1H / Ex_TSHZ2_NR4A2
+Inh_CGE_like_CACNA1B,744,Inh_CGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_CGE_like / Inh_CGE_like_CACNA1B
+Inh_CGE_like_CACNA2D3,195,Inh_CGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_CGE_like / Inh_CGE_like_CACNA2D3
+Inh_CGE_like_MAN1A1,567,Inh_CGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_CGE_like / Inh_CGE_like_MAN1A1
+Inh_LGE_like_CHODL,23,Inh_LGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like / Inh_LGE_like_CHODL
+Inh_LGE_like_FOXP1_DGKH,1881,Inh_LGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_LGE_like / Inh_LGE_like_FOXP1_DGKH
+Inh_LGE_like_FOXP1_SGCG,1800,Inh_LGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like / Inh_LGE_like_FOXP1_SGCG
+Inh_LGE_like_FOXP2,9690,Inh_LGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_LGE_like / Inh_LGE_like_FOXP2
+Inh_LGE_like_Pre,401,Inh_LGE_like_Pre,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like_Pre / Inh_LGE_like_Pre
+Inh_LGE_like_STK31,28,Inh_LGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like / Inh_LGE_like_STK31
+Inh_MGE_like_ANO1,808,Inh_MGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_ANO1
+Inh_MGE_like_LHX8,122,Inh_MGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_LHX8
+Inh_MGE_like_SST_ABI3BP,944,Inh_MGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_SST_ABI3BP
+Inh_MGE_like_SST_PVALB,4082,Inh_MGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_SST_PVALB
+Inh_MGE_like_SST_SLC24A2,1525,Inh_MGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_SST_SLC24A2
+Inh_MGE_like_ST18,532,Inh_MGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_ST18
+Inh_MGE_like_ST18_PVALB,90,Inh_MGE_like,Inhibitory neurons,B,Inhibitory neurons / Inh_MGE_like / Inh_MGE_like_ST18_PVALB
+Inh_OB_CPA6,332,Inh_LGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like / Inh_OB_CPA6
+Inh_OB_FGFRL1,84,Inh_LGE_like,Inhibitory neurons,A,Inhibitory neurons / Inh_LGE_like / Inh_OB_FGFRL1
+Microglia,2282,Immune cells,Non-neuronal,B,Non-neuronal / Immune cells / Microglia
+OPCs,4350,Oligodendrocyte lineage,Non-neuronal,B,Non-neuronal / Oligodendrocyte lineage / OPCs
+Oligodendrocytes,11441,Oligodendrocyte lineage,Non-neuronal,B,Non-neuronal / Oligodendrocyte lineage / Oligodendrocytes
+T-cells,32,Immune cells,Non-neuronal,B,Non-neuronal / Immune cells / T-cells
+Vascular,396,Vascular,Non-neuronal,B,Non-neuronal / Vascular / Vascular

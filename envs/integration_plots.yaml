@@ -1,0 +1,14 @@
+# Lightweight plotting env for snrna/integration summary figures
+# (plot_composite_heatmaps_hybrid.py, plot_class_integration_summary.py,
+# snrna/integration/toolkit/). Versions are those the figures were rendered with;
+# nothing here is version-sensitive beyond seaborn>=0.12 for clustermap kwargs.
+name: integration_plots
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy=1.26
+  - pandas=1.5
+  - scipy=1.15
+  - matplotlib=3.8
+  - seaborn=0.12

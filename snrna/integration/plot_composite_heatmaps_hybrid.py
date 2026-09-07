@@ -1,11 +1,13 @@
 """Re-render every composite / per-method heatmap for the two full-suite hybrid-label
-composites (finch x chicken: gg_adult_hybrid; finch x mouse: yao_adult_hybrid) with
-finch-integration-toolkit/plot_rank_heatmap.py.
+composites (finch x chicken: gg_adult_hybrid; finch x mouse: yao_adult_hybrid) with the
+vendored toolkit/plot_rank_heatmap.py.
 
-Inputs are the matrices written by assemble_gg_adult_hybrid.py / assemble_yao_adult_hybrid.py
-into composite_scoring/results/<tag>/, plus the Colquitt-2021-method GSI variants in
-composite_scoring/results/. Outputs (PDF+PNG, gitignored) overwrite the files of the same
-name in each results dir. Titles/flags reproduce the original 2025-08-19 renders (recovered
+Self-contained within this repo: all paths are relative to this file. Inputs are the
+matrices written by assemble_gg_adult_hybrid.py / assemble_yao_adult_hybrid.py into
+composite_scoring/results/<tag>/ (tracked CSVs), the Colquitt-2021-method GSI variants in
+composite_scoring/results/, and the reference-label annotation tables in
+composite_scoring/annotations/. Python env: envs/integration_plots.yaml. Outputs (PDF+PNG, gitignored)
+overwrite the files of the same name in each results dir. Titles/flags reproduce the original 2025-08-19 renders (recovered
 from the PDF title text and page geometry; the --scale on the pt5/pt6 miniatures is an
 estimate from page size, ~0.6).
 
@@ -15,11 +17,13 @@ Usage:  python plot_composite_heatmaps_hybrid.py [gg_adult_hybrid|yao_adult_hybr
 import subprocess, sys
 from pathlib import Path
 
-TOOL = "/private/groups/colquittlab/finch-integration-toolkit/plot_rank_heatmap.py"
-RES = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/results")
+HERE = Path(__file__).resolve().parent
+TOOL = HERE / "toolkit" / "plot_rank_heatmap.py"
+RES = HERE / "composite_scoring" / "results"
+ANN_DIR = HERE / "composite_scoring" / "annotations"
 ANNOT = {
-    "gg_adult_hybrid": "/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult/data/gg_adult_label_annotation.csv",
-    "yao_adult_hybrid": "/private/groups/colquittlab/saturn/snrna-bf-dev_snrna-yao2023/data/yao_label_annotation.csv",
+    "gg_adult_hybrid": ANN_DIR / "gg_adult_label_annotation.csv",
+    "yao_adult_hybrid": ANN_DIR / "yao_label_annotation.csv",
 }
 METHOD_TITLES = {
     "gsi": ("GSI (correlation)", ["--signed"]),

@@ -80,12 +80,13 @@ Python and shell scripts for HOMER motif annotation and MEME format conversion.
 
 ### Python
 
-Three conda environments are used, with exported specs in `envs/`. Requires [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html), [mamba](https://mamba.readthedocs.io/), or [conda](https://docs.conda.io/).
+Four conda environments are used, with exported specs in `envs/`. Requires [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html), [mamba](https://mamba.readthedocs.io/), or [conda](https://docs.conda.io/).
 
 ```bash
 micromamba env create -f envs/scenicplus.yaml   # GRN notebooks (pycisTopic, SCENIC+)
 micromamba env create -f envs/snapatac.yaml     # SnapATAC2 preprocessing
 micromamba env create -f envs/scanorama.yaml    # Scanorama integration (via reticulate)
+micromamba env create -f envs/integration_plots.yaml  # cross-species composite heatmaps / summaries
 ```
 
 The Jupyter kernel display names used in the notebooks map to these environments:

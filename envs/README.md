@@ -7,6 +7,7 @@ Conda environment specifications for reproducing the Python analyses.
 | `scenicplus.yaml` | All GRN notebooks (`grn/*/anndata_rna/`, `grn/*/pycisTopic/`) and SCENIC+ Snakemake workflows | `scenicplus3` kernel → `scenicplus` conda env |
 | `snapatac.yaml` | SnapATAC2 notebooks (`multiome/snapatac/`) | `snapatac` kernel → `snapatac` conda env |
 | `scanorama.yaml` | Seurat Scanorama integration (called via `reticulate` from `multiome/seurat/seurat_preprocess.qmd` and `snrna/clustering/`) | `scanorama` conda env |
+| `integration_plots.yaml` | Cross-species composite heatmaps and class summaries (`snrna/integration/plot_composite_heatmaps_hybrid.py`, `plot_class_integration_summary.py`) | `integration_plots` conda env |
 
 ## Restoring an environment
 
@@ -14,6 +15,7 @@ Conda environment specifications for reproducing the Python analyses.
 micromamba env create -f envs/scenicplus.yaml
 micromamba env create -f envs/snapatac.yaml
 micromamba env create -f envs/scanorama.yaml
+micromamba env create -f envs/integration_plots.yaml
 ```
 
 Or with conda/mamba:
