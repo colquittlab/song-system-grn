@@ -1,8 +1,8 @@
 # Reference-label annotation tables
 
 Small lookup tables mapping each reference dataset's cluster label to its coarse class,
-used by `toolkit/plot_rank_heatmap.py` (colour strips) and `toolkit/class_benchmark.py`
-(class-level accuracy). Tracked so the composite heatmaps can be regenerated from the
+used by `R/composite_heatmap_utils.R` (coarse-class colour strips in
+`plot_composite_heatmaps_hybrid.R`). Tracked so the composite heatmaps can be regenerated from the
 repo alone.
 
 | File | Reference | Original location |
