@@ -66,6 +66,31 @@ theme_viz <- theme_fig
 obj <- qs_read(obj_fname, nthreads = 8)
 DefaultAssay(obj) <- "SCT"
 obj <- obj[, !is.na(obj$celltype_hybrid)]
+
+## Each focal cluster is restricted to its own dissection library, so a cluster
+## is represented by the tissue it was actually sampled from rather than by
+## whatever it leaked into elsewhere. This removes the composition artefact that
+## made DACH2-1's per-bird medians sit above its own zero: previously DACH2-1 was
+## pooled across six libraries (median set to 0) while the bird points used only
+## its 325 hvc_run1 cells (median +0.055).
+##
+## The cost, stated because it is real and not removable: Glut-DACH2-HVCra
+## occurs ONLY in hvc_run1, so once DACH2-1 is taken from nc_run1 the anchor
+## contrast is confounded with library -- any technical difference between the
+## nc and hvc runs now sits inside the axis definition. The alternative (DACH2-1
+## from hvc_run1) is library-matched but represents DACH2-1 with 325 border
+## cells rather than its main pool. Neither is free; this is the chosen
+## trade-off, taking the larger, more representative DACH2-1 population.
+FOCAL_LIB <- c("Glut-DACH2-1" = "nc_run1",
+               "Glut-DACH2-HVCra-Int" = "hvc_run1",
+               "Glut-DACH2-HVCra" = "hvc_run1")
+focal_ct <- as.character(obj$celltype_hybrid)
+focal_lib_of_cell <- FOCAL_LIB[focal_ct]
+keep_cell <- is.na(focal_lib_of_cell) |
+  as.character(obj$sample_name) == focal_lib_of_cell
+message("Restricting focal clusters to their own library; dropping ",
+        sum(!keep_cell), " cells of ", length(keep_cell), ".")
+obj <- obj[, keep_cell]
 Idents(obj) <- obj$celltype_hybrid
 
 ## --- How the per-cell axis score is computed, exactly --------------------
@@ -355,34 +380,34 @@ three_stats <- three %>%
 ## library/region effect on the score, not as a specifically peri-HVC gradient.
 ## The offset (+0.055) is small against the HVCra-Int gap (0.42), so it does not
 ## affect the conclusion, but the two are not the same cell set.
-BIRD_LIB <- "hvc_run1"
 BIRD_MIN_CELLS <- 20
 
-bird_cells <- three %>% filter(library == BIRD_LIB)
-bird_med <- bird_cells %>%
-  group_by(celltype, bird) %>%
+bird_med <- three %>%
+  group_by(celltype, library, bird) %>%
   summarise(n_cells = n(), median = median(score), .groups = "drop") %>%
-  filter(n_cells >= BIRD_MIN_CELLS)
-
-## Keep only birds seen in all three clusters, so the test is genuinely paired.
-paired_birds <- bird_med %>% count(bird) %>% filter(n == 3) %>% pull(bird)
-bird_med <- bird_med %>% filter(bird %in% paired_birds) %>%
+  filter(n_cells >= BIRD_MIN_CELLS) %>%
   mutate(celltype = factor(as.character(celltype), levels = c(LOW, MID, HIGH)))
-message("bird-level replicates (", BIRD_LIB, ", >= ", BIRD_MIN_CELLS,
-        " cells in all three clusters): n = ", length(paired_birds))
+message("bird-level replicates (>= ", BIRD_MIN_CELLS, " cells): ",
+        paste(sprintf("%s n=%d", levels(bird_med$celltype),
+                      as.integer(table(bird_med$celltype))), collapse = "; "))
 
-bird_wide <- bird_med %>%
-  select(celltype, bird, median) %>%
-  pivot_wider(names_from = celltype, values_from = median)
-
+## Pairing is legitimate only within a library, because souporcell's assignment
+## indexes birds within a library and is not comparable across them. MID and
+## HIGH are both hvc_run1, so those three birds are the same animals and that
+## comparison stays paired. LOW is now nc_run1, so its birds cannot be matched to
+## the hvc ones and both comparisons against it are unpaired -- reported as such
+## rather than silently paired by row order, which would be wrong.
 bird_test <- map_dfr(list(c(LOW, MID), c(MID, HIGH), c(LOW, HIGH)), function(p) {
-  x <- bird_wide[[p[1]]]; y <- bird_wide[[p[2]]]
-  tt <- t.test(x, y, paired = TRUE)
-  wt <- suppressWarnings(wilcox.test(x, y, paired = TRUE, exact = TRUE))
-  tibble(group1 = p[1], group2 = p[2], n_birds = length(x),
-         mean_diff = mean(y - x),
+  x <- bird_med$median[bird_med$celltype == p[1]]
+  y <- bird_med$median[bird_med$celltype == p[2]]
+  paired <- FOCAL_LIB[[p[1]]] == FOCAL_LIB[[p[2]]]
+  tt <- t.test(x, y, paired = paired)
+  wt <- suppressWarnings(wilcox.test(x, y, paired = paired, exact = TRUE))
+  tibble(group1 = p[1], group2 = p[2], design = if (paired) "paired" else "unpaired",
+         n1 = length(x), n2 = length(y),
+         diff_of_medians = median(y) - median(x),
          t_p = tt$p.value, wilcox_p = wt$p.value,
-         same_direction_in_all_birds = all((y - x) > 0) || all((y - x) < 0))
+         all_birds_separate = min(y) > max(x) || max(y) < min(x))
 }) %>%
   mutate(t_p_adj = p.adjust(t_p, method = "BH"),
          wilcox_p_adj = p.adjust(wilcox_p, method = "BH"))
@@ -437,9 +462,8 @@ fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
 ## %.2f rounded 5.7e-04 to "0.00"; keep two significant figures instead.
 fmt_p_sig <- function(p) sprintf("%.2g", p)
 mwu_caption <- sprintf(
-  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nPoints above = per-bird medians (%2$s, n = %3$d birds, paired).\nPaired t on bird medians p = %4$s / %5$s; cell-wise MWU p %1$s but inflated.\nA rank test on 3 pairs cannot go below p = 0.25 — 3/3 ordering is the evidence.",
+  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nDACH2-1 from nc_run1; HVCra and HVCra-Int from hvc_run1 — so the anchor\ncontrast is confounded with library. Points above = per-bird medians, 3 each.\nt on bird medians p = %2$s (vs DACH2-1, unpaired), %3$s (vs HVCra, paired).\nCell-wise MWU p %1$s, but cells are not independent; rank floor 0.1–0.25.",
   fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])),
-  BIRD_LIB, length(paired_birds),
   fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == LOW & bird_test$group2 == MID]),
   fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == MID & bird_test$group2 == HIGH]))
 
