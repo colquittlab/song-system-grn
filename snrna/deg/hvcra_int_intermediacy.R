@@ -391,19 +391,27 @@ message("bird-level replicates (>= ", BIRD_MIN_CELLS, " cells): ",
         paste(sprintf("%s n=%d", levels(bird_med$celltype),
                       as.integer(table(bird_med$celltype))), collapse = "; "))
 
-## Pairing is legitimate only within a library, because souporcell's assignment
-## indexes birds within a library and is not comparable across them. MID and
-## HIGH are both hvc_run1, so those three birds are the same animals and that
-## comparison stays paired. LOW is now nc_run1, so its birds cannot be matched to
-## the hvc ones and both comparisons against it are unpaired -- reported as such
-## rather than silently paired by row order, which would be wrong.
+## All three comparisons are run UNPAIRED, so the row is internally consistent.
+##
+## Pairing is only legitimate within a library -- souporcell's `assignment`
+## indexes birds within a library and is not comparable across them -- so
+## HVCra-Int vs HVCra (both hvc_run1, the same three birds) is the one comparison
+## that *could* be paired, while neither comparison against DACH2-1 (nc_run1)
+## can be. Running one paired and two unpaired would put the three p-values on
+## different footings and make them not directly comparable, which is the worse
+## problem; with three replicates a paired test is barely more powerful than an
+## unpaired one on 3 vs 3 anyway. So the pairing is deliberately not used.
+## Recorded because discarding real structure should be a visible choice rather
+## than an oversight: run paired, the MID/HIGH row gives t p = 4.6e-03.
+##
+## Welch (var.equal = FALSE, t.test's default) rather than Student -- there is no
+## reason to assume equal variance across clusters.
 bird_test <- map_dfr(list(c(LOW, MID), c(MID, HIGH), c(LOW, HIGH)), function(p) {
   x <- bird_med$median[bird_med$celltype == p[1]]
   y <- bird_med$median[bird_med$celltype == p[2]]
-  paired <- FOCAL_LIB[[p[1]]] == FOCAL_LIB[[p[2]]]
-  tt <- t.test(x, y, paired = paired)
-  wt <- suppressWarnings(wilcox.test(x, y, paired = paired, exact = TRUE))
-  tibble(group1 = p[1], group2 = p[2], design = if (paired) "paired" else "unpaired",
+  tt <- t.test(x, y, paired = FALSE)
+  wt <- suppressWarnings(wilcox.test(x, y, paired = FALSE, exact = TRUE))
+  tibble(group1 = p[1], group2 = p[2], design = "unpaired (Welch)",
          n1 = length(x), n2 = length(y),
          diff_of_medians = median(y) - median(x),
          t_p = tt$p.value, wilcox_p = wt$p.value,
@@ -414,7 +422,7 @@ bird_test <- map_dfr(list(c(LOW, MID), c(MID, HIGH), c(LOW, HIGH)), function(p) 
 write_csv(bird_test, file.path(out_dir, "three_way_bird_level_test.csv"))
 write_csv(bird_med, file.path(out_dir, "three_way_bird_medians.csv"))
 
-message("bird-level paired tests:")
+message("bird-level tests (unpaired Welch t; exact rank-sum alongside):")
 print(as.data.frame(bird_test %>% mutate(across(where(is.numeric), ~signif(.x, 3)))))
 
 ## Only HVCra-Int carries a numeric label. The two anchors are 0 and 1 *by
@@ -462,7 +470,7 @@ fmt_p <- function(p) if_else(p < 2.2e-16, "< 2.2e-16", sprintf("= %.2g", p))
 ## %.2f rounded 5.7e-04 to "0.00"; keep two significant figures instead.
 fmt_p_sig <- function(p) sprintf("%.2g", p)
 mwu_caption <- sprintf(
-  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nDACH2-1 from nc_run1; HVCra and HVCra-Int from hvc_run1 — so the anchor\ncontrast is confounded with library. Points above = per-bird medians, 3 each.\nt on bird medians p = %2$s (vs DACH2-1, unpaired), %3$s (vs HVCra, paired).\nCell-wise MWU p %1$s, but cells are not independent; rank floor 0.1–0.25.",
+  "Anchors 0 and 1 by definition. Bar = bootstrap 95%% CI; box = IQR.\nDACH2-1 from nc_run1; HVCra and HVCra-Int from hvc_run1 — so the anchor\ncontrast is confounded with library. Points above = per-bird medians, 3 each.\nUnpaired Welch t on bird medians p = %2$s (vs DACH2-1), %3$s (vs HVCra).\nCell-wise MWU p %1$s, but cells are not independent; rank floor 0.1 at n = 3.",
   fmt_p(max(mwu$p_adj[mwu$group1 == MID | mwu$group2 == MID])),
   fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == LOW & bird_test$group2 == MID]),
   fmt_p_sig(bird_test$t_p_adj[bird_test$group1 == MID & bird_test$group2 == HIGH]))
