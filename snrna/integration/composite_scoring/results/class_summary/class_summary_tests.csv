@@ -1,0 +1,19 @@
+pair,metric,test,p
+Finch × chicken,confidence,Non-neuronal > GABAergic,0.08440785956574687
+Finch × chicken,confidence,GABAergic > Glutamatergic,0.0006634110025612248
+Finch × chicken,confidence,Non-neuronal > Glutamatergic,0.0013633081984646795
+Finch × chicken,agree_frac,Non-neuronal > GABAergic,0.7349154412002474
+Finch × chicken,agree_frac,GABAergic > Glutamatergic,0.004728216407113434
+Finch × chicken,agree_frac,Non-neuronal > Glutamatergic,0.021037633572719327
+Finch × mouse,confidence,Non-neuronal > GABAergic,0.010364531613962677
+Finch × mouse,confidence,GABAergic > Glutamatergic,0.046925558723026686
+Finch × mouse,confidence,Non-neuronal > Glutamatergic,0.00028288411912440637
+Finch × mouse,agree_frac,Non-neuronal > GABAergic,0.013878751032863896
+Finch × mouse,agree_frac,GABAergic > Glutamatergic,0.35510060626986695
+Finch × mouse,agree_frac,Non-neuronal > Glutamatergic,0.006424060193500094
+chicken vs mouse (paired),confidence,Non-neuronal: chicken > mouse,0.0419921875
+chicken vs mouse (paired),agree_frac,Non-neuronal: chicken > mouse,0.1015625
+chicken vs mouse (paired),confidence,GABAergic: chicken > mouse,6.103515625e-05
+chicken vs mouse (paired),agree_frac,GABAergic: chicken > mouse,0.0005897333285925991
+chicken vs mouse (paired),confidence,Glutamatergic: chicken > mouse,1.049041748046875e-05
+chicken vs mouse (paired),agree_frac,Glutamatergic: chicken > mouse,0.0007244731938018993
