@@ -56,7 +56,7 @@ pd.set_option("display.width", 260); pd.set_option("display.max_colwidth", 34)
 foc = [c for c in [
     "Astro-1", "Astro-2", "Astro-3", "OPC", "Oligo-1", "Oligo-2", "Oligo-3", "Micro", "Endo", "Epen",
     "GABA-3", "GABA-4-1", "GABA-4-2", "GABA-8", "GABA-Im",
-    "Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
+    "Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
     "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh",
     "Glut-DACH2-1", "Glut-CACNA1H-1", "Glut-Im", "Glut-NB", "Glut-NSC",
 ] if c in D.index]

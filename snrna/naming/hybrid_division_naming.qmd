@@ -36,8 +36,13 @@ own copy, never writing back to the canonical object.
   the chicken match**, since these are the clusters where the chicken correspondence is weakest to
   begin with (see the QC section below -- confirmed directly, not assumed):
   - `Glut-HVC-1` -> `Glut-DACH2-HVCra` (RA-projecting)
-  - `Glut-HVC-1a` -> `Glut-DACH2-HVCra-Pre` (a distinct sub-label for this HVC-1 subtype, not merged
-    into HVCra, per direct instruction)
+  - `Glut-HVC-1a` -> `Glut-DACH2-HVCra-Int` (a distinct sub-label for this HVC-1 subtype, not merged
+    into HVCra). The `-Int` suffix is for *intermediate*: this cluster sits transcriptionally between
+    `Glut-DACH2-HVCra` and the surrounding nidopallial `Glut-DACH2-1`/`Glut-DACH2-2` clusters, and is
+    **not** an immature/precursor population -- see the HVCra-Int section below, where that was
+    checked directly rather than assumed. It was previously labelled `-Pre`, which asserted a
+    precursor relationship the data do not support (and which had already broken one downstream
+    `"Pre"`-substring filter by accident; see `snrna/trees/celltypes_hclust_glut_robustness_hybrid.qmd`).
   - `Glut-HVC-2` -> `Glut-DACH2-HVCx` (Area X-projecting)
   - `Glut-RA` -> `Glut-CACNA1H-RA`
   - `Glut-LMAN-1` -> `Glut-DACH2-LMANsh` (shelf)
@@ -50,10 +55,79 @@ own copy, never writing back to the canonical object.
   numbered independently.
 - **`GABA-Pre` -> `GABA-Im`**, matching the immature-interneuron developmental-stage relabel already
   applied to its GABAergic-side counterpart in `exploratory/apply_composite_labels.qmd`, and to `Glut-Im` here.
+- **Every other GABAergic cluster is named from its own cross-species match**, anchored on
+  `snrna/integration/composite_scoring/results/gg_adult_hybrid/composite_calls_summary.csv` -- the
+  chicken (Zaremba) integration re-run directly against this notebook's own hybrid-labeled object
+  (`obj_hybrid_labels.h5ad`), confirmed to key on the same `cluster` values used here, unlike the
+  older `composite_gg_adult` table `exploratory/apply_composite_labels.qmd` used (which predates the
+  hybrid relabel and does not line up with `Glut-*` clusters post-rename -- fine for GABA, whose names
+  this scheme leaves alone either way, but not safely reusable for anything Glut-side). `top_rank_agg`
+  (`Inh_<LGE|MGE|CGE>_like_<gene(s)>`) gives both a developmental-origin division (ganglionic eminence
+  of origin -- LGE/MGE/CGE, the GABAergic analogue of `DACH2`/`SATB2`/`CACNA1H`) and, for most
+  clusters, a specific marker gene, unlike the Glut side where the specific chicken match was judged
+  too weak to keep. Kept here because the confidence tiers are markedly better (mostly "high",
+  `>=0.6`) and the calls line up with known interneuron biology (SST/PVALB = MGE, VIP/LAMP5-adjacent
+  = CGE) -- an independent check the Glut song-region hand-labels also had, from anatomy rather than a
+  second species.
+  - **`GABA-4-2`'s own `top_rank_agg` (`Inh_MGE_like_ST18_PVALB`) is overridden to its own
+    rank-aggregation runner-up (`Inh_MGE_like_SST_PVALB`)**, the same way the Glut song-region
+    hand-labels override a chicken match the data itself contradicts: the rank-agg winner only barely
+    beat the runner-up (margin 0.08, overall confidence just "moderate", the four underlying methods
+    split 2-2 with `saturn`'s own vote nonsensical), and **confirmed directly against this object's
+    own expression** -- not assumed -- `ST18` is detected in 0.6% of `GABA-4-2`'s own cells versus
+    42.9% in `GABA-7` (the cluster that actually earns the `ST18` name), while `SST`/`PVALB` detection
+    (60%/18%) sits much closer to `GABA-3`'s and `GABA-4-1`'s own SST_PVALB profile (89%/48%,
+    88%/65%) than to any ST18 population. This folds `GABA-4-2` into the SST_PVALB group below.
+  - **A chicken match being real is not the same claim as its gene being a real discriminating
+    marker in this species, and this is not hypothetical**: `SLC24A2` and `ABI3BP` (both embedded in
+    composite calls above) are not the top-expressing GABA cluster for their own gene in this
+    object -- `SLC24A2` is highest in the three SST_PVALB clusters, not the SST_SLC24A2 clusters it
+    was meant to name, and `ABI3BP` shows no real signal anywhere (flat ~0.05-0.13 across all 13
+    clusters), most likely a genuine chicken/finch species difference. So every candidate gene is
+    **verified directly against this object's own expression** before being used: its own cluster
+    must be the single highest-expressing GABA cluster for that gene, by at least a 1.5-fold margin
+    over the runner-up (see the verification section below for the full pass/fail table). A gene
+    absent from this genome's own annotation altogether (`CACNA1B`, confirmed against this object's
+    `rownames` and the other seven `CACNA1<A-I,S>` paralogs, all present) fails this check
+    automatically -- unconfirmed is treated the same as disconfirmed, not as a pass by default.
+  - **A cluster whose candidate gene passes verification, and is not shared with another cluster's
+    own chicken match, keeps it as its name**: `GABA-CGE-MAN1A1` failed (MAN1A1 is actually highest
+    in three unrelated MGE clusters) and fell back below, but `GABA-MGE-ANO1`, `GABA-MGE-ST18`, and
+    `GABA-MGE-LHX8` all passed cleanly (the `LHX8` example this scheme was asked for by name, and
+    independently corroborated by the mouse/Yao integration in the same `composite_scoring` output:
+    `GABA-8`'s own top mouse match is an `Lhx8`-labeled striatal/pallidal interneuron type).
+  - **`GABA-6` (`GABA-MGE-ANO1` by the rule above) is overridden by hand to `GABA-MGE-LAMP5`**:
+    LAMP5 marks a recognized interneuron class in its own right, and the mouse/Yao integration in the
+    same `composite_scoring` output independently calls this cluster an `Lamp5`-labeled type (high
+    confidence 0.52) -- a real second line of cross-species evidence `ANO1` alone doesn't have.
+    Flagged as worth checking by that mouse call and **confirmed directly against this object's own
+    expression** -- not assumed -- `LAMP5` is detected in 64.1% of this cluster's own cells versus
+    11.9% in the next-highest GABA cluster (a 6.3-fold margin), at least as clean a discriminator as
+    `ANO1` itself.
+  - **Every remaining collision group (`GABA-1-1`/`GABA-1-2` on `LGE_FOXP2`,
+    `GABA-2-1`/`GABA-2-2`/`GABA-2-3` on `SST_SLC24A2`/`SST_ABI3BP`, `GABA-3`/`GABA-4-1`/`GABA-4-2` on
+    `SST_PVALB` after the override above, and `GABA-5-1`/`GABA-5-2` on `CGE_MAN1A1`/`CGE_CACNA1B`)
+    gets a plain sequential number instead of a specific gene**, per direct instruction, for a
+    shorter and simpler name: `GABA-LGE-1`/`-2`, `GABA-MGE-SST-1`/`-2`/`-3`, `GABA-MGE-PVALB-1`/`-2`/`-3`,
+    `GABA-CGE-1`/`-2`. A real distinguishing gene was tried here first for every group (within-group
+    differential expression, the same `cluster_de()`/`select_naming_genes()` machinery
+    `exploratory/apply_composite_labels.qmd` uses -- e.g. `GABA-MGE-SST-SLC12A5`/`-SHISA9`/`-DIAPH3`,
+    `GABA-LGE-MAML2`/`-MDGA1`, and it worked cleanly for all four groups, unlike the chicken match's
+    own suggested second gene, which already failed verification for three of the four
+    (`SLC24A2`/`ABI3BP`, `MAN1A1`/`CACNA1B`) -- but the gene-based names were dropped again in favor
+    of the shorter numeral.
+  - **The two MGE groups keep their real, broadly-shared class marker as a prefix on the number**
+    (`SST`, `PVALB` -- both real per the QC section above, unlike the chicken match's own more
+    specific second gene, which is exactly what the within-group DE step above was routing around).
+    LGE and CGE get a bare `GABA-<division>-<n>` instead, since neither's own composite class marker
+    held up under verification in the first place (`FOXP2`, LGE's own `top_rank_agg` gene, is broadly
+    LGE-specific but bleeds into `GABA-2-2` at 41% detection; `MAN1A1`/`CACNA1B`, CGE's own, already
+    failed outright per the rules above) -- a class marker was found for both anyway (`MEIS2` for LGE,
+    `DPF3` for CGE, the same "ask the data, not the chicken match" way, a group-vs-rest differential
+    expression), but was dropped along with the gene-based names for the same reason.
 - **Untouched**: `Glut-Nido-2` (`Glut-GABA`, the dual-transmitter override -- not a single division to
   begin with), the three Glut precursor clusters (`Glut-NSC`/`Glut-NB`/`Glut-Im`, developmental-stage
-  labels independent of this scheme), the rest of the GABAergic clusters (`DACH2`/`SATB2`/`CACNA1H`
-  are excitatory-subclass markers, not applicable to them), and all non-neuronal clusters.
+  labels independent of this scheme), and all non-neuronal clusters.
 
 ```{r}
 #| label: packages
@@ -71,6 +145,12 @@ library(knitr)
 in_fname <- here::here("snrna/clustering/snrna_seurat_cellbender_preprocess",
                        "obj_clustered.qs2")
 composite_fname <- here::here("snrna/integration/composite_gg_adult", "composite_calls_summary.csv")
+## Chicken integration re-run directly against this notebook's own hybrid-labeled output -- its
+## `query` values already match this object's GABA cluster names 1:1 (confirmed below), unlike
+## `composite_fname` above, which predates the hybrid relabel and is kept only for the Glut division
+## read (where the pre-relabel `Glut-*` names are exactly what is wanted for that lookup).
+gaba_composite_fname <- here::here("snrna/integration/composite_scoring/results/gg_adult_hybrid",
+                                   "composite_calls_summary.csv")
 cluster_col <- "cluster"
 
 out_dir <- here::here("snrna/naming", "hybrid_division_naming")
@@ -87,7 +167,7 @@ excluded_clusters <- c("Glut-Nido-3", "Glut-Arco-4")
 ## for the confirmed mismatch between these and each cluster's own top_rank_agg.
 song_region_overrides <- c(
   "Glut-HVC-1"  = "Glut-DACH2-HVCra",
-  "Glut-HVC-1a" = "Glut-DACH2-HVCra-Pre",
+  "Glut-HVC-1a" = "Glut-DACH2-HVCra-Int",
   "Glut-HVC-2"  = "Glut-DACH2-HVCx",
   "Glut-RA"     = "Glut-CACNA1H-RA",
   "Glut-LMAN-1" = "Glut-DACH2-LMANsh",
@@ -113,6 +193,19 @@ fold_targets <- c("Glut-Nido-1" = "Glut-NC-1")
 obj <- qs_read(in_fname, nthreads = 8)
 composite <- read_csv(composite_fname, show_col_types = FALSE)
 stopifnot(setequal(composite$query, levels(factor(obj@meta.data[[cluster_col]]))))
+
+gaba_composite <- read_csv(gaba_composite_fname, show_col_types = FALSE)
+## Confirmed 1:1 against this object's own GABA cluster names, restricted to the clusters this
+## table is actually used for below (GABA-Pre is excluded from this composite match -- see the
+## precursor override -- so its absence/rename to GABA-Im on the composite side is expected, not
+## checked here).
+gaba_clusters_raw <- levels(factor(obj@meta.data[[cluster_col]]))[
+  grepl("^GABA", levels(factor(obj@meta.data[[cluster_col]])))
+]
+stopifnot(
+  "gg_adult_hybrid composite$query does not cover this object's own (non-precursor) GABA clusters" =
+    all(setdiff(gaba_clusters_raw, "GABA-Pre") %in% gaba_composite$query)
+)
 ```
 
 ## Major division per cluster
@@ -156,6 +249,208 @@ disagreement this notebook exists to route around for the song system specifical
 evolutionarily novel structures, so a weak or wrong single-species match is expected, not a reason to
 second-guess the anatomy/projection evidence used to hand-label them instead.
 
+## GABA division and informative naming
+
+Unlike the Glut side, the GABA composite calls are mostly high confidence and line up with known
+interneuron biology, so the specific chicken match is kept rather than truncated to a bare division
+number -- see the rules above for why.
+
+```{r}
+#| label: gaba-division
+gaba_divisions <- c("LGE", "MGE", "CGE")
+
+## Shared logic for extracting a division/body from a composite call: strip the chicken-side prefix,
+## drop "_like_" for readability (Inh_LGE_like_FOXP2 -> LGE-FOXP2 -- a formatting choice, not a change
+## in which chicken population a cluster was matched to). No naming decision yet -- that is deferred
+## to the verification step below, since a chicken match being real is not the same question as
+## whether it is a real *discriminating marker in this species*.
+assign_gaba_names <- function(composite, eligible_clusters) {
+  composite %>%
+    dplyr::filter(query %in% eligible_clusters) %>%
+    dplyr::mutate(division_gene = sub("_like_", "-", sub("^Inh_", "", top_rank_agg))) %>%
+    dplyr::transmute(cluster = query,
+                     division = sub("-.*", "", division_gene),
+                     body = division_gene,
+                     confidence, confidence_tier)
+}
+
+## GABA-4-2's own top_rank_agg (Inh_MGE_like_ST18_PVALB) only barely beat the SST_PVALB runner-up in
+## the rank-aggregation step (margin 0.08 of 1, overall confidence just "moderate" at 0.32, and
+## agg_methods_concordant = FALSE): individually, gsi and samap each independently call SST_PVALB
+## (gsi at 0.73, its highest per-method confidence of the four), only cca calls ST18_PVALB, and
+## saturn's own top call is a nonsensical excitatory type (Ex_CACNA1H_CPA6) -- not a real second
+## vote either way. **Confirmed directly against this object's own expression**, not assumed: ST18 is
+## detected in just 0.6% of GABA-4-2's own cells (vs. 42.9% in GABA-7, the cluster that actually earns
+## the ST18 name), while SST/PVALB are detected in 60%/18% of its cells -- much closer to GABA-3's and
+## GABA-4-1's own SST_PVALB profile (89%/48% and 88%/65%) than to any ST18 population. Overridden to
+## the runner-up call here, the same way the Glut song-region hand-labels override a chicken match
+## the data itself contradicts.
+gaba_body_overrides <- c("GABA-4-2" = "Inh_MGE_like_SST_PVALB")
+
+gaba_eligible <- setdiff(gaba_clusters_raw, "GABA-Pre")
+gaba_composite_overridden <- gaba_composite %>%
+  mutate(top_rank_agg = if_else(query %in% names(gaba_body_overrides),
+                                gaba_body_overrides[query], top_rank_agg))
+gaba_named <- assign_gaba_names(gaba_composite_overridden, gaba_eligible)
+
+kable(gaba_named %>% filter(!division %in% gaba_divisions),
+      caption = paste("GABA clusters whose own top_rank_agg winner is NOT LGE/MGE/CGE -- expected",
+                      "to be empty; a non-empty result here means a chicken cluster this table",
+                      "matched to is not one of the three ganglionic-eminence divisions."))
+stopifnot(
+  "A GABA cluster's top_rank_agg winner is not LGE/MGE/CGE-derived -- check gaba_composite directly" =
+    all(gaba_named$division %in% gaba_divisions)
+)
+```
+
+### Verify each candidate marker gene against this object's own expression
+
+A chicken cross-species match being a real, confident correspondence does not make its named gene a
+real *discriminating marker in this species* -- SLC24A2 and ABI3BP (both embedded in composite calls
+above) turned out not to be, most likely a genuine species difference between what discriminates a
+population in chicken and what discriminates the same broad class in finch. Rather than trust the
+composite call's gene at face value, each candidate's own single-cell expression is checked directly:
+its own cluster must be the single highest-expressing GABA cluster for that gene (a strict top-1, not
+merely "elevated"), by a margin over the runner-up, or the specific gene is dropped in favor of the
+raw cluster's own numeric suffix -- the same fallback already used for a collision. A gene absent from this
+object's own annotation altogether (`CACNA1B`, see the rules above) fails this check automatically:
+unconfirmed is treated the same as disconfirmed here, not as an exception.
+
+```{r}
+#| label: gaba-verify-markers
+## The gene actually being asked to carry the name: the last "_"-delimited token of the body once
+## the division prefix is stripped (MGE-SST_PVALB -> PVALB, CGE-MAN1A1 -> MAN1A1, LGE-FOXP2 ->
+## FOXP2). For a compound body this is the part beyond the shared class marker (SST, itself real and
+## broadly shared across several MGE clusters, is not what is being verified here).
+gaba_named <- gaba_named %>%
+  mutate(distinguishing_gene = sub(".*_", "", sub("^[A-Z]+-", "", body)))
+
+DefaultAssay(obj) <- "SCT"
+gaba_expr_genes <- intersect(unique(gaba_named$distinguishing_gene), rownames(obj))
+gaba_cells <- colnames(obj)[obj@meta.data[[cluster_col]] %in% gaba_eligible]
+gaba_expr_mat <- GetAssayData(obj, assay = "SCT", layer = "data")[gaba_expr_genes, gaba_cells, drop = FALSE]
+gaba_expr_cluster <- droplevels(factor(obj@meta.data[gaba_cells, cluster_col]))
+gaba_avg <- sapply(levels(gaba_expr_cluster),
+                   function(cl) Matrix::rowMeans(gaba_expr_mat[, gaba_expr_cluster == cl, drop = FALSE]))
+
+## own cluster must be the single top-ranked GABA cluster for its distinguishing gene, and clear the
+## runner-up by at least margin_min-fold -- a real discriminating marker, not merely "detectable".
+verify_specific <- function(gene, own_cluster, avg, margin_min = 1.5) {
+  if (!gene %in% rownames(avg)) return(FALSE)
+  ranked <- sort(avg[gene, ], decreasing = TRUE)
+  ranked[1] > 0 && names(ranked)[1] == own_cluster && (length(ranked) < 2 || ranked[1] >= margin_min * ranked[2])
+}
+
+gaba_named <- gaba_named %>%
+  rowwise() %>%
+  mutate(verified = verify_specific(distinguishing_gene, cluster, gaba_avg)) %>%
+  ungroup()
+
+dup_bodies <- gaba_named %>% dplyr::count(body) %>% dplyr::filter(n > 1) %>% dplyr::pull(body)
+gaba_named <- gaba_named %>% mutate(use_specific = verified & !(body %in% dup_bodies))
+
+kable(gaba_named %>% select(cluster, body, distinguishing_gene, verified, use_specific),
+      caption = paste("Every GABA cluster's candidate distinguishing gene and whether it passed",
+                      "direct verification against this object's own expression. use_specific = FALSE",
+                      "for any reason (failed verification, gene absent from this object, or shared",
+                      "with another cluster's own chicken match) falls back to the raw cluster's own",
+                      "numeric suffix, division-prefixed."))
+```
+
+```{r}
+#| label: gaba-final-labels
+## Two pools now. (1) A cluster whose composite-derived candidate gene is confirmed and exclusive to
+## it keeps that name as-is (ST18, LHX8; LAMP5 below is a hand override of what would otherwise be
+## ANO1). (2) Every other cluster -- one of four collision groups -- gets a plain sequential number
+## instead of a specific gene. A real distinguishing gene was tried here first (within-group
+## differential expression, the same cluster_de()/select_naming_genes() machinery
+## exploratory/apply_composite_labels.qmd uses) and worked for all four groups (e.g.
+## GABA-MGE-SST-SLC12A5/-SHISA9/-DIAPH3, GABA-LGE-MAML2/-MDGA1), but was dropped again in favor of a
+## shorter, simpler name, per direct instruction. The two MGE groups still keep their real,
+## broadly-shared class marker (SST, PVALB -- see the QC section above) as a prefix on top of the
+## number; LGE and CGE, whose composite class marker never held up under verification in the first
+## place (see the rules above), get a bare GABA-<division>-<n>.
+gaba_specific <- gaba_named %>% filter(use_specific) %>% mutate(new_label = paste0("GABA-", body)) %>%
+  select(cluster, new_label)
+
+numbered_group <- function(clusters, prefix) {
+  tibble(cluster = clusters) %>%
+    arrange(cluster) %>%
+    mutate(new_label = paste0(prefix, "-", dplyr::row_number()))
+}
+
+lge_family <- numbered_group(c("GABA-1-1", "GABA-1-2"), "GABA-LGE")
+mge_sst_family <- numbered_group(c("GABA-2-1", "GABA-2-2", "GABA-2-3"), "GABA-MGE-SST")
+mge_pvalb_family <- numbered_group(c("GABA-3", "GABA-4-1", "GABA-4-2"), "GABA-MGE-PVALB")
+cge_family <- numbered_group(c("GABA-5-1", "GABA-5-2"), "GABA-CGE")
+
+kable(bind_rows(lge_family, mge_sst_family, mge_pvalb_family, cge_family),
+      caption = "Every collision group's plain sequential fallback numbering, class-marker-prefixed where one applies.")
+
+gaba_named <- bind_rows(
+  gaba_specific,
+  lge_family,
+  mge_sst_family,
+  mge_pvalb_family,
+  cge_family
+) %>%
+  left_join(gaba_named %>% select(cluster, division, confidence_tier), by = "cluster")
+stopifnot(setequal(gaba_named$cluster, gaba_eligible), !anyDuplicated(gaba_named$cluster))
+
+## GABA-6 (GABA-MGE-ANO1 by the rule above) is overridden to GABA-MGE-LAMP5 -- still an MGE-division
+## label, but named for LAMP5 rather than the chicken top_rank_agg's own ANO1, because a second,
+## independent line of cross-species evidence points at LAMP5 specifically: the mouse/Yao integration
+## in the same `composite_scoring` output independently calls this cluster an `Lamp5`-labeled type
+## (high confidence 0.52), which `ANO1` alone doesn't have. `LAMP5` was not the chicken `top_rank_agg`
+## call and so never entered the verification step above on its own; overridden by hand here because
+## the mouse integration flagged it as a candidate worth checking directly, and **confirmed directly
+## against this object's own expression** -- not assumed -- `LAMP5` is detected in 64.1% of this
+## cluster's own cells versus 11.9% in the next-highest GABA cluster (a 6.3-fold margin), at least as
+## clean a discriminator as `ANO1` itself.
+gaba_label_overrides <- c("GABA-6" = "GABA-MGE-LAMP5")
+gaba_named <- gaba_named %>%
+  mutate(new_label = dplyr::if_else(cluster %in% names(gaba_label_overrides),
+                                    unname(gaba_label_overrides[cluster]), new_label))
+
+kable(gaba_named %>% arrange(new_label) %>% select(cluster, new_label, confidence_tier),
+      caption = "Final GABA labels: a verified composite gene, or a class-marker-prefixed / bare sequential number.")
+```
+
+**Confirmed, not assumed**: the direct evidence behind the `GABA-6` -> `GABA-LAMP5` override above --
+`LAMP5` detection rate against every other GABA cluster.
+
+```{r}
+#| label: gaba-lamp5-qc
+lamp5_mat <- GetAssayData(obj, assay = "SCT", layer = "data")["LAMP5", gaba_cells, drop = FALSE]
+tibble(cluster = as.character(obj@meta.data[gaba_cells, cluster_col]), LAMP5 = lamp5_mat[1, ]) %>%
+  group_by(cluster) %>%
+  summarise(n = n(), pct_LAMP5 = mean(LAMP5 > 0) * 100, mean_LAMP5 = mean(LAMP5), .groups = "drop") %>%
+  arrange(desc(pct_LAMP5)) %>%
+  kable(digits = 2, caption = "LAMP5 detection rate and mean expression across all eligible GABA clusters.")
+```
+
+**Confirmed, not assumed**: the direct evidence behind the `GABA-4-2` override above -- detection rate
+(fraction of a cluster's own cells with nonzero SCT expression) for `ST18`/`SST`/`PVALB`, against the
+cluster that actually earns the `ST18` name and its own new SST_PVALB collision-mates.
+
+```{r}
+#| label: gaba-4-2-qc
+qc_clusters <- c("GABA-4-2", "GABA-7", "GABA-3", "GABA-4-1")
+qc_mat <- GetAssayData(subset(obj, cells = colnames(obj)[obj@meta.data[[cluster_col]] %in% qc_clusters]),
+                       assay = "SCT", layer = "data")[c("ST18", "SST", "PVALB"), ]
+qc_cluster_f <- obj@meta.data[colnames(qc_mat), cluster_col]
+tibble(cluster = qc_cluster_f, ST18 = qc_mat["ST18", ], SST = qc_mat["SST", ], PVALB = qc_mat["PVALB", ]) %>%
+  group_by(cluster) %>%
+  summarise(n = n(), pct_ST18 = mean(ST18 > 0) * 100, pct_SST = mean(SST > 0) * 100,
+           pct_PVALB = mean(PVALB > 0) * 100, .groups = "drop") %>%
+  arrange(factor(cluster, levels = qc_clusters)) %>%
+  kable(digits = 1, caption = paste(
+    "GABA-4-2 (its own top_rank_agg says ST18_PVALB, overridden above to SST_PVALB): its own ST18",
+    "detection rate reads like the SST_PVALB clusters (GABA-3/GABA-4-1), not like GABA-7, the",
+    "cluster whose own ST18 detection rate actually earns that name."
+  ))
+```
+
 ## Build the hybrid labels
 
 ```{r}
@@ -192,15 +487,17 @@ hybrid_lookup <- bind_rows(
   generic,
   fold_labels,
   tibble(cluster = names(hand_labeled), new_label = unname(hand_labeled)),
-  tibble(cluster = excluded_clusters, new_label = NA_character_)
+  tibble(cluster = excluded_clusters, new_label = NA_character_),
+  gaba_named %>% select(cluster, new_label)
 ) %>%
-  ## Non-neuronal and (most) GABAergic clusters are untouched by this scheme -- carried through as-is
-  ## rather than silently dropped from the lookup, so every cluster in the object has exactly one row
-  ## here. GABA-Pre is excluded from this bucket: it already got its own row above via
-  ## hand_labeled/precursor_overrides (-> GABA-Im), and would otherwise also land here unchanged,
-  ## creating a second, conflicting row for the same cluster.
-  bind_rows(tibble(cluster = setdiff(all_clusters, c(glut_clusters, names(hand_labeled))),
-                   new_label = setdiff(all_clusters, c(glut_clusters, names(hand_labeled)))))
+  ## Non-neuronal clusters are untouched by this scheme -- carried through as-is rather than
+  ## silently dropped from the lookup, so every cluster in the object has exactly one row here.
+  ## GABA-Pre is excluded from this bucket: it already got its own row above via
+  ## hand_labeled/precursor_overrides (-> GABA-Im), and every other GABAergic cluster already got
+  ## its own row via gaba_named just above, so both must be excluded here or they would each get a
+  ## second, conflicting row for the same cluster.
+  bind_rows(tibble(cluster = setdiff(all_clusters, c(glut_clusters, names(hand_labeled), gaba_named$cluster)),
+                   new_label = setdiff(all_clusters, c(glut_clusters, names(hand_labeled), gaba_named$cluster))))
 
 stopifnot(setequal(hybrid_lookup$cluster, all_clusters), !anyDuplicated(hybrid_lookup$cluster))
 
@@ -226,6 +523,162 @@ glut_idents <- sort(na.omit(unique(hybrid_lookup$new_label[hybrid_lookup$cluster
 DotPlot(subset(obj, idents = glut_idents), features = divisions, assay = "SCT") +
   RotatedAxis() +
   labs(title = "DACH2 / SATB2 / CACNA1H expression across hybrid-scheme Glut labels")
+```
+
+The point of this one is to catch a labelling mistake, not to admire the labels: a gene pulled out of
+a GABA cluster's own composite match should show up as visibly higher in the row it names than the
+other GABA clusters. Clusters left on the raw-suffix fallback (see above) contribute no gene of their
+own here.
+
+```{r}
+#| label: gaba-label-genes-dotplot
+#| fig-width: 12
+#| fig-height: 8
+## Genes embedded in each GABA cluster's own new label, parsed the same way the labels themselves
+## were built ("GABA-" and its division token dropped; the division token is optional in the strip
+## below only so a future standalone override with no division prefix wouldn't silently break it --
+## remaining "-"/"_"-delimited tokens are genes) -- not re-derived some other way, so this plot tests
+## the actual rename rather than a re-interpretation of it.
+gaba_label_genes <- gaba_named %>%
+  mutate(body = sub(paste0("^GABA-((", paste(gaba_divisions, collapse = "|"), ")-)?"), "", new_label)) %>%
+  separate_rows(body, sep = "[-_]") %>%
+  filter(!grepl("^[0-9]+$", body)) %>%
+  distinct(cluster, gene = body)
+
+genes_present <- intersect(unique(gaba_label_genes$gene), rownames(obj))
+genes_missing <- setdiff(unique(gaba_label_genes$gene), rownames(obj))
+if (length(genes_missing) > 0) {
+  warning("GABA label genes not found in the object, dropped from the plot: ",
+          paste(genes_missing, collapse = ", "), call. = FALSE)
+}
+
+gaba_idents <- sort(na.omit(unique(hybrid_lookup$new_label[hybrid_lookup$cluster %in% gaba_named$cluster])))
+DotPlot(subset(obj, idents = gaba_idents), features = genes_present, assay = "SCT") +
+  RotatedAxis() +
+  labs(title = "Label genes across hybrid-scheme GABA labels")
+```
+
+`CACNA1B` (named in `GABA-CGE-CACNA1B`, i.e. `GABA-5-2`) is expected to be missing from this plot and
+the `genes_missing` warning above -- this genome's own annotation has no `CACNA1B`-symbol gene at all
+(confirmed against `rownames(obj)` and the other seven `CACNA1<A,C,D,E,G,H,I,S>` paralogs, all
+present), so that specific label cannot be sanity-checked against expression the way every other one
+here can; see the rules section above.
+
+## QC: why `Glut-DACH2-HVCra-Int` is `-Int` (intermediate) and not `-Pre` (precursor)
+
+This cluster (`Glut-HVC-1a`) was previously labelled `Glut-DACH2-HVCra-Int`, asserting that it is an
+immature population on its way to becoming `Glut-DACH2-HVCra`. That claim was checked directly
+against this object's own expression -- not assumed -- and it does not hold. Three independent
+checks, all reproduced below:
+
+1. **It carries no immature-neuron signature at all.** The real precursor clusters do
+   (`Glut-NSC` = radial glia, `Glut-NB` = neuroblast, `Glut-Im` = immature neuron); this cluster does
+   not, and on maturity markers it scores at or above `Glut-DACH2-HVCra` itself.
+2. **It is transcriptionally intermediate between `Glut-DACH2-HVCra` and the surrounding
+   nidopallium** (`Glut-DACH2-1`/`Glut-DACH2-2`), on both its nearest-neighbour composition and a
+   direct interpolation score.
+3. **It has almost no private markers.** Genes up in it against *all three* of `Glut-DACH2-HVCra`,
+   `Glut-DACH2-1` and `Glut-DACH2-2` number in the single digits, versus several hundred for
+   `Glut-DACH2-HVCx` -- a genuinely discrete type run through the identical test as a yardstick.
+   That is what an intermediate population looks like, not a distinct cell type and not a precursor.
+
+Two further, independent lines of evidence sit outside this notebook and are noted here only so the
+name's basis is recorded in one place:
+
+- **Cross-species.** In `snrna/integration/colquitt2021_label_transfer.qmd`, 94% of this cluster's
+  cells transfer to the published `HVC_Glut-2`, not to `HVC_Glut-1` (= `Glut-DACH2-HVCra`, itself a
+  clean reciprocal match). `Glut-Im`, by contrast, is a reciprocal best match with the published
+  precursor cluster `Pre-4` -- so the published data already separates this cluster from the
+  precursor pool.
+- **HVC/shelf.** Lovell et al. 2008 (PLoS ONE 3(10):e3440) compared HVC against the adjacent auditory
+  shelf by LCM/microarray. Their shelf-enriched genes are strongly enriched among the genes *up* in
+  this cluster relative to `Glut-DACH2-HVCra`, and their HVC-enriched genes among the genes *down*
+  (Fisher OR ~13, p < 1e-20 each way, with no enrichment in either opposite direction) -- consistent
+  with the Xenium mapping, where this cluster forms a border around HVC.
+
+Note what is *not* claimed: transcriptional intermediacy is not directional. Nothing here says
+`Glut-DACH2-1` -> `Glut-DACH2-HVCra` rather than the reverse, or that the axis is developmental at
+all rather than a spatial gradient across the HVC border. `-Int` is deliberately the weaker,
+non-directional name; `-Pre` was not.
+
+```{r}
+#| label: hvcra-int-maturity
+## Canonical immature/mature markers, percent of cells detecting each, in this cluster against the
+## three real developmental-stage clusters and against HVCra itself. Percent detection rather than
+## mean expression, so this does not turn into a statement about sequencing depth.
+int_sel <- c("Glut-NSC", "Glut-NB", "Glut-Im", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCra")
+maturity_genes <- list(
+  proliferation = c("MKI67", "TOP2A", "ASPM", "CENPF"),
+  radial_glia   = c("SOX2", "FABP7", "SLC1A3", "VIM", "PAX6", "NOTCH1"),
+  neuroblast    = c("SOX4", "SOX11", "DCX", "CD24", "DPYSL3", "STMN1", "NEUROD2"),
+  mature        = c("RBFOX3", "SNAP25", "SLC17A6", "CPLX1", "GRIN1", "CAMK2A")
+)
+maturity_present <- intersect(unlist(maturity_genes, use.names = FALSE), rownames(obj))
+int_mat <- LayerData(obj, assay = "SCT", layer = "data")[maturity_present, , drop = FALSE]
+int_ct <- obj$celltype_hybrid
+maturity_pct <- sapply(int_sel, function(k)
+  round(100 * Matrix::rowMeans(int_mat[, which(int_ct == k), drop = FALSE] > 0), 1))
+kable(maturity_pct, caption = "Percent of cells detecting each marker (SCT data)")
+```
+
+`Glut-DACH2-HVCra-Int` should show essentially zero on the proliferation, radial-glia and neuroblast
+blocks (`SOX4`, `SOX11`, `CD24`, `DPYSL3`, `STMN1` all < 1% of its own cells, versus tens of percent
+in `Glut-NB`) while sitting at or above `Glut-DACH2-HVCra` on the mature block. `DCX` is the one
+marker that looks superficially supportive of a precursor reading and is not: it is detected at a
+similar rate in mature `Glut-DACH2-HVCra`, so it does not discriminate here.
+
+```{r}
+#| label: hvcra-int-intermediate
+## Where this cluster sits on a direct Glut-DACH2-1 -> Glut-DACH2-HVCra interpolation: score every
+## cell on the top DE genes in each direction, then rescale so the two anchors are 0 and 1. A
+## precursor of HVCra has no reason to land mid-way between HVCra and the surrounding nidopallium;
+## an intermediate population does.
+Idents(obj) <- "celltype_hybrid"
+int_axis <- function(a, b, n = 100) {
+  de <- FindMarkers(obj, ident.1 = b, ident.2 = a, min.pct = 0.2, logfc.threshold = 0.5) %>%
+    filter(p_val_adj < 0.01)
+  up <- rownames(de %>% arrange(desc(avg_log2FC)))[seq_len(n)]
+  dn <- rownames(de %>% arrange(avg_log2FC))[seq_len(n)]
+  scored <- AddModuleScore(obj, features = list(up, dn), name = "ax", assay = "SCT", seed = 1)
+  s <- tapply(scored$ax1 - scored$ax2, obj$celltype_hybrid, median)
+  round((s - s[[a]]) / (s[[b]] - s[[a]]), 2)
+}
+axis_sel <- c("Glut-DACH2-1", "Glut-DACH2-2", "Glut-Im", "Glut-NB",
+              "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx", "Glut-DACH2-HVCra")
+kable(data.frame(
+  celltype              = axis_sel,
+  `DACH2_1_to_HVCra`    = int_axis("Glut-DACH2-1", "Glut-DACH2-HVCra")[axis_sel],
+  `NB_to_HVCra`         = int_axis("Glut-NB",      "Glut-DACH2-HVCra")[axis_sel],
+  check.names = FALSE
+), row.names = FALSE,
+caption = "Position on each axis, rescaled so the two anchor clusters are 0 and 1")
+```
+
+On the `Glut-DACH2-1` -> `Glut-DACH2-HVCra` axis this cluster lands near the middle and no other
+cluster does, which is the positive evidence for `-Int`. On the immaturity axis
+(`Glut-NB` -> `Glut-DACH2-HVCra`) it lands *past* every generic cluster, on the mature side --
+`Glut-Im` is the cluster that sits low there, which is the negative evidence against `-Pre`.
+
+```{r}
+#| label: hvcra-int-private-markers
+## Private markers: genes up in this cluster against all three of its neighbours at once. Run
+## identically for Glut-DACH2-HVCx, a cluster nobody disputes is its own type, as a yardstick --
+## the comparison is the point, not the raw count.
+int_private <- function(target, others) {
+  Reduce(intersect, lapply(others, function(o)
+    rownames(FindMarkers(obj, ident.1 = target, ident.2 = o,
+                         min.pct = 0.2, logfc.threshold = 0.5) %>%
+             filter(p_val_adj < 0.01, avg_log2FC > 0))))
+}
+int_neighbours <- c("Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-2")
+int_markers <- int_private("Glut-DACH2-HVCra-Int", int_neighbours)
+hvcx_markers <- int_private("Glut-DACH2-HVCx", int_neighbours)
+kable(data.frame(
+  celltype = c("Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx (yardstick)"),
+  n_private_markers = c(length(int_markers), length(hvcx_markers)),
+  genes = c(paste(int_markers, collapse = ", "),
+            paste(head(hvcx_markers, 10), collapse = ", "))
+), caption = "Genes up against Glut-DACH2-HVCra, Glut-DACH2-1 and Glut-DACH2-2 simultaneously")
 ```
 
 ```{r}

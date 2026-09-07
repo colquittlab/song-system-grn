@@ -10,7 +10,7 @@ order, then the non-song DACH2 clusters in numeric order, then the non-song CACN
 clusters in numeric order.
 
 Reuses the *_reciprocal.csv outputs already written by plot_sweep_percluster_glutonly_hybrid.py
-rather than recomputing -- those already exclude Glut-DACH2-HVCra-Pre per the user's
+rather than recomputing -- those already exclude Glut-DACH2-HVCra-Int per the user's
 earlier request, and already classify Glut-DACH2-LMANsh as song.
 """
 from pathlib import Path

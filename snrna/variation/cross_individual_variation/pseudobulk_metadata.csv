@@ -254,9 +254,9 @@ Glut-DACH2-8,batch2,nr_run1,bird6,234,pb0252,1600510
 Glut-DACH2-HVCra,batch1,hvc_run1,bird1,1690,pb0253,7213597
 Glut-DACH2-HVCra,batch1,hvc_run1,bird2,594,pb0254,2547253
 Glut-DACH2-HVCra,batch1,hvc_run1,bird3,733,pb0255,3454139
-Glut-DACH2-HVCra-Pre,batch1,hvc_run1,bird1,264,pb0256,935282
-Glut-DACH2-HVCra-Pre,batch1,hvc_run1,bird2,151,pb0257,516957
-Glut-DACH2-HVCra-Pre,batch1,hvc_run1,bird3,249,pb0258,914455
+Glut-DACH2-HVCra-Int,batch1,hvc_run1,bird1,264,pb0256,935282
+Glut-DACH2-HVCra-Int,batch1,hvc_run1,bird2,151,pb0257,516957
+Glut-DACH2-HVCra-Int,batch1,hvc_run1,bird3,249,pb0258,914455
 Glut-DACH2-HVCx,batch1,hvc_run1,bird1,163,pb0259,1561792
 Glut-DACH2-HVCx,batch1,hvc_run1,bird2,81,pb0260,701883
 Glut-DACH2-HVCx,batch1,hvc_run1,bird3,97,pb0261,907971

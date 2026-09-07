@@ -8,7 +8,7 @@ celltype_hybrid assignment and are dropped.
 
 Notably, celltype_hybrid's naming already encodes the song/non-song structure directly:
 position-restricted song-nucleus Glut populations get their own dedicated clusters
-(Glut-DACH2-HVCra, -HVCra-Pre, -HVCx, Glut-CACNA1H-RA, Glut-DACH2-LMANco), while
+(Glut-DACH2-HVCra, -HVCra-Int, -HVCx, Glut-CACNA1H-RA, Glut-DACH2-LMANco), while
 Glut-DACH2-LMANsh (LMAN shell, non-song per this project's prior determination) and the
 widely-shared non-song populations (Glut-DACH2-1..8, Glut-CACNA1H-1..4, spanning
 NC/NR/Arco/HVC diffusely) are NOT further subdivided by anatomical position -- consistent

@@ -12,7 +12,7 @@ separate one, so no extra compute was spent re-deriving that point.
 
 Same conventions as plot_sweep_heatmap_glutonly_hybrid.py: fixed biological row order
 (song nuclei HVCra/HVCx/LMANco/LMANsh/RA, then non-song DACH2, then non-song CACNA1H),
-Glut-DACH2-HVCra-Pre excluded, square cells, 6pt labels, reciprocity-weighted scores
+Glut-DACH2-HVCra-Int excluded, square cells, 6pt labels, reciprocity-weighted scores
 (reciprocal_score.best_per_cluster), vmax shared across the two k.filter panels WITHIN
 each axis's own figure (max.features and k.score are plotted as separate figures, each
 with its own scale -- not cross-comparable to each other or to the k.anchor figure without
@@ -38,9 +38,9 @@ OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glu
 TAG = "gg_glutonly_hybrid"
 BASE_KA = 30
 
-SONG_CLUSTERS = {"Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Pre", "Glut-DACH2-HVCx",
+SONG_CLUSTERS = {"Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
                  "Glut-CACNA1H-RA", "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh"}
-EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Pre"}
+EXCLUDED_CLUSTERS = {"Glut-DACH2-HVCra-Int"}
 ROW_ORDER = [
     "Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh", "Glut-CACNA1H-RA",
     "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",

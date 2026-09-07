@@ -3,7 +3,7 @@ at k.filter=200 -- companion to plot_sweep_heatmap_glutonly_hybrid_sct.py's k.fi
 ("manuscript config") version, added per explicit request to make the SCT track directly
 comparable to the log-norm analysis (which used k.filter=200 throughout). Both k.filter
 values are kept side by side under SCT, not one replacing the other. Same conventions
-otherwise (fixed biological row order, Glut-DACH2-HVCra-Pre excluded, square cells, 6pt
+otherwise (fixed biological row order, Glut-DACH2-HVCra-Int excluded, square cells, 6pt
 labels, anatomical-position row colours).
 """
 from pathlib import Path
