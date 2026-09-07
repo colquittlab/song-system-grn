@@ -68,6 +68,48 @@ DefaultAssay(obj) <- "SCT"
 obj <- obj[, !is.na(obj$celltype_hybrid)]
 Idents(obj) <- obj$celltype_hybrid
 
+## --- How the per-cell axis score is computed, exactly --------------------
+##
+## Input matrix: the SCT assay's `data` layer, i.e. log1p of SCT-corrected
+## counts. NOT MAGIC-smoothed -- MAGIC is applied only in the h5ad export
+## (snrna/naming/convert_to_h5ad_hybrid.R), never in this .qs2. The assay holds a
+## single SCT model, so FindMarkers here is not subject to the multi-model
+## PrepSCTFindMarkers() caveat.
+##
+## 1. Define the axis from the two ANCHORS ONLY. Wilcoxon rank-sum (Seurat's
+##    default) between HVCra and DACH2-1, min.pct 0.2, |log2FC| >= 0.5, keeping
+##    Bonferroni-adjusted p < 0.01. That leaves 1334 genes (690 up in HVCra, 644
+##    up in DACH2-1); the top N_AXIS_GENES = 100 by avg_log2FC in each direction
+##    become the two gene sets, so both are full 100 and the figures' "200 genes"
+##    is exact. HVCra-Int contributes nothing to this step -- its position is a
+##    prediction the data could have refused, not a fit.
+##
+## 2. Score each cell against each gene set with AddModuleScore (defaults:
+##    nbin = 24, ctrl = 100, slot = "data", seed = 1). For each gene set it:
+##      - bins all genes into 24 bins by mean expression across all cells;
+##      - draws 100 control genes from the same expression bin as each of the
+##        100 signature genes;
+##      - score = mean(signature genes in this cell)
+##                - mean(sampled control genes in this cell).
+##    Subtracting a bin-matched control set is what makes the score approximately
+##    independent of a cell's overall expression level: more counts raise both
+##    terms. The control draw is random, so `seed = 1` is what makes this
+##    reproducible; another seed moves scores in the third decimal.
+##
+## 3. raw = axis1 - axis2  (HVCra-side score minus DACH2-1-side score).
+##
+## 4. Rescale into anchor units:
+##      score = (raw - median(raw over all DACH2-1 cells))
+##              / (median(raw over all HVCra cells) - median(raw over all DACH2-1 cells))
+##    so the two anchor medians are exactly 0 and 1 BY CONSTRUCTION -- they are
+##    definitions, not measurements. This is affine and strictly monotone, so it
+##    changes no ordering and no rank statistic: the Mann-Whitney U and its
+##    p-value are identical with or without it. It only sets the units.
+##
+## What the score is not: an expression level, or a fraction of a transcriptome.
+## It is a bin-matched contrast between two gene sets, in units of the gap
+## between the two anchor clusters.
+##
 ## The axis genes: differential expression between the two anchors only. Nothing
 ## about HVCra-Int enters the definition of the axis, so its position on that
 ## axis is a prediction the data can refuse, not a fit.
@@ -301,6 +343,18 @@ three_stats <- three %>%
 ## points cannot evidence. Treat the per-bird points on the figure -- 3/3 birds
 ## ordered the same way, tightly grouped -- as the real bird-level evidence, and
 ## these p-values as a formality.
+## KNOWN ASYMMETRY, worth stating before reading the figure: the rescaling in
+## step 4 above sets the median of ALL 2561 DACH2-1 cells to 0, and that pool is
+## dominated by nc_run1 (1846 cells, median -0.022). The bird points below use
+## only DACH2-1's hvc_run1 cells (325), whose median is +0.055. That is why all
+## three DACH2-1 bird medians (0.047, 0.055, 0.135) sit above zero -- the zero
+## line and those points are computed on different cell sets, not a bug in
+## either. DACH2-1's axis position does vary by dissection library (lman +0.231,
+## hvc +0.055, nr +0.051, arco +0.038, nc -0.022, ra -0.024); note this does not
+## track proximity to HVC -- lman is the highest -- so it reads as a general
+## library/region effect on the score, not as a specifically peri-HVC gradient.
+## The offset (+0.055) is small against the HVCra-Int gap (0.42), so it does not
+## affect the conclusion, but the two are not the same cell set.
 BIRD_LIB <- "hvc_run1"
 BIRD_MIN_CELLS <- 20
 
