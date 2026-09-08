@@ -1,0 +1,277 @@
+---
+title: "Multiome label transfer, hybrid snRNA labels"
+format: html
+editor: source
+---
+
+Repeats `multiome/seurat/seurat_preprocess.qmd`'s `## Import snRNA` curation strategy (its
+`### Transfer labels` + `### Manually curate labels` sections) against the current hybrid-scheme
+snRNA labels (`snrna/naming/hybrid_division_naming.qmd`, `celltype_hybrid`) instead of the snRNA
+object's old raw `cluster` column that pipeline used.
+
+**Two deliberate differences from the original, both requested directly:**
+
+- **Separate script, separate object.** The original curation section ran in place inside the main
+  preprocessing notebook and overwrote that notebook's own output object
+  (`obj_clustered.qs`/`.h5seurat` under `MULTIOME_SEURAT_DIR`). This notebook reads that object
+  read-only and writes its own copy (`obj_clustered_hybrid.qs2`, this directory) so the original
+  multiome object is never touched.
+- **Majority vote, not a hand-typed relabeling table.** The original's final step
+  (`### Manually curate labels`) was a `case_when()` a human wrote by eyeballing the transfer
+  concordance heatmap and a UMAP overlay -- a judgment call, not something derivable from the code
+  or the data alone. Repeating the transfer mechanically here (same `FindTransferAnchors`/
+  `TransferData` call, same reference/query roles) but automating the curation step as each
+  multiome cluster's modal (most common) transferred label, printed in full below with its vote
+  fraction so a low-confidence call is visible rather than silently accepted, and overridable via
+  `cluster_hybrid_overrides` below without re-running the transfer.
+
+**Votes are grouped by the multiome's own already-curated `cluster` column** (the pipeline's final,
+hand-curated label), not a from-scratch reclustering. A from-scratch per-division reclustering was
+tried first (matching `seurat_preprocess.qmd`'s exact resolutions/`idents_comb` tables) specifically
+to avoid depending on that column's one known-artefactual entry (`Glut-Nido-3`, folded in by hand
+from a separate raw cluster, `Glut-NC-3`) -- but the clustering pipeline itself has drifted since
+this object was originally processed (package/algorithm updates), so a fresh reclustering no longer
+reproduces the original's own clusters: no cells map to `HVCx`, `Arco` picks up an extra cluster, and
+several GABA calls come out clearly wrong. Working from `cluster` avoids that drift; `Glut-Nido-3`
+itself is confirmed artefactual on its own UMAP (see `## QC: Glut-Nido-3`) and excluded outright,
+rather than folded into a vote.
+
+The legacy `obj_clustered.qs` (this pipeline's format, from before this project standardized on
+`qs2`) has already been converted to `obj_clustered.qs2` alongside it, by the same
+`convert_qs_to_qs2.R` helper used elsewhere in `/ssd/brad/rstudio/multiome` -- a format-only,
+read-only conversion (original `.qs` untouched); this notebook reads that `.qs2` copy.
+
+```{r}
+#| label: packages
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(ComplexHeatmap)
+library(circlize)
+library(here)
+
+source(here::here("config/paths.R"))
+source(here::here("config/figure_theme.R"))
+```
+
+## Parameters
+
+```{r}
+#| label: params
+multiome_fname <- file.path(MULTIOME_SEURAT_DIR, "obj_clustered.qs2")
+snrna_fname <- here::here("snrna/naming/hybrid_division_naming", "obj_hybrid_labels.qs2")
+
+## Same ordering used throughout the hybrid-scheme figures (snrna/trees/celltypes_hclust_all_hybrid.qmd),
+## repeated here (not sourced -- that notebook doesn't export it) so the concordance heatmap's columns
+## read in the same division/family order as everywhere else this scheme is plotted.
+ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
+             "Glut-DACH2-1", "Glut-DACH2-2", "Glut-DACH2-3", "Glut-DACH2-4",
+             "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco",
+             "Glut-DACH2-5", "Glut-DACH2-6", "Glut-DACH2-7", "Glut-DACH2-8", "Glut-SATB2-1",
+             "Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-CACNA1H-3", "Glut-CACNA1H-4",
+             "Glut-GABA",
+             "Glut-Im", "Glut-NB", "Glut-NSC",
+             "GABA-LGE-1", "GABA-LGE-2",
+             "GABA-MGE-SST-1", "GABA-MGE-SST-2", "GABA-MGE-SST-3",
+             "GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-PVALB-3",
+             "GABA-MGE-LAMP5", "GABA-MGE-ST18", "GABA-MGE-LHX8",
+             "GABA-CGE-1", "GABA-CGE-2",
+             "GABA-Im",
+             "Astro-1", "Astro-2", "Astro-3", "Epen",
+             "Oligo-1", "Oligo-2", "Oligo-3", "OPC",
+             "Micro", "Endo")
+
+## Hand overrides for the majority-vote curation below, same escape hatch pattern as
+## snrna/naming/hybrid_division_naming.qmd's *_overrides vectors: empty until a specific multiome
+## cluster's vote is reviewed and judged wrong, then keyed here rather than by re-running the transfer.
+cluster_hybrid_overrides <- setNames(c("Glut-CACNA1H-2", "Glut-DACH2-3", "Glut-DACH2-4", "GABA-Im", "GABA-CGE", "Oligo", "Astro", "Astro", "GABA-LGE-1", "GABA-LGE-2"),
+                                     c("Glut-Arco-6", "Glut-NC-3", "Glut-NC-4", "GABA-Pre", "GABA-5", "Oligo", "Astro-1", "Astro-2", "GABA-1-1", "GABA-1-2")
+                                     )
+
+out_dir <- here::here("multiome/seurat", "label_transfer_hybrid")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+obj_out_fname <- file.path(out_dir, "obj_clustered_hybrid.qs2")
+vote_fname <- file.path(out_dir, "cluster_hybrid_majority_vote.csv")
+vote_breakdown_fname <- file.path(out_dir, "cluster_hybrid_vote_breakdown.csv")
+```
+
+## Load
+
+Both read-only; neither is written back to.
+
+```{r}
+#| label: load
+multiome <- qs_read(multiome_fname, nthreads = 8)
+snrna <- qs_read(snrna_fname, nthreads = 8)
+```
+
+```{r}
+#| label: prep-reference
+## Same role as the original's `snrna = subset(snrna, subset=cluster!="Glut-Arco-4")` -- drop
+## clusters this hybrid scheme excludes (celltype_hybrid is NA for exactly those, see
+## snrna/naming/hybrid_division_naming.qmd's excluded_clusters) rather than naming just the one.
+DefaultAssay(snrna) <- "SCT"
+snrna <- subset(snrna, cells = colnames(snrna)[!is.na(snrna$celltype_hybrid)])
+```
+
+## QC: Glut-Nido-3
+
+`Glut-Nido-3` (part of `cluster`) was flagged as artefactual. Confirmed on the multiome's own
+existing UMAP: it doesn't occupy its own territory the way a real cluster does, it's scattered
+across the `Glut-NC-1`/`Glut-NC-2`/`Glut-NC-4` region -- excluded below rather than voted on.
+
+```{r fig.height=8, fig.width=8}
+#| label: qc-glut-nido3
+glut_cells <- colnames(multiome)[multiome$celltype == "Glut"]
+DimPlot(subset(multiome, cells = glut_cells), group.by = "cluster", reduction = "umap_rna_int", label = TRUE) +
+  ggtitle("Glutamatergic clusters (cluster, old post-curation naming)")
+```
+
+```{r}
+#| label: exclude-glut-nido3
+## Confirmed artefactual above (scattered across NC-1/NC-2/NC-4 rather than its own cluster) --
+## dropped entirely so it can't pull a low-confidence vote onto any real label, and so it never
+## reaches the saved object for downstream analysis (which only uses NC-1/NC-4 from this division
+## anyway).
+n_nido3 <- sum(multiome$cluster == "Glut-Nido-3")
+message("Excluding ", n_nido3, " Glut-Nido-3 cell(s) (confirmed artefactual, not voted on).")
+multiome <- subset(multiome, cells = colnames(multiome)[multiome$cluster != "Glut-Nido-3"])
+```
+
+## Transfer labels
+
+Identical call to the original (`reference.reduction = "pca"`, `dims = 1:30`, SCT normalization on
+both sides) -- only `refdata` changed, from the snRNA object's old `cluster` to `celltype_hybrid`.
+
+```{r}
+#| label: transfer
+DefaultAssay(multiome) <- "SCT"
+anchors <- FindTransferAnchors(reference = snrna,
+                               normalization.method = "SCT",
+                               query = multiome,
+                               dims = 1:30,
+                               reference.reduction = "pca")
+predictions <- TransferData(anchorset = anchors, refdata = snrna$celltype_hybrid, dims = 1:30)
+```
+
+```{r}
+#| label: apply-raw-transfer
+multiome$cluster_hybrid_snrna <- predictions$predicted.id
+```
+
+## Concordance heatmap
+
+Mean prediction score for each of the multiome's own existing clusters (`cluster` -- the label this
+pipeline had already curated once, under the pre-hybrid naming scheme) against every hybrid snRNA
+label, ordered by `ct_order`. Same construction as the original's QC heatmap, just against the new
+reference labels.
+
+```{r fig.height=10, fig.width=10}
+#| label: concordance-heatmap
+predictions$cluster <- multiome$cluster
+predictions_stat <- predictions %>%
+  select(-prediction.score.max) %>%
+  select(c(one_of("cluster"), contains("prediction.score."))) %>%
+  pivot_longer(contains("prediction.score."), names_to = "cluster_hybrid_snrna", values_to = "pred_score") %>%
+  mutate(cluster_hybrid_snrna = sub("prediction.score.", "", cluster_hybrid_snrna)) %>%
+  mutate(cluster_hybrid_snrna = gsub("\\.", "-", cluster_hybrid_snrna)) %>%
+  group_by(cluster, cluster_hybrid_snrna) %>%
+  summarize(pred_score_mean = mean(pred_score), .groups = "drop")
+
+predictions_stat_mat <- predictions_stat %>%
+  pivot_wider(names_from = "cluster_hybrid_snrna", values_from = "pred_score_mean") %>%
+  column_to_rownames("cluster") %>%
+  as.matrix()
+
+predictions_stat_mat <- predictions_stat_mat[, intersect(ct_order, colnames(predictions_stat_mat))]
+
+ncolors <- 9
+cols <- circlize::colorRamp2(breaks = seq(0, 1, length.out = ncolors),
+                             colors = scales::brewer_pal(palette = "Greys")(ncolors))
+
+Heatmap(predictions_stat_mat, col = cols, cluster_columns = FALSE, rect_gp = gpar(lwd = 0.5),
+       column_title = "Mean prediction score: multiome's own cluster (rows) x hybrid snRNA label (columns)")
+```
+
+## Curate: majority vote per multiome cluster
+
+Each multiome cluster's final `cluster_hybrid` is its own cells' modal `cluster_hybrid_snrna` call.
+Full per-cluster vote breakdown printed first -- not just the winner -- so a close or split vote is
+visible before it is used.
+
+```{r}
+#| label: vote-breakdown
+vote_breakdown <- multiome@meta.data %>%
+  count(cluster, cluster_hybrid_snrna, name = "n_cells") %>%
+  group_by(cluster) %>%
+  mutate(vote_frac = n_cells / sum(n_cells)) %>%
+  arrange(cluster, desc(vote_frac)) %>%
+  ungroup()
+write_csv(vote_breakdown, vote_breakdown_fname)
+
+vote_majority <- vote_breakdown %>%
+  group_by(cluster) %>%
+  slice_max(n_cells, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(cluster_hybrid_snrna = if_else(cluster %in% names(cluster_hybrid_overrides),
+                                        unname(cluster_hybrid_overrides[cluster]), cluster_hybrid_snrna)) %>%
+  rename(cluster_hybrid = cluster_hybrid_snrna)
+write_csv(vote_majority, vote_fname)
+
+kable_low_conf <- vote_majority %>% filter(vote_frac < 0.5) %>% arrange(vote_frac)
+if (nrow(kable_low_conf) > 0) {
+  message(nrow(kable_low_conf), " multiome cluster(s) have NO majority (top vote < 50% of cells) ",
+         "-- review these specifically, override via cluster_hybrid_overrides if the vote looks wrong:")
+  print(kable_low_conf)
+} else {
+  message("Every multiome cluster's top vote already exceeds 50% of its own cells.")
+}
+knitr::kable(vote_majority, digits = 2,
+            caption = "Final per-cluster curated label: modal transferred hybrid label and its vote fraction") %>%
+  fig_kable_light()
+```
+
+```{r}
+#| label: apply-curated
+cluster_hybrid_map <- setNames(vote_majority$cluster_hybrid, vote_majority$cluster)
+stopifnot("Every multiome cluster must resolve to a curated label" =
+            all(unique(as.character(multiome$cluster)) %in% names(cluster_hybrid_map)))
+multiome$cluster_hybrid <- unname(cluster_hybrid_map[as.character(multiome$cluster)])
+
+kable_summary <- multiome@meta.data %>% count(cluster_hybrid, name = "n_cells") %>% arrange(desc(n_cells))
+knitr::kable(kable_summary, caption = "Cell counts per final curated cluster_hybrid label") %>%
+  fig_kable_light()
+```
+
+## QC: visual comparison
+
+Same three-way overlay as the original (`cluster` / `cluster_hybrid_snrna` / `cluster_hybrid`,
+plus `run` and `assignment` as batch/genotype checks) on the multiome's own existing UMAP -- this
+notebook adds no new dimensionality reduction of its own.
+
+```{r fig.height=10, fig.width=10}
+#| label: qc-umap
+reduction_cur <- "umap_rna_int"
+DimPlot(multiome, group.by = "cluster", reduction = reduction_cur, label = TRUE) + ggtitle("cluster (pre-existing, old naming)")
+DimPlot(multiome, group.by = "cluster_hybrid_snrna", reduction = reduction_cur, label = TRUE) + ggtitle("cluster_hybrid_snrna (raw transfer)")
+DimPlot(multiome, group.by = "cluster_hybrid", reduction = reduction_cur, label = TRUE) + ggtitle("cluster_hybrid (majority-vote curated)")
+DimPlot(multiome, group.by = "run", reduction = reduction_cur, label = TRUE)
+DimPlot(multiome, group.by = "assignment", reduction = reduction_cur, label = FALSE)
+```
+
+## Save
+
+Own copy, own filename -- `MULTIOME_SEURAT_DIR`'s `obj_clustered.qs`/`.qs2` are never written to by
+this notebook.
+
+```{r}
+#| label: save
+qs_save(multiome, obj_out_fname, nthreads = 1)
+message("Wrote ", obj_out_fname)
+```
+
+```{r}
+#| label: session-info
+sessionInfo()
+```
