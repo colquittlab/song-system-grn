@@ -129,8 +129,31 @@ dot_offsets <- function(n) {
   as.matrix(g[seq_len(n), ])
 }
 
+## --- Hybrid-label relabeling ---------------------------------------------------
+## The composite-scoring matrices index finch (row) clusters by whatever cluster
+## identity existed when each was computed -- Glut rows already carry their final
+## celltype_hybrid name (computed first), GABA rows still carry the raw pre-rename
+## cluster id (GABA-5-1, etc. -- the GABA hybrid names in
+## snrna/naming/hybrid_division_naming.qmd were themselves derived FROM this
+## composite table, so it necessarily predates them). `hybrid_label_lookup.csv`
+## is the single source of truth for old-id -> final-hybrid-name; relabel any row
+## whose name is still a raw cluster id, and leave already-hybrid names (and
+## non-neuronal names, which are unchanged by the hybrid scheme) untouched.
+hybrid_lookup_fname <- here::here("snrna/naming/hybrid_division_naming", "hybrid_label_lookup.csv")
+relabel_finch_clusters <- function(names, lookup_fname = hybrid_lookup_fname) {
+  lut <- read.csv(lookup_fname, stringsAsFactors = FALSE)
+  m <- match(names, lut$cluster)
+  out <- names
+  hit <- !is.na(m) & !is.na(lut$new_label[m])
+  out[hit] <- lut$new_label[m[hit]]
+  out
+}
+
 read_matrix <- function(path) {
   M <- as.matrix(read.csv(path, row.names = 1, check.names = FALSE))
   M[is.na(M)] <- 0
+  rownames(M) <- relabel_finch_clusters(rownames(M))
+  stopifnot("relabeling to hybrid names produced duplicate finch cluster rows" =
+              !anyDuplicated(rownames(M)))
   M
 }

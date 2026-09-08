@@ -12,8 +12,8 @@
 "Finch × mouse","agree_frac","GABAergic > Glutamatergic",0.355100606269867
 "Finch × mouse","agree_frac","Non-neuronal > Glutamatergic",0.0064240601935001
 "chicken vs mouse (paired)","confidence","Non-neuronal: chicken > mouse",0.0419921875
-"chicken vs mouse (paired)","agree_frac","Non-neuronal: chicken > mouse",0.0838521518016197
+"chicken vs mouse (paired)","agree_frac","Non-neuronal: chicken > mouse",0.0546875
 "chicken vs mouse (paired)","confidence","GABAergic: chicken > mouse",6.103515625e-05
-"chicken vs mouse (paired)","agree_frac","GABAergic: chicken > mouse",0.000667950823210498
+"chicken vs mouse (paired)","agree_frac","GABAergic: chicken > mouse",0.0001220703125
 "chicken vs mouse (paired)","confidence","Glutamatergic: chicken > mouse",1.04904174804687e-05
-"chicken vs mouse (paired)","agree_frac","Glutamatergic: chicken > mouse",0.000787741352871817
+"chicken vs mouse (paired)","agree_frac","Glutamatergic: chicken > mouse",0.00048065185546875

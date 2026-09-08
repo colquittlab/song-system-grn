@@ -121,3 +121,23 @@ fig_save <- function(plot, path_noext, width, height, dpi = 600) {
 ## Geoms do not inherit the theme's family; set their default on source.
 update_geom_defaults("text", list(family = FIG_FONT))
 update_geom_defaults("label", list(family = FIG_FONT))
+
+## --- Tables -------------------------------------------------------------------
+## knitr::kable()'s plain HTML <table> carries no colour of its own, so it just
+## inherits whatever the renderer's background is. RStudio's inline chunk-output
+## preview follows the editor theme -- in a dark theme that background goes
+## dark, but the table text stays browser-default black, so it reads as
+## black-on-near-black. This is a display-only fix (pins the table to a plain
+## light background/dark text always, independent of IDE theme) not a real
+## dark-mode: readability over consistency, since it doesn't itself adapt.
+##
+## A PAGE-WIDE <style> rule targeting the bare `table` selector was tried first and
+## broke RStudio's own popped-out chunk-output windows (their chrome is itself
+## table-based, so the same rule painted it invisible too). Inline style on the
+## specific table's own tag instead -- cannot bleed into anything else on the page.
+## Wrap each kable() call, not a call-once-per-notebook side effect:
+##   knitr::kable(df) %>% fig_kable_light()
+fig_kable_light <- function(kable_obj) {
+  x <- sub("<table", '<table style="background-color:#ffffff;color:#000000;"', as.character(kable_obj), fixed = TRUE)
+  knitr::asis_output(x)
+}
