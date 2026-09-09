@@ -4,7 +4,7 @@ format: html
 ---
 
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(tidyverse)
@@ -18,8 +18,11 @@ library(scCustomize)
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "pos_regulators"
+source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
+
+proj_dir = ARCHR_PROJ_DIR
+script_name = "pos_regulators_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 ```
@@ -30,12 +33,12 @@ addArchRThreads(threads = 1) ## Ortherwise functions hang
 
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 ```
 ```{r}
-pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
-                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
-                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4")
-                 )
+pair_list = hybrid_pairs_glut
 ```
 
 
@@ -48,7 +51,7 @@ dir.create(subset_dir)
 
 proj_split = map(seq_along(pair_list), function(i) {
   to_include = unlist(pair_list[[i]])
-  cells = getCellNames(proj)[proj$cluster %in% to_include]
+  cells = getCellNames(proj)[proj$cluster_hybrid %in% to_include]
   #subsetArchRProject(proj, cells=cells, outputDirectory = file.path(subset_dir, names(pair_list)[i]),)
   subsetCells(proj, cells)
 }) %>% set_names(names(pair_list))
@@ -59,7 +62,7 @@ seZ_list = map(seq_along(proj_split), function(i) {
   proj_cur = proj_split[[i]]
   
   seGroupMotif <- getGroupSE(ArchRProj = proj_cur, 
-                             useMatrix = "MotifHSMatrix", groupBy = "cluster")
+                             useMatrix = "MotifHSMatrix", groupBy = "cluster_hybrid")
   
   rownames(seGroupMotif) = getFeatures(proj_cur, "MotifHSMatrix")
   
@@ -133,11 +136,12 @@ neg_reg_list = map(seq_along(proj_split), function(i) {
 
 ### DEG
 ```{r}
-data_obj_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/obj_clustered.qs"
+## Hybrid-labelled copy of the multiome object (multiome/seurat/label_transfer_hybrid.qmd).
+data_obj_fname = HYBRID_OBJ_QS2
 ```
 
 ```{r}
-obj = qread(data_obj_fname)
+obj = qs2::qs_read(data_obj_fname, nthreads = 8)
 #obj$cluster = obj$cluster_snrna
 ```
 
@@ -147,13 +151,13 @@ FeaturePlot_scCustom(obj, features=c("MAFB", "NDNF"), reduction = "umap_rna_int"
 ```
 
 ```{r}
-table(obj$cluster, obj$position)
+table(obj$cluster_hybrid, obj$position)
 ```
 
 ```{r}
 #obj = JoinLayers(obj)
-obj_aggr = AggregateExpression(obj, assays = "SCT", return.seurat = T, group.by = c("assignment", "cluster"))
-Idents(obj_aggr) = obj_aggr$cluster
+obj_aggr = AggregateExpression(obj, assays = "SCT", return.seurat = T, group.by = c("assignment", "cluster_hybrid"))
+Idents(obj_aggr) = obj_aggr$cluster_hybrid
 ```
 
 ```{r}
@@ -319,8 +323,10 @@ hm_cor + hm_log2FC
 ### UMAPs
 
 ```{r}
-obj_glut_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/reduction_viz/combined_glut_umap_dotplot_tfs/obj_clustered.qs"
-obj_glut = qread(obj_glut_fname)
+## The pre-hybrid run read a glut-only object saved by reduction_viz; there is no
+## hybrid-labelled counterpart of that object, so subset the hybrid object here. Only
+## the focal glut clusters are plotted below, and that subset is what the object was.
+obj_glut = subset(obj, cells = colnames(obj)[obj$cluster_hybrid %in% unlist(hybrid_pairs_glut)])
 #obj_glut$cluster = obj_glut$cluster_snrna
 ```
 
@@ -358,13 +364,13 @@ for (tp in to_plot) {
 ```{r fig.width=10}
 #to_plot = rownames(corGEM_all_cor)
 DefaultAssay(obj) = "SCT"
-ct_order = c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")
-obj_glut$cluster = factor(obj_glut$cluster, levels=ct_order)
+ct_order = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-HVCx", "Glut-DACH2-4")
+obj_glut$cluster_hybrid = factor(obj_glut$cluster_hybrid, levels=ct_order)
 
-cells = Cells(obj_glut)[!is.na(obj_glut$cluster)]
+cells = Cells(obj_glut)[!is.na(obj_glut$cluster_hybrid)]
 obj_glut = subset(obj_glut, cells=cells)
 
-gg = DotPlot_scCustom(obj_glut, features=to_plot, group.by = "cluster", flip_axes = T, x_lab_rotate = T )
+gg = DotPlot_scCustom(obj_glut, features=to_plot, group.by = "cluster_hybrid", flip_axes = T, x_lab_rotate = T )
 gg
 save_plot(file.path(out_dir, "dotplot.pdf"), gg)
 ```
@@ -372,7 +378,7 @@ save_plot(file.path(out_dir, "dotplot.pdf"), gg)
 ### Heatmap
 
 ```{r}
-expr = AggregateExpression(obj_filt2, features=to_plot, assays="SCT",  group.by="cluster")[[1]]
+expr = AggregateExpression(obj_filt2, features=to_plot, assays="SCT",  group.by="cluster_hybrid")[[1]]
 
 ```
 

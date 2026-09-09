@@ -1,0 +1,10 @@
+/.quarto/
+**/*.quarto_ipynb
+
+## Quarto leftovers from an interrupted render
+*.rmarkdown
+
+## The project's full peak set, re-exported by several scripts (~18 MB each) --
+## identical every time and derivable from the ArchR project. The differential-peak
+## BEDs beside it are small and stay tracked.
+**/beds/peak_set.bed

@@ -10,7 +10,7 @@ library(BSgenome.LStriataDom.Brainard.lonStrDom2.ucsc)
 library(TxDb.LstriataDomestica.lonStrDom2.merge3p.ucsc.assembled)
 library(org.Lstriata.eg.db)
 library(tidyverse)
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(SingleCellExperiment)
 library(cowplot)
 library(furrr)
@@ -26,6 +26,7 @@ library(ggrepel)
 
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -412,6 +413,16 @@ rtracklayer::export(gr, bed_fname)
 
 
 ## Differential peaks
+
+Everything from here on is grouped by the hybrid labels. `cluster` above is left as
+it is -- it is what the project was built and peak-called on, and what
+`multiome/seurat/label_transfer_hybrid.qmd` transferred the hybrid labels onto.
+
+```{r}
+## In memory only; drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
+```
+
 ```{r}
 plan(multisession(workers = 36))
 ```
@@ -424,29 +435,26 @@ dir.create(markers_dir)
 
 ### Pairs
 ```{r}
-pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
-                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
-                 hvc_3 = list("Glut-HVC-2", "Glut-NC-4")
-                 )
+pair_list = hybrid_pairs_glut
 ```
 
 ```{r}
 markers_peaks_glut_fname = file.path(markers_dir, "markers_peaks_glut.rds")
 redo = T
 if (redo) {
-  cluster_name_cur = "cluster"
+  cluster_name_cur = "cluster_hybrid"
   proj_cur = proj[grep("Glut", proj@cellColData[,cluster_name_cur])]
   cluster_data = getCellColData(proj_cur, cluster_name_cur)
   clusters = unique(cluster_data)[,1]
-  
-  proj_cur$cluster = as.character(proj_cur$cluster) ## Required for getMarkerFeatures or will error
+
+  proj_cur$cluster_hybrid = as.character(proj_cur$cluster_hybrid) ## Required for getMarkerFeatures or will error
   
   marker_peaks_glut = map(pair_list, function(pair_cur) {
     print(pair_cur)
     getMarkerFeatures(
       ArchRProj = proj_cur,
       useMatrix = "PeakMatrix", 
-      groupBy = "cluster",
+      groupBy = "cluster_hybrid",
       useGroups = pair_cur[[1]],
       bgdGroups = pair_cur[[2]],
       bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -515,7 +523,7 @@ d_out = d %>%
     mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
     select(seqnames, start, end, name)
   #cluster_cur = unique(d$cluster)
-  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_intersect"))
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-CACNA1H-RA_Glut-DACH2-HVCra_Glut-DACH2-HVCx_intersect"))
   write_delim(d_out, fname, delim="\t", col_names = F )
   
   
@@ -525,7 +533,7 @@ d_out = d %>%
     mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
     select(seqnames, start, end, name)
   #cluster_cur = unique(d$cluster)
-  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_union"))
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-CACNA1H-RA_Glut-DACH2-HVCra_Glut-DACH2-HVCx_union"))
   write_delim(d_out, fname, delim="\t", col_names = F )
   
 ```
@@ -565,11 +573,11 @@ markerGenes  <- c(
   "NDNF", "SIX2", "AR", "NFIC", "MAFB", "PPARG", "TBR1"
 )
 
-proj$cluster = as.character(proj$cluster)
-proj_sub = proj[grepl("Glut", proj$cluster),]
+proj$cluster_hybrid = as.character(proj$cluster_hybrid)
+proj_sub = proj[grepl("Glut", proj$cluster_hybrid),]
 p <- plotBrowserTrack(
     ArchRProj = proj_sub,
-    groupBy = "cluster", 
+    groupBy = "cluster_hybrid", 
     geneSymbol = markerGenes, 
     upstream = 100000,
     downstream = 50000,
@@ -594,7 +602,7 @@ dir.create(peak2gene_dir)
 redo = T
 if (redo) {
 proj_split = map(pair_list, function(pl) {
-  proj[proj$cluster %in% unlist(pl)]
+  proj[proj$cluster_hybrid %in% unlist(pl)]
  # proj_glut[proj_glut$region==re]
 })
 

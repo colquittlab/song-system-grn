@@ -6,7 +6,7 @@ format: html
 
 ## Setup
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(furrr)
@@ -20,6 +20,7 @@ library(scCustomize)
 
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -33,8 +34,8 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "peaks2geneslinks"
+proj_dir = ARCHR_PROJ_DIR
+script_name = "peaks2geneslinks_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
@@ -43,19 +44,26 @@ addArchRThreads(threads = 36)
 
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 ```
 
 ```{r}
-clusters = unique(proj$cluster)
-pair_list = list(ra = list("Glut-RA", c("Glut-Arco-1")),
-                 hvc_1 = list("Glut-HVC-1", c("Glut-NC-1")),
-                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4"),
-                 gaba = grep("GABA", clusters, value=T),
-                 pre = clusters[grepl("Pre", clusters) & !grepl("GABA", clusters)],
-                 arco_glut = grep("Arco|RA", clusters, value=T),
-                 nido_glut = grep("HVC|NC|Nido", clusters, value=T),
-                 neuroglia = grep("Astro|Oligo|OPC", clusters, value=T)
-                 )
+clusters = unique(proj$cluster_hybrid)
+## The three focal contrasts plus the family-level groupings. The old names encoded
+## the families in the label itself ("Arco|RA", "HVC|NC|Nido", "Pre"), so these were
+## grepl() over `clusters`; the hybrid names don't, so they come from
+## hybrid_groups in multiome/archr/hybrid_labels.R instead.
+pair_list = c(hybrid_pairs_glut,
+              list(gaba = hybrid_groups$gaba,
+                   ## Glut precursors only, as before (GABA-Im excluded).
+                   pre = c("Glut-Im", "Glut-NB", "Glut-NSC"),
+                   arco_glut = hybrid_groups$arco_glut,
+                   nido_glut = hybrid_groups$nido_glut,
+                   neuroglia = hybrid_groups$neuroglia)
+              )
+stopifnot(all(unlist(pair_list) %in% clusters))
 ```
 
 ## Peak2Gene
@@ -66,7 +74,7 @@ if (redo) {
 cell_names = getCellNames(proj)
 
 cells_list = map(pair_list, function(pl) {
-  cell_names[proj$cluster %in% unlist(pl)]
+  cell_names[proj$cluster_hybrid %in% unlist(pl)]
 })
 
 proj_split = map(cells_list, function(cells_cur) {
@@ -96,7 +104,7 @@ proj_regions = map(cell_regions, function(cells_cur) {
     useMatrix = "GeneExpressionMatrix"
   )
 })
-names(proj_regions) = names(regions)
+names(proj_regions) = regions  ## was names(regions), which is NULL -- the per-region BED loop below then wrote nothing
 }
 ```
 

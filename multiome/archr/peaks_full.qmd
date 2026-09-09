@@ -6,7 +6,7 @@ format: html
 
 ## Setup
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(furrr)
@@ -20,6 +20,7 @@ library(scCustomize)
 
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -33,8 +34,8 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "peaks_full"
+proj_dir = ARCHR_PROJ_DIR
+script_name = "peaks_full_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
@@ -43,6 +44,9 @@ addArchRThreads(threads = 36)
 
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 ```
 
 ```{r}
@@ -51,24 +55,25 @@ plan(multisession(workers = 4))
 
 ## Full pairwise differential accessibility
 ```{r}
-clusters = unique(proj$cluster)
+clusters = unique(proj$cluster_hybrid)
 pairs_full = combn(clusters, 2, simplify = F)
 
-proj$cluster = as.character(proj$cluster) ## Required for getMarkerFeatures or will error
+proj$cluster_hybrid = as.character(proj$cluster_hybrid) ## Required for getMarkerFeatures or will error
 
 ```
 
 ```{r}
 markers_peaks_glut_fname = file.path(out_dir, "peaks_full.rds")
-redo = F
+## Was FALSE, reading a cached result -- this output directory is new, so compute.
+redo = T
 if (redo) {
-  cluster_name_cur = "cluster"
+  cluster_name_cur = "cluster_hybrid"
   marker_peaks_glut = future_map(pairs_full, function(pair_cur) {
     print(pair_cur)
     getMarkerFeatures(
       ArchRProj = proj,
       useMatrix = "PeakMatrix",
-      groupBy = "cluster",
+      groupBy = "cluster_hybrid",
       useGroups = pair_cur[[1]],
       bgdGroups = pair_cur[[2]],
       bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -124,9 +129,9 @@ marker_peaks_glut_n = marker_peaks_glut_n %>%
                                  TRUE ~ class_name)
   ) %>%
   #mutate(n_peaks_sign = n_peaks * Log2FC_sign) %>%
-  # mutate(song = case_when(pair_name %in% c("Glut-RA_Glut-Arco-1", "Glut-Arco-1_Glut-RA") ~ "RA",
-  #                         pair_name %in% c("Glut-HVC-1_Glut-NC-1", "Glut-NC-1_Glut-HVC-1",
-  #                                        "Glut-HVC-2_Glut-Nido-3", "Glut-Nido-3_Glut-HVC-2") ~ "HVC",
+  # mutate(song = case_when(pair_name %in% c("Glut-RA_Glut-CACNA1H-1", "Glut-Arco-1_Glut-CACNA1H-RA") ~ "RA",
+  #                         pair_name %in% c("Glut-HVC-1_Glut-DACH2-1", "Glut-NC-1_Glut-DACH2-HVCra",
+  #                                        "Glut-HVC-2_Glut-Nido-3", "Glut-Nido-3_Glut-DACH2-HVCx") ~ "HVC",
   #                         TRUE ~ "nonsong"))
   mutate(song = case_when(grepl("RA", pair_name) ~ "RA",
                           grepl("HVC", pair_name) ~ "HVC",

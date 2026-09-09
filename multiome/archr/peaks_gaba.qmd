@@ -6,7 +6,7 @@ format: html
 
 ## Setup
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(furrr)
@@ -20,6 +20,7 @@ library(scCustomize)
 library(plyranges)
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "stats.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
@@ -34,8 +35,8 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "peaks_gaba"
+proj_dir = ARCHR_PROJ_DIR
+script_name = "peaks_gaba_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
@@ -50,6 +51,9 @@ cor_dist = function(x) proxy::dist(x, method="correlation")
 ## Load data
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 ```
 
 ```{r}
@@ -60,36 +64,31 @@ tfs = read_delim("../../data/lambert_tfs/tfs.csv")
 ```{r}
 #pathToMacs2 <- findMacs2()
 
-if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
-  proj <- addReproduciblePeakSet(
-    ArchRProj = proj, 
-    threads = 1, 
-    groupBy = "cluster",
-    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
-    excludeChr = chrM,
-    genomeSize = 1E9,
-    plot=F,
-    genomeAnnotation = genomeAnnotation,
-    geneAnnotation = geneAnnotation
-  )
-  proj <- addPeakMatrix(proj)
-  saveArchRProject(proj, load=F)
-} 
+## The peak set is the project's, called once in archr_processing.qmd on `cluster`
+## and reused here as a fixed feature space -- relabeling the cells does not change
+## which regions are open. Re-calling peaks grouped by `cluster_hybrid` would mean
+## writing a new PeakCalls/ and PeakMatrix back into the shared 84 GB project, which
+## nothing in this directory does; if that is ever wanted it belongs in
+## archr_processing.qmd, next to the call that produced the current set.
+stopifnot("PeakMatrix" %in% getAvailableMatrices(proj))
 
 ```
 
 ## Find DARs
 ```{r}
-pair_list = list(gaba4_gaba1= list("GABA-4-1", "GABA-1-1"),
-                 gaba2_gaba1= list("GABA-2-1", "GABA-1-1")
-                 )
+pair_list = hybrid_pairs_gaba
 ```
 
 ```{r}
 markers_peaks_sns_se_fname = file.path(out_dir, "peaks_nonsong_se.rds")
 markers_peaks_sns_fname = file.path(out_dir, "peaks_nonsong.rds")
 
-redo = F
+## Set here (was set only in the DAR section below, after two figures had already
+## used it in their filenames).
+fdr_thresh = 0.1
+
+## Was FALSE, reading a cached result -- this output directory is new, so compute.
+redo = T
 if (redo) {
   
   marker_peaks_sns = map(pair_list, \(pair_cur) {
@@ -97,7 +96,7 @@ if (redo) {
       getMarkerFeatures(
         ArchRProj = proj, 
         useMatrix = "PeakMatrix", 
-        groupBy = "cluster",
+        groupBy = "cluster_hybrid",
         useGroups = pair_cur[[1]],
         bgdGroups = pair_cur[[2]],
         bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -116,7 +115,10 @@ marker_peaks_sns_gr = map(marker_peaks_sns, function(peaks_cur) {
 })
 
 marker_peaks_sns_df = map(marker_peaks_sns_gr, as.data.frame) %>%
-  bind_rows( .id="comparison")
+  bind_rows( .id="comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+
+saveRDS(marker_peaks_sns_df, markers_peaks_sns_fname)
 
 
 ```
@@ -173,8 +175,27 @@ d_out = d %>%
 
 
 
+### Compute average accessibility
 ```{r}
-ct_order = c("GABA-1-1", "GABA-2-1", "GABA-4-1")
+# Get summarized experiment of peak matrix aggregated by cluster
+sePeak <- getGroupSE(
+    ArchRProj = proj,
+    useMatrix = "PeakMatrix",
+    groupBy = "cluster_hybrid"
+)
+
+rdata = rowData(sePeak) %>%
+  as.data.frame() %>% 
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+# Extract the average accessibility matrix (assays)
+# This results in a matrix: Rows=Peaks, Columns=Clusters
+averageAccessibility <- assay(sePeak)
+rownames(averageAccessibility) = rdata$region
+mat_avg = averageAccessibility
+```
+
+```{r}
+ct_order = c("GABA-LGE-1", "GABA-MGE-SST-1", "GABA-MGE-PVALB-2")
 mat_avg = mat_avg[,ct_order]
 
 mat_filter = mat_avg[rownames(mat_avg) %in% marker_peaks_sns_df$region,]
@@ -283,24 +304,6 @@ marker_peaks_sns_df_all = map(marker_peaks_sns_gr_all, as.data.frame) %>%
   mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
 ```
 
-### Compute average accessibility
-```{r}
-# Get summarized experiment of peak matrix aggregated by cluster
-sePeak <- getGroupSE(
-    ArchRProj = proj,
-    useMatrix = "PeakMatrix",
-    groupBy = "cluster"
-)
-
-rdata = rowData(sePeak) %>%
-  as.data.frame() %>% 
-  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
-# Extract the average accessibility matrix (assays)
-# This results in a matrix: Rows=Peaks, Columns=Clusters
-averageAccessibility <- assay(sePeak)
-rownames(averageAccessibility) = rdata$region
-mat_avg = averageAccessibility
-```
 
 ### Log2FC threshold
 ```{r}

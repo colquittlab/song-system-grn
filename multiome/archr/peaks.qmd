@@ -6,7 +6,7 @@ format: html
 
 ## Setup
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(furrr)
@@ -20,6 +20,7 @@ library(scCustomize)
 
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -33,8 +34,8 @@ names(position_colors2) = case_when(pnames2 == "nido" ~ "nr",
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "peaks"
+proj_dir = ARCHR_PROJ_DIR
+script_name = "peaks_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
@@ -43,6 +44,9 @@ addArchRThreads(threads = 36)
 
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 
 ```
 
@@ -50,27 +54,16 @@ proj = loadArchRProject(proj_dir)
 ```{r}
 #pathToMacs2 <- findMacs2()
 
-if (! ("PeakMatrix" %in% getAvailableMatrices(proj))) {
-  proj <- addReproduciblePeakSet(
-    ArchRProj = proj, 
-    threads = 1, 
-    groupBy = "cluster",
-    pathToMacs2 = '/home/brad/anaconda3/envs/scenicplus/bin/macs2',
-    excludeChr = chrM,
-    genomeSize = 1E9,
-    plot=F,
-    genomeAnnotation = genomeAnnotation,
-    geneAnnotation = geneAnnotation
-  )
-  proj <- addPeakMatrix(proj)
-  saveArchRProject(proj, load=F)
-} 
+## The peak set is the project's, called once in archr_processing.qmd on `cluster`
+## and reused here as a fixed feature space -- relabeling the cells does not change
+## which regions are open. See the same note in peaks_glut.qmd.
+stopifnot("PeakMatrix" %in% getAvailableMatrices(proj))
 
 ```
 
 ### Export beds
 ```{r}
-bed_dir = file.path(proj_dir, "beds")
+bed_dir = file.path(out_dir, "beds")  ## own directory; never the shared project
 dir.create(bed_dir)
 
 bed_fname = file.path(bed_dir, "peak_set.bed")
@@ -87,10 +80,7 @@ plan(multisession(workers = 4))
 
 ### Song-nonsong, Glut
 ```{r}
-pair_list = list(ra= list("Glut-RA", "Glut-Arco-1"),
-                 hvc_1 = list("Glut-HVC-1", "Glut-NC-1"),
-                 hvc_2 = list("Glut-HVC-2", "Glut-NC-4")
-                 )
+pair_list = hybrid_pairs_glut
 ```
 
 ```{r}
@@ -105,7 +95,7 @@ if (redo) {
       getMarkerFeatures(
         ArchRProj = proj, 
         useMatrix = "PeakMatrix", 
-        groupBy = "cluster",
+        groupBy = "cluster_hybrid",
         useGroups = pair_cur[[1]],
         bgdGroups = pair_cur[[2]],
         bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -152,7 +142,7 @@ marker_peaks_sns_glut_df_all = map(marker_peaks_sns_glut_gr_all, as.data.frame) 
 sePeak <- getGroupSE(
     ArchRProj = proj,
     useMatrix = "PeakMatrix",
-    groupBy = "cluster"
+    groupBy = "cluster_hybrid"
 )
 
 rdata = rowData(sePeak) %>%
@@ -230,7 +220,7 @@ hm
 ```
 
 ```{r}
-ct_order = c("Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-RA", "Glut-Arco-1")
+ct_order = c("Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-HVCx", "Glut-DACH2-4", "Glut-CACNA1H-RA", "Glut-CACNA1H-1")
 mat_avg = mat_avg[,ct_order]
 
 mat_avg_filter = mat_avg[names(mat_dar_keep)[mat_dar_keep],]
@@ -258,7 +248,7 @@ hm
 
 #### DAR
 ```{r fig.height = 10}
-ct_order = c("Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4", "Glut-RA", "Glut-Arco-1")
+ct_order = c("Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-HVCx", "Glut-DACH2-4", "Glut-CACNA1H-RA", "Glut-CACNA1H-1")
 mat_avg = mat_avg[,ct_order]
 #thresh = 1
 
@@ -586,7 +576,7 @@ dev.off()
 proj_se_ge = getGroupSE(
   ArchRProj = proj,
   useMatrix = "GeneExpressionMatrix",
-  groupBy = "cluster"
+  groupBy = "cluster_hybrid"
 )
 proj_df_ge = assay(proj_se_ge)
 rownames(proj_df_ge) = getFeatures(proj, "GeneExpressionMatrix")
@@ -1092,7 +1082,7 @@ d_out = d %>%
     mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
     select(seqnames, start, end, name)
   #cluster_cur = unique(d$cluster)
-  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_intersect"))
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-CACNA1H-RA_Glut-DACH2-HVCra_Glut-DACH2-HVCx_intersect"))
   write_delim(d_out, fname, delim="\t", col_names = F )
   
   
@@ -1102,21 +1092,19 @@ d_out = d %>%
     mutate(name = sprintf("%s:%s-%s", seqnames, start, end)) %>%
     select(seqnames, start, end, name)
   #cluster_cur = unique(d$cluster)
-  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-RA_Glut-HVC-1_Glut-HVC-2_union"))
+  fname = file.path(bed_dir, sprintf("%s.bed", "Glut-CACNA1H-RA_Glut-DACH2-HVCra_Glut-DACH2-HVCx_union"))
   write_delim(d_out, fname, delim="\t", col_names = F )
   
 ```
 
 ### GABA
 ```{r}
-proj$cluster = as.character(proj$cluster) ## Required for getMarkerFeatures or will error
+proj$cluster_hybrid = as.character(proj$cluster_hybrid) ## Required for getMarkerFeatures or will error
   
 ```
 
 ```{r}
-pair_list = list(gaba21_gaba11= list("GABA-2-1", "GABA-1-1"),
-                 gaba41_gaba11 = list("GABA-4-1", "GABA-1-1")
-                 )
+pair_list = hybrid_pairs_gaba
 
 #names(pair_list) = map_chr(pair_list, function(x) paste(x, collapse="_"))
 ```
@@ -1133,7 +1121,7 @@ if (redo) {
       getMarkerFeatures(
         ArchRProj = proj, 
         useMatrix = "PeakMatrix", 
-        groupBy = "cluster",
+        groupBy = "cluster_hybrid",
         useGroups = pair_cur[[1]],
         bgdGroups = pair_cur[[2]],
         bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -1167,9 +1155,9 @@ if (redo) {
 
 ### Astro
 ```{r}
-pair_list = list(astro1_oligo = list("Astro-1", "Oligo"),
-                 astro2_oligo = list("Astro-2", "Oligo")
-                 )
+## Was astro1_oligo / astro2_oligo -- Astro-1 and Astro-2 are a single Astro
+## cluster under the hybrid scheme, so the two contrasts are now one.
+pair_list = list(astro_oligo = list("Astro", "Oligo"))
 
 #names(pair_list) = map_chr(pair_list, function(x) paste(x, collapse="_"))
 ```
@@ -1186,7 +1174,7 @@ if (redo) {
       getMarkerFeatures(
         ArchRProj = proj, 
         useMatrix = "PeakMatrix", 
-        groupBy = "cluster",
+        groupBy = "cluster_hybrid",
         useGroups = pair_cur[[1]],
         bgdGroups = pair_cur[[2]],
         bias = c("TSSEnrichment", "log10(nFrags)"),
@@ -1221,11 +1209,11 @@ if (redo) {
 ```{r}
 
 
-proj$position_cluster = paste(proj$position, proj$cluster, sep="_")
-proj$region_cluster = paste(proj$region, proj$cluster, sep="_")
-proj$class = case_when(grepl("Glut", proj$cluster) ~ "Glut",
-                       grepl("GABA", proj$cluster) ~ "GABA",
-                       grepl("Pre", proj$cluster) ~ "Neurog",
+proj$position_cluster = paste(proj$position, proj$cluster_hybrid, sep="_")
+proj$region_cluster = paste(proj$region, proj$cluster_hybrid, sep="_")
+proj$class = case_when(grepl("Glut", proj$cluster_hybrid) ~ "Glut",
+                       grepl("GABA", proj$cluster_hybrid) ~ "GABA",
+                       proj$cluster_hybrid %in% hybrid_groups$precursor ~ "Neurog",
                        TRUE ~ "Nonneural")
 proj$position_class = paste(proj$position, proj$class, sep="_")
 proj$region_class = paste(proj$region, proj$class, sep="_")
@@ -1350,7 +1338,7 @@ iwalk(marker_peaks_sns_split, function(df_cur, set_cur) {
 
 ### FSIs
 ```{r}
-to_select = c("GABA-4-1_GABA-1-1", "GABA-2-1_GABA-1-1")
+to_select = c("GABA-MGE-PVALB-2_GABA-LGE-1", "GABA-MGE-SST-1_GABA-LGE-1")
 marker_peaks_gaba = marker_peaks_glut_df[to_select]
 
 ```

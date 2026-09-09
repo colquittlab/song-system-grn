@@ -5,7 +5,7 @@ format: html
 
 ## Setup
 ```{r}
-library(qs)
+library(qs2)  ## was qs; this project reads and writes qs2
 library(ArchR)
 library(Seurat)
 library(tidyverse)
@@ -21,6 +21,7 @@ library(ggdensity)
 library(ggrastr)
 source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
 source(here::here("config/paths.R"))
+source(here::here("multiome/archr/hybrid_labels.R"))
 pnames = names(position_colors)
 names(position_colors) = case_when(pnames == "nido" ~ "nr",
                                      pnames == "ncl" ~ "nc",
@@ -36,8 +37,8 @@ select = dplyr::select
 
 
 ```{r}
-proj_dir = "~/ssd/rstudio/multiome/motor-pathway/archr/motor-pathway_archr_processing_cluster-snrna-cr/"
-script_name = "chromvar"
+proj_dir = ARCHR_PROJ_DIR
+script_name = "chromvar_hybrid"
 out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 ```
@@ -48,6 +49,9 @@ tfs = read_delim("../../data/lambert_tfs/tfs.csv")
 
 ```{r}
 proj = loadArchRProject(proj_dir)
+## Hybrid-scheme labels, in memory only -- see multiome/archr/hybrid_labels.R.
+## Drops the artefactual Glut-Nido-3 cells, which have no hybrid label.
+proj = add_cluster_hybrid(proj)
 ```
 
 ## Motifs - cisbp, human
@@ -91,7 +95,7 @@ if (redo) {
 
 ## Load differential peaks
 ```{r}
-markers_peaks_glut_fname = file.path(proj_dir, "peaks", "peaks_nonsong_glut_se.rds")
+markers_peaks_glut_fname = here::here("multiome/archr", "peaks_glut_hybrid", "peaks_nonsong_glut_se.rds")
 marker_peaks_sns_glut = readRDS(markers_peaks_glut_fname)
 ```
 
@@ -363,7 +367,7 @@ dev.off()
 proj_se_ge = getGroupSE(
   ArchRProj = proj,
   useMatrix = "GeneExpressionMatrix",
-  groupBy = "cluster"
+  groupBy = "cluster_hybrid"
 )
 proj_df_ge = assay(proj_se_ge)
 rownames(proj_df_ge) = getFeatures(proj, "GeneExpressionMatrix")
@@ -377,11 +381,11 @@ marker_peaks_comb = marker_peaks_sns_glut[[1]]
 
 for (name in names(marker_peaks_sns_glut)) {
   new_log = assays(marker_peaks_sns_glut[[name]])[["Log2FC"]]
-  colnames(new_log) = "Glut-RA"
+  colnames(new_log) = "Glut-CACNA1H-RA"
   assays(marker_peaks_comb)[[str_interp("Log2FC_${name}")]] = new_log
   
   new_fdr = assays(marker_peaks_sns_glut[[name]])[["FDR"]]
-  colnames(new_fdr) = "Glut-RA"
+  colnames(new_fdr) = "Glut-CACNA1H-RA"
   assays(marker_peaks_comb)[[str_interp("FDR_${name}")]] = new_fdr
 }
 
@@ -482,9 +486,9 @@ marker_peaks_sns_glut_w = marker_peaks_sns_glut_df %>%
 comparisons = unique(marker_peaks_sns_glut_df$comparison)
 comparisons = rev(c("hvc_1", "hvc_2", "ra"))
 label_func = function(x) {
-  case_when(x=="hvc_1" ~ "Glut-HVC-1",
-            x=="hvc_2" ~ "Glut-HVC-2",
-            x=="ra" ~ "Glut-RA")
+  case_when(x=="hvc_1" ~ "Glut-DACH2-HVCra",
+            x=="hvc_2" ~ "Glut-DACH2-HVCx",
+            x=="ra" ~ "Glut-CACNA1H-RA")
 }
 gg = upset(marker_peaks_sns_glut_w, comparisons , name='', width_ratio=0.4, sort_sets = F, labeller=label_func,
            matrix = (
@@ -536,9 +540,9 @@ marker_peaks_sns_glut2_w = marker_peaks_sns_glut2_df %>%
 
 comparisons = rev(c("hvc_1", "hvc_2", "ra"))
 label_func = function(x) {
-  case_when(x=="hvc_1" ~ "Glut-HVC-1",
-            x=="hvc_2" ~ "Glut-HVC-2",
-            x=="ra" ~ "Glut-RA")
+  case_when(x=="hvc_1" ~ "Glut-DACH2-HVCra",
+            x=="hvc_2" ~ "Glut-DACH2-HVCx",
+            x=="ra" ~ "Glut-CACNA1H-RA")
 }
 gg = upset(marker_peaks_sns_glut2_w, comparisons , name='', width_ratio=0.4, sort_sets = F, labeller=label_func,
            matrix = (
@@ -590,9 +594,9 @@ marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
 
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 walk(to_plot_list, function(to_plot) {
   gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
@@ -659,9 +663,9 @@ marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
 ```
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 walk(to_plot_list, function(to_plot) {
   gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
@@ -710,9 +714,9 @@ marker_peaks_sns_glut3_w = marker_peaks_sns_glut3_df %>%
 ```
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 walk(to_plot_list, function(to_plot) {
   gg = ggplot(marker_peaks_sns_glut3_w, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
@@ -766,8 +770,7 @@ redo = T
 if (redo) {
   md = as.data.frame(getCellColData(proj)) %>%
     rownames_to_column() %>%
-    filter(cluster %in% c("Glut-RA", "Glut-Arco-1", 
-                          "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4"))
+    filter(cluster_hybrid %in% names(hybrid_position))
   proj_sub = proj[md$rowname,]
   
   proj_sub <- addBgdPeaks(proj_sub, force=T)
@@ -792,9 +795,9 @@ markerMotifs
 ```
 
 ```{r}
-proj_sub$cluster = as.character(proj_sub$cluster)
+proj_sub$cluster_hybrid = as.character(proj_sub$cluster_hybrid)
 p <- plotGroups(ArchRProj = proj_sub, 
-  groupBy = "cluster", 
+  groupBy = "cluster_hybrid", 
   colorBy = "MotifHSMatrix", 
   #name = sub("z:", "", markerMotifs),
   name = markerMotifs,
@@ -811,11 +814,10 @@ mat_z = assay(mat_f, "z")
 
 md = as.data.frame(getCellColData(proj_sub)) %>% 
   rownames_to_column("barcode") %>%
-  mutate(cluster = factor(cluster, levels=rev(c("Glut-HVC-1", "Glut-NC-1",  
-                                                "Glut-HVC-2", "Glut-NC-4", 
-                                                "Glut-RA", "Glut-Arco-1")))) %>%
-  mutate(position_cur = tolower(map_chr(cluster, function(x) map_chr(str_split(x, "-"),2)))) %>%
-  mutate(position_cur = if_else(position_cur == "nido", "nc", position_cur))
+  mutate(cluster = factor(cluster_hybrid, levels=rev(c("Glut-DACH2-HVCra", "Glut-DACH2-1",
+                                                "Glut-DACH2-HVCx", "Glut-DACH2-4",
+                                                "Glut-CACNA1H-RA", "Glut-CACNA1H-1")))) %>%
+  mutate(position_cur = unname(hybrid_position[as.character(cluster)]))
 
 mat_z_l = as.data.frame(as.matrix(mat_z)) %>% rownames_to_column() %>%
   pivot_longer(-rowname, names_to = "barcode", values_to="value") %>%
@@ -864,9 +866,9 @@ mat_z_w_top = mat_z_mean %>%
 ```
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 for (to_plot in to_plot_list) {
   mat_z_w_top_cur = mat_z_w_top %>%
@@ -890,7 +892,7 @@ mat = mat_z_w %>% column_to_rownames("TF") %>%
   select(-to_label) %>% 
   as.matrix()
 
-mat = mat[,c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")]
+mat = mat[,c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-HVCx", "Glut-DACH2-4")]
 
 cols = viridisLite::viridis(9)
 pal = brewer_pal(type="div")(9)
@@ -950,9 +952,9 @@ mat_z_dbd_w_top = mat_z_mean_dbd %>%
 ```
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 for (to_plot in to_plot_list) {
   mat_z_w_top_cur = mat_z_w_top %>%
@@ -972,9 +974,9 @@ for (to_plot in to_plot_list) {
 ```
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 for (to_plot in to_plot_list) {
   mat_z_dbd_w_top_cur = mat_z_dbd_w_top %>%
@@ -1022,10 +1024,12 @@ mat_z_fam_w_top = mat_z_mean_fam %>%
   group_by(value_mean_sign, cluster) %>%
   top_n(10, abs(value_mean))
 
-mat_z_mean_fam_rel = mat_z_mean_fam %>% mutate(set = case_when(grepl("RA|Arco", cluster) ~ "ra",
-                                                               cluster %in% c("Glut-HVC-1", "Glut-NC-1") ~ "hvc1",
-                                                               cluster %in% c("Glut-HVC-2", "Glut-NC-4") ~ "hvc2"),
-                                               song = if_else(grepl("RA|HVC", cluster), "song", "nonsong")) %>%
+## Was grepl("RA|Arco", ...) -- "Arco" is not in the hybrid names, so the song/surround
+## pairs are named explicitly (same three pairs as hybrid_pairs_glut).
+mat_z_mean_fam_rel = mat_z_mean_fam %>% mutate(set = case_when(cluster %in% c("Glut-CACNA1H-RA", "Glut-CACNA1H-1") ~ "ra",
+                                                               cluster %in% c("Glut-DACH2-HVCra", "Glut-DACH2-1") ~ "hvc1",
+                                                               cluster %in% c("Glut-DACH2-HVCx", "Glut-DACH2-4") ~ "hvc2"),
+                                               song = if_else(cluster %in% hybrid_song_clusters, "song", "nonsong")) %>%
   group_by(set, family) %>% 
   mutate(value_mean_rel = value_mean - value_mean[song=="nonsong"])
 
@@ -1038,9 +1042,9 @@ mat_z_mean_fam_rel_w = mat_z_mean_fam_rel %>%
 
 
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 for (to_plot in to_plot_list) {
   mat_z_fam_w_top_cur = mat_z_fam_w_top %>%
@@ -1089,9 +1093,9 @@ for (to_plot in to_plot_list) {
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_norm_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
 }
-  print(cor(mat_z_mean_fam_rel_w$`Glut-RA`, mat_z_mean_fam_rel_w$`Glut-HVC-1`))  
-  print(cor(mat_z_mean_fam_rel_w$`Glut-RA`, mat_z_mean_fam_rel_w$`Glut-HVC-2`))
-  print(cor(mat_z_mean_fam_rel_w$`Glut-HVC-1`, mat_z_mean_fam_rel_w$`Glut-HVC-2`))
+  print(cor(mat_z_mean_fam_rel_w$`Glut-CACNA1H-RA`, mat_z_mean_fam_rel_w$`Glut-DACH2-HVCra`))  
+  print(cor(mat_z_mean_fam_rel_w$`Glut-CACNA1H-RA`, mat_z_mean_fam_rel_w$`Glut-DACH2-HVCx`))
+  print(cor(mat_z_mean_fam_rel_w$`Glut-DACH2-HVCra`, mat_z_mean_fam_rel_w$`Glut-DACH2-HVCx`))
 ```
 
 
@@ -1101,7 +1105,7 @@ mat = mat_z_fam_w %>% column_to_rownames("family") %>%
   select(-to_label) %>% 
   as.matrix()
 
-mat = mat[,c("Glut-RA", "Glut-Arco-1", "Glut-HVC-1", "Glut-NC-1", "Glut-HVC-2", "Glut-NC-4")]
+mat = mat[,c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-DACH2-HVCra", "Glut-DACH2-1", "Glut-DACH2-HVCx", "Glut-DACH2-4")]
 
 cols = viridisLite::viridis(9)
 pal = brewer_pal(type="div")(9)
@@ -1130,6 +1134,12 @@ dev.off()
 #deg_fname = file.path("~/hdd/rstudio/snRNA/snrna_cellranger/snrna_seurat_cellbender.0.01_preprocess/deg/song-surround_deg_glut/marker_genes_cluster_SCT.rds")
 deg_fname = file.path("~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/deg/song-surround_deg_glut/marker_genes_cluster_SCT.rds")
 deg = readRDS(deg_fname)
+
+## Computed under the pre-hybrid labels -- carry `compare` over to the hybrid names so
+## it lines up with everything else here. (Re-running the DEG step under the hybrid
+## labels would be the cleaner fix; this keeps the existing result usable meanwhile.)
+deg$compare = unname(hybrid_cluster_map()[as.character(deg$compare)])
+stopifnot(!anyNA(deg$compare))
 
 ```
 
@@ -1210,7 +1220,7 @@ deg_filt_mat = deg_filt_mat[to_keep,]
 if (ncol(deg_filt_mat) < 3) 
   return()
 
-deg_filt_mat = deg_filt_mat[,c("Glut-HVC-1", "Glut-HVC-2", "Glut-RA")]
+deg_filt_mat = deg_filt_mat[,c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA")]
 
 size_factor = 0.1
 height = nrow(deg_filt_mat) * size_factor
@@ -1242,7 +1252,7 @@ iwalk(tf_terms_to_use, function(tf_term_cur, tf_name) {
   if (ncol(deg_filt_mat) < 3) 
     return()
   
-  deg_filt_mat = deg_filt_mat[,c("Glut-RA", "Glut-HVC-1", "Glut-HVC-2")]
+  deg_filt_mat = deg_filt_mat[,c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra", "Glut-DACH2-HVCx")]
   
   size_factor = 0.1
   height = nrow(deg_filt_mat) * size_factor
@@ -1263,9 +1273,9 @@ iwalk(tf_terms_to_use, function(tf_term_cur, tf_name) {
 
 ```
 ```{r}
-to_plot_list = list(c("Glut-RA", "Glut-HVC-1"),
-                    c("Glut-RA", "Glut-HVC-2"),
-                    c("Glut-HVC-1", "Glut-HVC-2"))
+to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
+                    c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
+                    c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
 
 genes_to_use = map(tf_terms_to_use, function(tf_term_cur) {
   tf_term_cur = paste(tf_term_cur, collapse="|")
@@ -1302,33 +1312,37 @@ for (to_plot in to_plot_list) {
   save_plot(file.path(out_dir, sprintf("points_deg_%s_vs_%s_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
 }  
 
-print(cor(deg_filt_mat$`Glut-RA`, deg_filt_mat$`Glut-HVC-1`))  
-print(cor(deg_filt_mat$`Glut-RA`, deg_filt_mat$`Glut-HVC-2`))
-print(cor(deg_filt_mat$`Glut-HVC-1`, deg_filt_mat$`Glut-HVC-2`))
+print(cor(deg_filt_mat$`Glut-CACNA1H-RA`, deg_filt_mat$`Glut-DACH2-HVCra`))  
+print(cor(deg_filt_mat$`Glut-CACNA1H-RA`, deg_filt_mat$`Glut-DACH2-HVCx`))
+print(cor(deg_filt_mat$`Glut-DACH2-HVCra`, deg_filt_mat$`Glut-DACH2-HVCx`))
 ```
 
 
 #### Expression
 ```{r}
-obj_fname = "~/ssd/rstudio/multiome/motor-pathway/seurat/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/obj_clustered.qs"
-obj = qread(obj_fname)
+## Hybrid-labelled copy of the multiome object (multiome/seurat/label_transfer_hybrid.qmd).
+obj_fname = HYBRID_OBJ_QS2
+obj = qs2::qs_read(obj_fname, nthreads = 8)
 ```
 
 ```{r}
-obj_agg = AggregateExpression(obj, assay="SCT", group.by = c("cluster", "assignment"), return.seurat = F)
+obj_agg = AggregateExpression(obj, assay="SCT", group.by = c("cluster_hybrid", "assignment"), return.seurat = F)
 obj_agg = log1p(obj_agg$SCT)
 
-obj_agg_glut = obj_agg[,grepl("Glut-HVC|Glut-RA|Glut-Arco-1|Glut-NC-1|Glut-NC-4", colnames(obj_agg))]
+## Columns are "<cluster>_<assignment>"; match on the cluster half. (Was a grepl on
+## "Glut-HVC", which no longer prefixes both HVC clusters.)
+obj_agg_cluster = sub("_[^_]+$", "", colnames(obj_agg))
+obj_agg_glut = obj_agg[, obj_agg_cluster %in% names(hybrid_position)]
 ```
 
 ```{r}
-ct_to_select = c("Glut-RA", "Glut-Arco-1",
-                 "Glut-HVC-1", "Glut-NC-1", 
-                 "Glut-HVC-2", "Glut-NC-4"
+ct_to_select = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1",
+                 "Glut-DACH2-HVCra", "Glut-DACH2-1", 
+                 "Glut-DACH2-HVCx", "Glut-DACH2-4"
 )
-cells = Cells(obj)[obj$cluster %in% ct_to_select ]
+cells = Cells(obj)[obj$cluster_hybrid %in% ct_to_select ]
 obj_glut = subset(obj, cells=cells)
-obj_glut$cluster = factor(obj$cluster, levels=rev(ct_to_select))
+obj_glut$cluster = factor(obj_glut$cluster_hybrid, levels=rev(ct_to_select))
 ```
 
 
