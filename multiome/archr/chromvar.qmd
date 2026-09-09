@@ -1175,6 +1175,36 @@ deg_filt_mat = deg_filt %>% select(gene, compare, avg_log2FC) %>%
 hm = Heatmap(deg_filt_mat)
 hm
 ```
+## Moved up from below: the chunk that follows uses `obj_glut`, which this block
+## creates -- the file as written defined it ~150 lines later.
+
+#### Expression
+```{r}
+## Hybrid-labelled copy of the multiome object (multiome/seurat/label_transfer_hybrid.qmd).
+obj_fname = HYBRID_OBJ_QS2
+obj = qs2::qs_read(obj_fname, nthreads = 8)
+```
+
+```{r}
+obj_agg = AggregateExpression(obj, assay="SCT", group.by = c("cluster_hybrid", "assignment"), return.seurat = F)
+obj_agg = log1p(obj_agg$SCT)
+
+## Columns are "<cluster>_<assignment>"; match on the cluster half. (Was a grepl on
+## "Glut-HVC", which no longer prefixes both HVC clusters.)
+obj_agg_cluster = sub("_[^_]+$", "", colnames(obj_agg))
+obj_agg_glut = obj_agg[, obj_agg_cluster %in% names(hybrid_position)]
+```
+
+```{r}
+ct_to_select = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1",
+                 "Glut-DACH2-HVCra", "Glut-DACH2-1", 
+                 "Glut-DACH2-HVCx", "Glut-DACH2-4"
+)
+cells = Cells(obj)[obj$cluster_hybrid %in% ct_to_select ]
+obj_glut = subset(obj, cells=cells)
+obj_glut$cluster = factor(obj_glut$cluster_hybrid, levels=rev(ct_to_select))
+```
+
 ```{r}
 tf_terms_to_use = list(AP1 = c("^SMARCC", "^JUN", "^FOS", "^JDP"),
                     NFI = c("^NFI"),
@@ -1325,32 +1355,6 @@ print(cor(deg_filt_mat$`Glut-DACH2-HVCra`, deg_filt_mat$`Glut-DACH2-HVCx`))
 ```
 
 
-#### Expression
-```{r}
-## Hybrid-labelled copy of the multiome object (multiome/seurat/label_transfer_hybrid.qmd).
-obj_fname = HYBRID_OBJ_QS2
-obj = qs2::qs_read(obj_fname, nthreads = 8)
-```
-
-```{r}
-obj_agg = AggregateExpression(obj, assay="SCT", group.by = c("cluster_hybrid", "assignment"), return.seurat = F)
-obj_agg = log1p(obj_agg$SCT)
-
-## Columns are "<cluster>_<assignment>"; match on the cluster half. (Was a grepl on
-## "Glut-HVC", which no longer prefixes both HVC clusters.)
-obj_agg_cluster = sub("_[^_]+$", "", colnames(obj_agg))
-obj_agg_glut = obj_agg[, obj_agg_cluster %in% names(hybrid_position)]
-```
-
-```{r}
-ct_to_select = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1",
-                 "Glut-DACH2-HVCra", "Glut-DACH2-1", 
-                 "Glut-DACH2-HVCx", "Glut-DACH2-4"
-)
-cells = Cells(obj)[obj$cluster_hybrid %in% ct_to_select ]
-obj_glut = subset(obj, cells=cells)
-obj_glut$cluster = factor(obj_glut$cluster_hybrid, levels=rev(ct_to_select))
-```
 
 
 

@@ -122,6 +122,32 @@ add_cluster_hybrid <- function(proj, drop_unlabeled = TRUE, as_factor = FALSE) {
     message("Dropping ", sum(is.na(hybrid)), " cell(s) with no hybrid label (",
             paste(unlabeled, collapse = ", "), "); ", length(keep), " remain.")
     proj <- subsetCells(proj, keep)
+
+    ## subsetCells() drops the cells from cellColData but leaves the stored
+    ## embeddings and reduced dimensions at their original size, so plotEmbedding()
+    ## then refuses with "Not all cells in embedding are present in ArchRProject!".
+    ## Carry the subset through to them as well.
+    for (nm in names(proj@embeddings)) {
+      d <- proj@embeddings[[nm]]$df
+      proj@embeddings[[nm]]$df <- d[rownames(d) %in% keep, , drop = FALSE]
+    }
+    for (nm in names(proj@reducedDims)) {
+      m <- proj@reducedDims[[nm]]$matDR
+      if (!is.null(m)) {
+        proj@reducedDims[[nm]]$matDR <- m[rownames(m) %in% keep, , drop = FALSE]
+      }
+    }
+
+    ## The impute weights are cell-by-cell matrices held in files inside the shared
+    ## project, so they cannot be subset without rewriting them there. Drop them
+    ## instead: plotEmbedding() then plots unimputed values rather than failing on
+    ## the size mismatch. Call addImputeWeights(proj) on the subset project if
+    ## smoothed values are wanted.
+    if (length(proj@imputeWeights) > 0) {
+      message("Dropping the project's impute weights -- they cover the full cell set. ",
+              "Call addImputeWeights(proj) if you want imputed values.")
+      proj@imputeWeights <- S4Vectors::SimpleList()
+    }
   }
 
   present <- setdiff(unique(as.character(proj$cluster_hybrid)), hybrid_ct_order)
