@@ -327,8 +327,13 @@ motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
   top_n(20, mlog10Padj)
 motifs_df_m = motifs_df %>% 
   filter(TF %in% motifs_df_f$TF) %>% 
-  select(pair, TF, enrichment) %>%
-  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+  ## `motifs_df` holds both directions per pair (bind_rows(up=, down=) above), so
+  ## keying only on (pair, TF) duplicates every cell into a list-column and the
+  ## values_fill cast fails. Keep the direction in the row identity rather than
+  ## picking one of the two values.
+  unite("pair_direction", pair, direction, sep = "_") %>%
+  select(pair_direction, TF, enrichment) %>%
+  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair_direction") %>% as.matrix() %>% t()
 cols = viridisLite::viridis(9)
 
 width = .6
@@ -347,7 +352,9 @@ motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
   group_by(pair) %>%
   filter(mlog10Padj>6) 
 
-motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% select(pair, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+## Same duplication as the chunk above: motifs_df carries an up and a down row per
+## (pair, TF), so the direction has to stay in the row identity.
+motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% unite("pair_direction", pair, direction, sep = "_") %>% select(pair_direction, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair_direction") %>% as.matrix() %>% t()
 motifs_df_m = log2(motifs_df_m + 1)
 cols = viridisLite::viridis(9)
 

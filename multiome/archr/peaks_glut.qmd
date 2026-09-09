@@ -652,7 +652,10 @@ upset(marker_peaks_sns_glut2_w, comparisons , name='', width_ratio=0.1, base_ann
 
 ### Union song enriched
 ```{r}
-marker_peaks_glut_union = Reduce(GenomicRanges::union, marker_peaks_glut_gr)
+## Was `marker_peaks_glut_gr`, which does not exist in this notebook -- that name
+## belongs to differential_accessibility.qmd. Here the per-comparison GRanges are
+## marker_peaks_sns_glut_gr1, the same list the union BED above was built from.
+marker_peaks_glut_union = Reduce(GenomicRanges::union, marker_peaks_sns_glut_gr1)
 ```
 
 
