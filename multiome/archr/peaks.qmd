@@ -157,6 +157,20 @@ mat_avg = averageAccessibility
 ```
 
 ```{r}
+## Moved up from below: the k-means chunk that follows filters `mat_avg` down to the
+## DAR regions, but the file only defined `mat_filter` ~100 lines further on. Same
+## computation, just available before its first use.
+fdr_thresh = 0.01
+marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
+  getMarkers(peaks_cur, cutOff = sprintf("FDR <= %s", fdr_thresh), returnGR = TRUE)
+})
+marker_peaks_sns_glut_df = map(marker_peaks_sns_glut_gr, as.data.frame) %>%
+  bind_rows(.id = "comparison") %>%
+  mutate(region = sprintf("%s:%s-%s", seqnames, start, end))
+mat_filter = mat_avg[rownames(mat_avg) %in% marker_peaks_sns_glut_df$region,]
+```
+
+```{r}
 # Estimate optimal k for k-means clustering of mat_sample_scale
 # Using the same correlation distance as the heatmap
 library(cluster)
