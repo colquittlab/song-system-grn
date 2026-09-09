@@ -142,6 +142,12 @@ script_dir <- here::here("xenium/label_transfer/hpc_rctd_proseg_no_arco4/scripts
 file.copy(list.files(script_dir, full.names = TRUE),
           file.path(OUT, "scripts"), overwrite = TRUE)
 
+## The README documents the submit/gather steps and the reference caveats, and
+## the staged tree is what actually reaches the cluster (no direct ssh path) —
+## so it has to travel too, not just live in the repo.
+file.copy(here::here("xenium/label_transfer/hpc_rctd_proseg_no_arco4", "README.md"),
+          file.path(OUT, "README.md"), overwrite = TRUE)
+
 ## Patch the STAGED sbatch's array upper bound to the actual chunk count.
 ## A manual "update --array=1-N if it differs from 80" step was documented
 ## here but not enforced, and the reconciliation was in fact skipped once for
