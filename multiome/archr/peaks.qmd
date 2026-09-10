@@ -560,8 +560,12 @@ motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
   top_n(20, mlog10Padj)
 motifs_df_m = motifs_df %>% 
   filter(TF %in% motifs_df_f$TF) %>% 
-  select(pair, TF, enrichment) %>%
-  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+  ## `motifs_df` binds the up and down results, so (pair, TF) is not unique and the
+  ## pivot produced list-columns that values_fill = 0 could not cast. Keep direction
+  ## in the row identity, as chromvar.qmd does.
+  unite("pair_direction", pair, direction, sep = "_") %>%
+  select(pair_direction, TF, enrichment) %>%
+  pivot_wider(names_from = "TF", values_from = "enrichment", values_fill = 0) %>% column_to_rownames("pair_direction") %>% as.matrix() %>% t()
 cols = viridisLite::viridis(9)
 
 width = .6
@@ -580,7 +584,8 @@ motifs_df_f = motifs_df %>% filter(!grepl("FOS|JUN|SMARCC", TF)) %>%
   group_by(pair) %>%
   filter(mlog10Padj>6) 
 
-motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% select(pair, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair") %>% as.matrix() %>% t()
+## Same up/down row-identity fix as the chunk above.
+motifs_df_m = motifs_df %>% filter(TF %in% motifs_df_f$TF) %>% unite("pair_direction", pair, direction, sep = "_") %>% select(pair_direction, TF, mlog10Padj) %>% pivot_wider(names_from = "TF", values_from = "mlog10Padj", values_fill = 0) %>% column_to_rownames("pair_direction") %>% as.matrix() %>% t()
 motifs_df_m = log2(motifs_df_m + 1)
 cols = viridisLite::viridis(9)
 
