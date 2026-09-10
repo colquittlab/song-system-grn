@@ -22,7 +22,28 @@
 
 HYBRID_LABEL_DIR <- here::here("multiome/seurat", "label_transfer_hybrid")
 HYBRID_VOTE_CSV  <- file.path(HYBRID_LABEL_DIR, "cluster_hybrid_majority_vote.csv")
-HYBRID_OBJ_QS2   <- file.path(HYBRID_LABEL_DIR, "obj_clustered_hybrid.qs2")
+
+## The 2 GB object is a gitignored output, so it exists only where the label-transfer
+## notebook was actually run -- the main checkout. In a git worktree here::here()
+## points at the worktree, where it is absent, so fall back to the main checkout's
+## copy. In ordinary use the first candidate is the right one and this is a no-op.
+hybrid_obj_path <- function() {
+  candidates <- file.path(HYBRID_LABEL_DIR, "obj_clustered_hybrid.qs2")
+  main <- tryCatch(
+    system2("git", c("-C", shQuote(here::here()), "rev-parse", "--path-format=absolute",
+                     "--git-common-dir"), stdout = TRUE, stderr = FALSE),
+    error = function(e) character()
+  )
+  if (length(main) == 1 && nzchar(main)) {
+    candidates <- c(candidates,
+                    file.path(dirname(main), "multiome/seurat",
+                              "label_transfer_hybrid", "obj_clustered_hybrid.qs2"))
+  }
+  hit <- candidates[file.exists(candidates)]
+  if (length(hit) > 0) hit[1] else candidates[1]
+}
+
+HYBRID_OBJ_QS2 <- hybrid_obj_path()
 
 ## Curated multiome cluster -> hybrid label. Mostly a 1:1 rename; the two real
 ## regroupings are Glut-Arco-2/6/7 -> Glut-CACNA1H-2 and Astro-1/2 -> Astro.
