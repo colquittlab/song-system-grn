@@ -84,8 +84,10 @@ markers_peaks_sns_se_fname = file.path(out_dir, "peaks_nonsong_se.rds")
 markers_peaks_sns_fname = file.path(out_dir, "peaks_nonsong.rds")
 
 ## Set here (was set only in the DAR section below, after two figures had already
-## used it in their filenames).
-fdr_thresh = 0.1
+## used it in their filenames). 0.01 to match peaks_glut.qmd; the getMarkers call
+## below reads it rather than hardcoding a threshold, so the value in the filename
+## and the value used cannot drift apart.
+fdr_thresh = 0.01
 
 ## Was FALSE, reading a cached result -- this output directory is new, so compute.
 redo = T
@@ -110,7 +112,7 @@ if (redo) {
 }
 
 marker_peaks_sns_gr = map(marker_peaks_sns, function(peaks_cur) {
-  gr = getMarkers(peaks_cur, cutOff = "FDR < 0.1", returnGR=T)
+  gr = getMarkers(peaks_cur, cutOff = sprintf("FDR < %s", fdr_thresh), returnGR=T)
   gr
 })
 

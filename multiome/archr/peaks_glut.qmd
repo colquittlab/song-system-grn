@@ -96,8 +96,11 @@ markers_peaks_sns_glut_se_fname = file.path(out_dir, "peaks_nonsong_glut_se.rds"
 markers_peaks_sns_glut_fname = file.path(out_dir, "peaks_nonsong_glut.rds")
 
 ## Set here (was set only in the DAR section below, after two figures had already
-## used it in their filenames).
-fdr_thresh = 0.1
+## used it in their filenames). 0.01 is the cutoff the pre-hybrid DAR heatmaps were
+## actually built on -- they picked it up from peaks.qmd's environment while their
+## own filenames said 0.1. Stated explicitly now, and the getMarkers call below
+## reads it rather than hardcoding a threshold, so the two cannot drift again.
+fdr_thresh = 0.01
 
 redo = T
 if (redo) {
@@ -121,7 +124,7 @@ if (redo) {
 }
 
  marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
-    gr = getMarkers(peaks_cur, cutOff = "FDR < 0.1", returnGR=T)
+    gr = getMarkers(peaks_cur, cutOff = sprintf("FDR < %s", fdr_thresh), returnGR=T)
     gr
   })
  
