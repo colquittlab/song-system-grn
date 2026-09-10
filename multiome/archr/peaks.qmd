@@ -224,7 +224,9 @@ set.seed(42)
 idx = sample(nrow(mat_dar_filter), min(nrow(mat_dar_filter), 1000))
 mat_dar_sample = mat_dar_filter[idx,]
 
-function(x) proxy::dist(x, method="correlation")
+## Was a bare lambda with the `cor_dist =` lost, so the Heatmap below failed with
+## "object 'cor_dist' not found". Same definition used elsewhere in this file.
+cor_dist = function(x) proxy::dist(x, method="correlation")
 hm = Heatmap(mat_dar_sample,
              row_km = 6, 
              clustering_method_rows = "ward.D", 
@@ -250,7 +252,9 @@ colnames(mat_avg_sample_scale) = ct_order
 nk = 5
 km = kmeans(mat_avg_sample_scale, centers = nk)
 
-function(x) proxy::dist(x, method="correlation")
+## Was a bare lambda with the `cor_dist =` lost, so the Heatmap below failed with
+## "object 'cor_dist' not found". Same definition used elsewhere in this file.
+cor_dist = function(x) proxy::dist(x, method="correlation")
 hm = Heatmap(mat_avg_sample_scale,
              row_km = nk, 
              clustering_method_rows = "ward.D", 
