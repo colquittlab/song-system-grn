@@ -19,28 +19,28 @@ library(here)
 # ---------------------------------------------------------------------------
 
 # Genome FASTA (UCSC chromosome names)
-GENOME_FA_LONSTR   <- "/mnt/nest/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
+GENOME_FA_LONSTR   <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
 
 # Chromosome sizes (generate: samtools faidx <genome.fna>; cut -f1,2 <fai> > chrom.sizes)
-CHROM_SIZES_LONSTR <- "/mnt/nest/assembly/lonStrDom2/ucsc/chrom.sizes.ucsc"
+CHROM_SIZES_LONSTR <- "/mnt/nest/common/assembly/lonStrDom2/ucsc/chrom.sizes.ucsc"
 
 # SeqInfo object for assembled chromosomes (UCSC names; used by ArchR setup)
-SEQINFO_RDS_LONSTR <- "~/nest/assembly/lonStrDom2/ncbi/seqinfo_object_assembled_ucsc.rds"
+SEQINFO_RDS_LONSTR <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/seqinfo_object_assembled_ucsc.rds"
 
 # GTF — merged StringTie + RefSeq annotation (slim form, UCSC chromosome names)
 # Custom GTF combining RefSeq with StringTie-assembled transcripts; contact the
 # Colquitt lab or regenerate from the raw StringTie outputs.
-GTF_LONSTR_SLIM    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim_ucsc.gtf"
+GTF_LONSTR_SLIM    <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim_ucsc.gtf"
 
 # GTF — full form (used for DREME/DREME-TFBS)
-GTF_LONSTR_FULL    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc.gtf"
+GTF_LONSTR_FULL    <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc.gtf"
 
 # GTF — NCBI chromosome names (no UCSC renaming; used for CellRanger preprocessing
 # where mitochondrial transcripts are identified by the NCBI contig name NC_029475.1)
-GTF_LONSTR_NCBI    <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5.gtf"
+GTF_LONSTR_NCBI    <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5.gtf"
 
 # GTF — with gene_biotype field (used for Seurat/SnapATAC2 annotation import)
-GTF_LONSTR_BIOTYPE <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc_gene-biotype.gtf"
+GTF_LONSTR_BIOTYPE <- "/mnt/nest/common/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_ucsc_gene-biotype.gtf"
 
 # ---------------------------------------------------------------------------
 # Chicken (bGalGal1.mat / GCF_016699485.2) reference assembly
@@ -50,7 +50,7 @@ GTF_LONSTR_BIOTYPE <- "/mnt/nest/assembly/lonStrDom2/ncbi/merge_gtf_with_3p/GCF_
 # standard Ensembl 112 Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.112 annotation.
 # ---------------------------------------------------------------------------
 
-GTF_CHICKEN_MAFB_EMX2 <- "/mnt/nest/assembly/bGalGal1.mat/addons/Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.112.chr.ucsc_ppidnb2-mafb_v2_emx2.gtf"
+GTF_CHICKEN_MAFB_EMX2 <- "/mnt/nest/common/assembly/bGalGal1.mat/addons/Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.112.chr.ucsc_ppidnb2-mafb_v2_emx2.gtf"
 
 # ---------------------------------------------------------------------------
 # JASPAR motif database

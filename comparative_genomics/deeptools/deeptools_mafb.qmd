@@ -63,10 +63,14 @@ fragment_bws <- c(
   "GABA-1-1"    = "GABA-1-1-fragment-bin1-smoothNone"
 )
 
+## Per-base phyloP (CONACC LRT) from the avian363 cactus alignment, projected
+## onto lonStrDom2.  "wholetree" scores the full avian tree; "subtree222" scores
+## only the oscine subtree (birdAnc222).  Both cover chr6 and chr20 only, which
+## is where MAFB (chr20) and EMX2 (chr6) sit -- computeMatrix therefore drops
+## regions on other chromosomes, and load_sig() zero-fills those rows.
 phylop_bws <- c(
-  "vert. all"           = "phyloP_mamAvi605_3model_all",
-  "avian all"           = "phyloP_avian363_3model_all",
-  "phastCons mamAvi605" = "phastCons_mamAvi605_tc0.25_el20"
+  "avian per-base"  = "wholetree_perbase_lsd2",
+  "oscine per-base" = "subtree222_perbase_lsd2"
 )
 
 ## contrast name → SnapATAC BED stem (column in output filenames)
@@ -191,6 +195,13 @@ smooth_row_mean <- function(row) {
   out <- as.numeric(zoo::rollmean(row, k = smooth_k, fill = NA, align = "center"))
   out[is.na(out)] <- row[is.na(out)]   # keep original values at edges
   out
+}
+
+## Per-gene output directory, created on first use
+gene_out_dir <- function(gn) {
+  p <- file.path(out_dir, gn)
+  dir.create(p, recursive = TRUE, showWarnings = FALSE)
+  p
 }
 
 ## Diverging (phyloP) or sequential (phastCons) color scale for a value vector
@@ -462,7 +473,7 @@ heatmaps <- imap(assembled, function(a, gn) {
 ```{r draw-fullprofile-mean, results="asis", fig.width=11, fig.height=8}
 iwalk(heatmaps, function(hms, gn) {
   a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
+  gene_out <- gene_out_dir(gn)
 
   iwalk(hms$phylop_full_mean_hm, function(hm_pp, label) {
     combined  <- Reduce(`+`, c(hms$lfc_full_hm, list(hm_pp)))
@@ -490,7 +501,7 @@ iwalk(heatmaps, function(hms, gn) {
 ```{r draw-diff-fullprofile-mean, results="asis", fig.width=11, fig.height=8}
 iwalk(heatmaps, function(hms, gn) {
   a        <- assembled[[gn]]
-  gene_out <- file.path(out_dir, gn)
+  gene_out <- gene_out_dir(gn)
 
   iwalk(hms$phylop_full_mean_hm, function(hm_pp, label) {
     combined  <- Reduce(`+`, c(hms$diff_full_hm, list(hm_pp)))
@@ -517,7 +528,7 @@ iwalk(heatmaps, function(hms, gn) {
 
 ```{r draw-scatter-mean, results="asis", fig.width=12, fig.height=6}
 iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
+  gene_out <- gene_out_dir(gn)
 
   phylop_central <- imap_dfr(a$phylop_full_mean_all, function(mat, nm) {
     tibble(
@@ -580,7 +591,7 @@ flatten_full <- function(mat_list, value_col, track_col) {
 }
 
 iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
+  gene_out <- gene_out_dir(gn)
 
   phylop_flat <- flatten_full(a$phylop_full_mean_all, "phylop_val", "phylop_track")
   diff_flat   <- flatten_full(a$diff_full_all,        "diff_val",   "diff_pair")
@@ -632,7 +643,7 @@ is not distorted by rolling smoothing.
 
 ```{r draw-density-phylop-highdiff, results="asis", fig.width=10, fig.height=4}
 iwalk(assembled, function(a, gn) {
-  gene_out <- file.path(out_dir, gn)
+  gene_out <- gene_out_dir(gn)
 
   diff_flat <- flatten_full(a$diff_full_all, "diff_val", "diff_pair")
 
@@ -749,7 +760,7 @@ scatter_highdiff <- function(phylop_flat, diff_flat, phylop_label,
 }
 
 iwalk(assembled, function(a, gn) {
-  gene_out  <- file.path(out_dir, gn)
+  gene_out  <- gene_out_dir(gn)
   diff_flat <- flatten_full(a$diff_full_all, "diff_val", "diff_pair")
 
   scatter_highdiff(
