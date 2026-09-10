@@ -348,9 +348,16 @@ motifs_up_list = map(marker_peaks_sns_glut, function(peaks) {
     )
 }) %>% set_names(names(marker_peaks_sns_glut))
 
+## 25 of the 870 MotifHS motifs are named by Ensembl gene ID rather than a TF
+## symbol -- unannotated entries in the motif set. They carry no interpretable TF
+## and are dropped here, before ranking, so the ranks and every downstream plot
+## reflect the named motifs only.
+drop_unnamed_motifs = function(df) df[!grepl("^ENSG", df$TF), , drop = FALSE]
+
 motifs_up_df = map(motifs_up_list, function(x) {
   #map(peak_set, function(x) {
     df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = drop_unnamed_motifs(df)
     df = df[order(df$mlog10Padj, decreasing = TRUE),]
     df$rank <- seq_len(nrow(df))
     df
@@ -374,6 +381,7 @@ motifs_down_list = map(marker_peaks_sns_glut, function(peaks) {
 motifs_down_df = map(motifs_down_list, function(x) {
   #map(peak_set, function(x) {
     df =  data.frame(TF = rownames(x), mlog10Padj = assay(x)[,1], enrichment = assay(x, "Enrichment")[,1])
+    df = drop_unnamed_motifs(df)   ## see the note above motifs_up_df
     df = df[order(df$mlog10Padj, decreasing = TRUE),]
     df$rank <- seq_len(nrow(df))
     df
