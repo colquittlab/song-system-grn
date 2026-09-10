@@ -63,14 +63,26 @@ fragment_bws <- c(
   "Oligo"    = "Oligo-fragment-bin1-smoothNone"
 )
 
-## Per-base phyloP (CONACC LRT) from the avian363 cactus alignment, projected
-## onto lonStrDom2.  "wholetree" scores the full avian tree; "subtree222" scores
-## only the oscine subtree (birdAnc222).  Both cover chr6 and chr20 only, which
-## is where MAFB (chr20) and EMX2 (chr6) sit -- computeMatrix therefore drops
-## regions on other chromosomes, and load_sig() zero-fills those rows.
+## Conservation tracks, newest first.
+##
+## The two "per-base" tracks are the current per-base CONACC-LRT run over the
+## avian363 cactus alignment, projected onto lonStrDom2: "wholetree" scores the
+## full avian tree, "subtree222" only the oscine subtree (birdAnc222).  They
+## cover chr6 and chr20 only, which is where MAFB (chr20) and EMX2 (chr6) sit --
+## computeMatrix therefore drops regions on other chromosomes, and load_sig()
+## zero-fills those rows.
+##
+## The remaining three are the earlier genome-wide runs, kept for comparison.
+## Note "avian all" and "avian per-base" score the *same* tree (full avian363);
+## they differ in the phyloP run, not the phylogeny.  Dynamic range is not
+## comparable across tracks -- colour limits are per-track quantiles -- so read
+## these as five separate views, not one scale.
 phylop_bws <- c(
-  "avian per-base"  = "wholetree_perbase_lsd2",
-  "oscine per-base" = "subtree222_perbase_lsd2"
+  "avian per-base"      = "wholetree_perbase_lsd2",
+  "oscine per-base"     = "subtree222_perbase_lsd2",
+  "avian all"           = "phyloP_avian363_3model_all",
+  "vert. all"           = "phyloP_mamAvi605_3model_all",
+  "phastCons mamAvi605" = "phastCons_mamAvi605_tc0.25_el20"
 )
 
 ## contrast name → SnapATAC BED stem (column in output filenames)
@@ -541,7 +553,7 @@ iwalk(assembled, function(a, gn) {
     tibble(
       peak         = a$all_peaks,
       phylop_val   = rowMeans(mat[, central_idx, drop = FALSE]),
-      phylop_track = nm
+      phylop_track = factor(nm, levels = names(a$phylop_full_mean_all))
     )
   })
 
@@ -592,7 +604,9 @@ flatten_full <- function(mat_list, value_col, track_col) {
       peak_idx        = rep(seq_len(n_pk),  times = n_bin),
       bin_idx         = rep(seq_len(n_bin), each  = n_pk),
       !!value_col    := as.vector(mat),
-      !!track_col    := nm
+      ## factor, not character: facets otherwise sort alphabetically and the
+      ## declared track / pair order is lost
+      !!track_col    := factor(nm, levels = names(mat_list))
     )
   })
 }
