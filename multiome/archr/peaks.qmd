@@ -466,8 +466,7 @@ motifs_df_m = walk(c("up", "down"), function(direction_cur) {
   }
   cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
   
-  width = .6
-  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  width = .35
   height = 3
   
   cor_dist = function(x) proxy::dist(x, method="correlation")
@@ -475,6 +474,9 @@ motifs_df_m = walk(c("up", "down"), function(direction_cur) {
   hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, 
                               # clustering_distance_rows = cor_dist,
                                cluster_columns=F,
+                               ## Dendrograms hidden, clustering kept -- the row order
+                               ## is still the clustered one.
+                               show_row_dend = FALSE, show_column_dend = FALSE,
                                row_names_gp = gpar(fontsize=6),
                                width = unit(width, "in"),
                                height = unit(height, "in")
