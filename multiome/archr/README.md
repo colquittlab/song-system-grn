@@ -83,6 +83,13 @@ contrasts) and its `peaks_glut.rds` is **26 GB** -- check free space first.
 `peaks_full.qmd` is byte-identical to it apart from `script_name` and one output
 filename, so running both writes that 26 GB twice for the same result.
 
+`peaks.qmd` is the long one: ~3 hours, almost all of it HOMER. Its
+`findMotifsGenome.pl` call runs de novo motif finding at lengths 8, 10 and 12 over
+five k-means clusters of ~20k regions each. The k-means that defines those clusters
+is seeded, and a cluster whose `knownResults.txt` already exists is skipped, so a
+re-render does not pay for HOMER twice -- delete `peaks_hybrid/homer_kmeans/cluster_N`
+to force one again.
+
 ## Note on the notebooks
 
 These were written as interactive scratchpads and several were not runnable top to
@@ -93,3 +100,11 @@ per-region BED loop wrote nothing. Those were reordered/fixed so the files run a
 written; no computation changed. `differential_accessibility.qmd` and
 `peaks_full.qmd` are still the same script under two names, differing only in
 `script_name` and one output filename.
+
+`peaks.qmd` and `pos_regulators.qmd` also referenced objects they never build --
+names carried over from `differential_accessibility.qmd` (`marker_peaks_glut_gr`,
+`marker_peaks_glut_df`, `marker_peaks_glut_inter`, `pairs_full`), a `tfs` table only
+the sibling notebooks read, and `obj_filt2` / `cell_order` / `genes_to_plot`. Each is
+now bound to the file's own equivalent. Rather than one render per missing symbol,
+these were found by parsing each notebook's chunks and diffing `codetools::findGlobals`
+against the assignments; that check is worth re-running after any edit here.
