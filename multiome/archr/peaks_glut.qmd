@@ -102,6 +102,11 @@ markers_peaks_sns_glut_fname = file.path(out_dir, "peaks_nonsong_glut.rds")
 ## reads it rather than hardcoding a threshold, so the two cannot drift again.
 fdr_thresh = 0.01
 
+## Same fold-change magnitude the motif enrichment in this file uses
+## (Log2FC >= .6 for the up set, <= -0.6 for the down set), so the DAR heatmap and
+## the motif figures describe the same regions.
+lfc_thresh = 0.6
+
 redo = T
 if (redo) {
   
@@ -124,7 +129,7 @@ if (redo) {
 }
 
  marker_peaks_sns_glut_gr = map(marker_peaks_sns_glut, function(peaks_cur) {
-    gr = getMarkers(peaks_cur, cutOff = sprintf("FDR < %s", fdr_thresh), returnGR=T)
+    gr = getMarkers(peaks_cur, cutOff = sprintf("FDR < %s & abs(Log2FC) >= %s", fdr_thresh, lfc_thresh), returnGR=T)
     gr
   })
  
@@ -252,7 +257,7 @@ hm = Heatmap(mat_sample_scale,
              )
 hm
 
-pdf(file.path(out_dir, sprintf("DAR_fdr%s_nk%s.pdf", fdr_thresh, nk)), height = height + 2, width = width + 2)
+pdf(file.path(out_dir, sprintf("DAR_fdr%s_lfc%s_nk%s.pdf", fdr_thresh, lfc_thresh, nk)), height = height + 2, width = width + 2)
 print(hm)
 dev.off()
 ```
@@ -290,7 +295,7 @@ hm = Heatmap(mat_sample_scale,
 hm= draw(hm)
 hm
 
-pdf(file.path(out_dir, sprintf("DAR_fdr%s_nk%s_scale01.pdf", fdr_thresh, nk)), height = height + 2, width = width + 2)
+pdf(file.path(out_dir, sprintf("DAR_fdr%s_lfc%s_nk%s_scale01.pdf", fdr_thresh, lfc_thresh, nk)), height = height + 2, width = width + 2)
 print(hm)
 dev.off()
 ```
