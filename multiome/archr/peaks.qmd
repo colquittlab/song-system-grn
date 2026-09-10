@@ -40,6 +40,11 @@ out_dir = here::here("multiome/archr", script_name)
 dir.create(out_dir, recursive = T)
 
 addArchRThreads(threads = 36) 
+
+## The motif-enrichment chunk left-joins `tfs` but this file never loaded it, so a
+## top-to-bottom run stopped with "object 'tfs' not found". Same read as the one in
+## peaks_glut.qmd, peaks_gaba.qmd and chromvar.qmd.
+tfs = read_delim("../../data/lambert_tfs/tfs.csv")
 ```
 
 ```{r}
@@ -1063,6 +1068,11 @@ upset(marker_peaks_sns_glut2_w, comparisons , name='', width_ratio=0.1, base_ann
 
 #### Union song enriched
 ```{r}
+## `marker_peaks_glut_gr` is a name from differential_accessibility.qmd and was never
+## built here. This file's song-enriched per-pair GRanges list is the glut2 one above.
+marker_peaks_glut_gr = marker_peaks_sns_glut2_gr
+marker_peaks_glut_df = map(marker_peaks_sns_glut2_gr, as.data.frame)
+marker_peaks_glut_inter = Reduce(GenomicRanges::intersect, marker_peaks_sns_glut2_gr)
 marker_peaks_glut_union = Reduce(GenomicRanges::union, marker_peaks_glut_gr)
 ```
 
@@ -1074,7 +1084,9 @@ dir.create(bed_dir)
 
 walk(seq_along(marker_peaks_glut_df), function(i) {
   d = marker_peaks_glut_df[[i]]
-  pair_cur = pairs_full[[i]]
+  ## `pairs_full` is another differential_accessibility.qmd name; the pairs behind
+  ## these markers are the glut pairs the file called getMarkerFeatures on.
+  pair_cur = hybrid_pairs_glut[[names(marker_peaks_glut_df)[i]]]
   pair_cur_name = sprintf("%s_vs_%s", pair_cur[[1]], paste(pair_cur[[2]], collapse="_"))
   d_out = d %>% 
     arrange(seqnames, start) %>% 
@@ -1360,8 +1372,12 @@ iwalk(marker_peaks_sns_split, function(df_cur, set_cur) {
 
 ### FSIs
 ```{r}
-to_select = c("GABA-MGE-PVALB-2_GABA-LGE-1", "GABA-MGE-SST-1_GABA-LGE-1")
-marker_peaks_gaba = marker_peaks_glut_df[to_select]
+## Was subsetting `marker_peaks_glut_df` -- a glut object, and one this file does not
+## build -- by pasted-together pair names. The GABA marker list is keyed by the
+## hybrid_pairs_gaba names, and assigning back to `marker_peaks_gaba` would clobber
+## the marker SEs above.
+to_select = c("pvalb2_lge1", "sst1_lge1")
+marker_peaks_fsi_gr = marker_peaks_gaba_gr[to_select]
 
 ```
 
