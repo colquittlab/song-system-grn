@@ -72,15 +72,19 @@ fragment_bws <- c(
 ## computeMatrix therefore drops regions on other chromosomes, and load_sig()
 ## zero-fills those rows.
 ##
-## The remaining three are the earlier genome-wide runs, kept for comparison.
-## Note "avian all" and "avian per-base" score the *same* tree (full avian363);
-## they differ in the phyloP run, not the phylogeny.  Dynamic range is not
-## comparable across tracks -- colour limits are per-track quantiles -- so read
-## these as five separate views, not one scale.
+## The rest are the earlier genome-wide runs, kept for comparison.  That gives
+## a new-vs-old pair at each scope: "avian all" scores the same full avian363
+## tree as "avian per-base", and "oscine all" (birdAnc218 -- near the oscine
+## branch, treated as oscine here) is the counterpart to "oscine per-base"
+## (birdAnc222).  The pairs differ in the phyloP run, not the phylogeny.
+##
+## Dynamic range is not comparable across tracks -- colour limits are per-track
+## quantiles -- so read these as six separate views, not one scale.
 phylop_bws <- c(
   "avian per-base"      = "wholetree_perbase_lsd2",
   "oscine per-base"     = "subtree222_perbase_lsd2",
   "avian all"           = "phyloP_avian363_3model_all",
+  "oscine all"          = "phyloP_avian363_3model_birdAnc218",
   "vert. all"           = "phyloP_mamAvi605_3model_all",
   "phastCons mamAvi605" = "phastCons_mamAvi605_tc0.25_el20"
 )
