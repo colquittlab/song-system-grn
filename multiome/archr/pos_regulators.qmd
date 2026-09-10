@@ -342,10 +342,14 @@ corGEM_all_tmp = corGEM_all %>%
   
 to_plot = unique(corGEM_all_tmp$gene)
 DefaultAssay(obj_glut) = "SCT"
-reduction_cur = "umap_harmony_weighted_rna30_atac30_mindist0.3nn30"
+## The WNN-weighted UMAP belonged to the glut-only object reduction_viz saved; the
+## hybrid object does not carry it (pca, umap_rna, pca_harmony, umap_rna_int only).
+## umap_rna_int is the integrated embedding, and is what the earlier chunk plots on.
+reduction_cur = "umap_rna_int"
 
-tp = intersect(Features(obj_glut), to_plot)
-for (tp in to_plot) {
+## `tp` was assigned the intersect and then immediately overwritten by the loop
+## variable, so the loop ran over genes the object may not have.
+for (tp in intersect(Features(obj_glut), to_plot)) {
   gg = FeaturePlot_scCustom(obj_glut, features = tp, figure_plot = T, 
                             aspect_ratio = 1, reduction = reduction_cur,
                             raster = T, 
