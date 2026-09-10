@@ -69,6 +69,20 @@ Mostly one-to-one. The substantive changes:
   labels were transferred onto. Only its analysis half (from "Differential peaks")
   regroups.
 
+## Run them one at a time
+
+These scripts share the ArchR project's HDF5 Arrow files, and `chromvar.qmd`'s
+`addDeviationsMatrix` *writes* MotifHSMatrix into them. Rendering two at once fails:
+`differential_accessibility.qmd` died 51 minutes in with `H5Fopen(): Unable to open
+file` while chromvar was writing, and `pos_regulators.qmd` failed reading the matrix
+chromvar was mid-write on. Concurrent renders also collide in `multiome/archr/.quarto`,
+which fails the HTML write *after* the R code has already finished. Render serially.
+
+`differential_accessibility.qmd` takes ~90 minutes uncontended (351 pairwise
+contrasts) and its `peaks_glut.rds` is **26 GB** -- check free space first.
+`peaks_full.qmd` is byte-identical to it apart from `script_name` and one output
+filename, so running both writes that 26 GB twice for the same result.
+
 ## Note on the notebooks
 
 These were written as interactive scratchpads and several were not runnable top to
