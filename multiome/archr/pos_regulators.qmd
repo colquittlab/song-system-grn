@@ -88,6 +88,11 @@ corGEM_MM_list = list()
 
 corGEM_fname = file.path(out_dir, "corEM_MM_list.rds")
 
+## `redo` was used here but never defined anywhere in the file, so a top-to-bottom
+## run stopped with "object 'redo' not found". This output directory is new, so
+## compute rather than read the cache.
+redo = TRUE
+
 if (redo) {
   corGEM_MM_list = map(seq_along(proj_split), function(i) {
     proj_cur = proj_split[[i]]
@@ -102,7 +107,7 @@ if (redo) {
     corGEM_MM
   })
   names(corGEM_MM_list) = names(proj_split)
-  saveRDS(corGEM_MM_list)
+  saveRDS(corGEM_MM_list, corGEM_fname)  ## was missing the file argument
 } else {
   corGEM_MM_list = readRDS(corGEM_fname)
 }
