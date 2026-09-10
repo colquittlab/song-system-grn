@@ -1,0 +1,1 @@
+cmd = /ssd/brad/rstudio/multiome/song-system-grn/.claude/worktrees/archr-hybrid/multiome/archr/peaks_hybrid/homer_kmeans/cluster_2.bed /mnt/nest/common/assembly/lonStrDom2/ncbi/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna /ssd/brad/rstudio/multiome/song-system-grn/.claude/worktrees/archr-hybrid/multiome/archr/peaks_hybrid/homer_kmeans/cluster_2 -size given -len 8,10,12 -p 24
