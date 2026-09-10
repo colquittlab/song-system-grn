@@ -328,6 +328,10 @@ dev.off()
 
 ```{r}
 mat_filter_scale = t(apply(mat_filter, 1, scale))
+## Seeded like the other k-means calls in this file. These clusters define the BED
+## files HOMER is run on below, and that run takes hours -- an unseeded kmeans would
+## invalidate its results on every re-render.
+set.seed(42)
 km = kmeans(mat_filter_scale, centers = nk)
 ```
 
@@ -642,6 +646,12 @@ Sys.setenv(PATH = paste("/opt/homer/bin", Sys.getenv("PATH"), sep = ":"))
 walk(seq_len(nk), function(k) {
   bed_k = file.path(homer_dir, sprintf("cluster_%d.bed", k))
   out_k = file.path(homer_dir, sprintf("cluster_%d", k))
+  ## findMotifsGenome.pl takes hours per cluster, so skip one that is already done.
+  ## Delete the cluster's output directory to force it to be recomputed.
+  if (file.exists(file.path(out_k, "knownResults.txt"))) {
+    message("skipping cluster ", k, " -- knownResults.txt already present")
+    return(invisible(NULL))
+  }
   cmd = sprintf("findMotifsGenome.pl %s %s %s -size given -len 8,10,12 -p 24",
                 bed_k, genome_fa, out_k)
   message(cmd)
