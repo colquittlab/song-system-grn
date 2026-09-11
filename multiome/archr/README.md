@@ -80,8 +80,6 @@ which fails the HTML write *after* the R code has already finished. Render seria
 
 `differential_accessibility.qmd` takes ~90 minutes uncontended (351 pairwise
 contrasts) and its `peaks_glut.rds` is **26 GB** -- check free space first.
-`peaks_full.qmd` is byte-identical to it apart from `script_name` and one output
-filename, so running both writes that 26 GB twice for the same result.
 
 `peaks.qmd` is the long one: ~3 hours, almost all of it HOMER. Its
 `findMotifsGenome.pl` call runs de novo motif finding at lengths 8, 10 and 12 over
@@ -97,9 +95,12 @@ bottom: `peaks_glut.qmd` and `peaks_gaba.qmd` used `mat_avg` and `fdr_thresh` ~1
 lines above where they were defined and saved a data frame before building it, and
 `peaks2geneslinks.qmd` set `names(proj_regions)` from an unnamed vector so its
 per-region BED loop wrote nothing. Those were reordered/fixed so the files run as
-written; no computation changed. `differential_accessibility.qmd` and
-`peaks_full.qmd` are still the same script under two names, differing only in
-`script_name` and one output filename.
+written; no computation changed.
+
+`peaks_full.qmd` used to sit beside `differential_accessibility.qmd` as a
+byte-identical copy under a second name, differing only in `script_name` and one
+output filename. It was removed as redundant; `differential_accessibility.qmd` is
+the one to run.
 
 `peaks.qmd` and `pos_regulators.qmd` also referenced objects they never build --
 names carried over from `differential_accessibility.qmd` (`marker_peaks_glut_gr`,
