@@ -480,7 +480,7 @@ hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
                              height = unit(height, "in")
                              )
 print(hm)
-pdf(file.path(out_dir, "song-glut_motifs_heatmap.pdf"))
+pdf(file.path(out_dir, "song-glut_motifs_heatmap.pdf"), height = height + 2, width = width + 2)
 print(hm)
 dev.off()
 ```
@@ -606,7 +606,7 @@ hm = ComplexHeatmap::Heatmap(motifs_up_df_m, col=cols, cluster_columns=F,
                              height = unit(height, "in")
                              )
 print(hm)
-pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"))
+pdf(file.path(out_dir, "song-glut-enriched_motifs_heatmap.pdf"), height = height + 2, width = width + 2)
 print(hm)
 dev.off()
 ```
