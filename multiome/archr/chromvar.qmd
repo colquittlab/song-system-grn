@@ -1049,6 +1049,20 @@ mat_z_mean_fam_rel_w = mat_z_mean_fam_rel %>%
 
 
 ```{r}
+## Pearson R, annotated in the top left of each points_fam panel.
+## annotate() measures text in MILLIMETRES while element_text() uses points
+## (see CLAUDE.md, "The unit trap"), so a point size is divided by .pt.
+## use = "complete.obs" because the relative matrix carries NA for the clusters
+## outside the three song/surround pairs.
+annotate_pearson = function(gg, d, x, y, size_pt = 6) {
+  r = cor(d[[x]], d[[y]], use = "complete.obs")
+  gg + annotate("text", x = -Inf, y = Inf, hjust = -0.2, vjust = 1.5,
+                label = sprintf("R = %.2f", r), size = size_pt / .pt)
+}
+```
+
+
+```{r}
 to_plot_list = list(c("Glut-CACNA1H-RA", "Glut-DACH2-HVCra"),
                     c("Glut-CACNA1H-RA", "Glut-DACH2-HVCx"),
                     c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
@@ -1065,6 +1079,7 @@ for (to_plot in to_plot_list) {
     geom_point(size=0.5) + 
  #   ggrepel::geom_label_repel(aes(label=to_label), force = 5) + 
     theme_bw()
+  gg = annotate_pearson(gg, mat_z_fam_w, to_plot[1], to_plot[2])
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=2, base_asp=1)
   
@@ -1074,6 +1089,7 @@ for (to_plot in to_plot_list) {
     geom_point(size=2) + 
     ggrepel::geom_label_repel(aes(label=family)) + 
     theme_bw()
+  gg = annotate_pearson(gg, mat_z_fam_w, to_plot[1], to_plot[2], size_pt = 14)
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
   
@@ -1087,6 +1103,7 @@ for (to_plot in to_plot_list) {
     theme_bw() + 
     theme(axis.title = element_text(size=7),
           axis.text = element_text(size=6))
+  gg = annotate_pearson(gg, mat_z_mean_fam_rel_w, to_plot[1], to_plot[2])
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_norm.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
   
@@ -1097,6 +1114,7 @@ for (to_plot in to_plot_list) {
     geom_point(size=2) + 
     ggrepel::geom_label_repel(aes(label=family)) + 
     theme_bw()
+  gg = annotate_pearson(gg, mat_z_mean_fam_rel_w, to_plot[1], to_plot[2], size_pt = 14)
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_fam_%s_vs_%s_norm_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
 }
