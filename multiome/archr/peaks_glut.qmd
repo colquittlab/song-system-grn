@@ -473,8 +473,7 @@ min_val = min(motifs_df_m)
 max_val = max(motifs_df_m)
 cols = colorRamp2(c(min_val, 0, max_val), colors = c(pal[c(9,5,1)]))
 
-width = .6
-height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+width = .35
 height = 3
 hm = ComplexHeatmap::Heatmap(motifs_df_m, col=cols, cluster_columns=F,
                              width = unit(width, "in"),
@@ -514,8 +513,7 @@ motifs_df_m = walk(c("up", "down"), function(direction_cur) {
   }
   cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
   
-  width = .5
-  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  width = .35
   height = 3
   
   cor_dist = function(x) proxy::dist(x, method="correlation")
@@ -566,8 +564,7 @@ motifs_df_m = walk(c("up", "down"), function(direction_cur) {
   }
   cols = colorRamp2(c(min_val, max_val), colors = c(pal[c(1,9)]))
   
-  width = .6
-  height = width * nrow(motifs_df_m) / ncol(motifs_df_m)
+  width = .35
   height = 3
   
   cor_dist = function(x) proxy::dist(x, method="correlation")
@@ -602,7 +599,7 @@ motifs_up_df_m = log2(motifs_up_df_m + 1)
 #motifs_df_m[motifs_df_m==0] = NA
 cols = viridisLite::viridis(9)
 
-width = .6
+width = .35
 height = width * nrow(motifs_up_df_m) / ncol(motifs_up_df_m)
 hm = ComplexHeatmap::Heatmap(motifs_up_df_m, col=cols, cluster_columns=F,
                              width = unit(width, "in"),
