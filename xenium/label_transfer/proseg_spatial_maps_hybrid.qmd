@@ -1,20 +1,26 @@
 ---
-title: "Xenium spatial maps — proseg RCTD calls, no-Arco-4 reference"
+title: "Xenium spatial maps — proseg RCTD calls, hybrid division labels"
 format: html
 editor: source
 ---
 
-Identical to `proseg_spatial_maps.qmd` except the RCTD reference used to
-produce `rctd_all.csv.gz` additionally excludes `Glut-Arco-4` (on top of the
-already-excluded `Glut-Nido-3`) — see
-`xenium/label_transfer/hpc_rctd_proseg_no_arco4/README.md`. Output goes to a
-distinct directory (`proseg_spatial_maps_no_arco4/`) so the with-Arco-4 figures
-are not overwritten; the two can be compared side by side.
+Same figure set as `proseg_spatial_maps.qmd`, run against the hybrid-division
+reference (`hpc_rctd_proseg_hybrid`, `celltype_hybrid`, 47 labels) instead of
+the older 48-label scheme. Type names are the hybrid ones throughout; see
+`snrna/naming/hybrid_division_naming/hybrid_label_lookup.csv` for the mapping.
+Two consequences worth keeping in mind when comparing against the older
+figures:
+
+* `Glut-DACH2-1` is a **merge** of the old `Glut-NC-1` + `Glut-Nido-1`, so it
+  is not the same population as the old `Glut-NC-1` panel.
+* This reference excludes `Glut-Nido-3` and `Glut-Arco-4`, making it
+  exclusion-equivalent to `proseg_spatial_maps_no_arco4/`, not to
+  `proseg_spatial_maps/`.
 
 Spatial location of confident RCTD calls (proseg segmentation, all ten
 sections) for the ten glutamatergic types named as the primary targets of this
-analysis: `Glut-HVC-1`, `Glut-HVC-2`, `Glut-NC-1`, `Glut-NC-4`, `Glut-RA`,
-`Glut-Arco-1`, `Glut-LMAN-1`, `Glut-LMAN-2`, `Glut-NR-1`, `Glut-NR-4`.
+analysis: `Glut-DACH2-HVCra`, `Glut-DACH2-HVCx`, `Glut-DACH2-1`, `Glut-DACH2-4`, `Glut-CACNA1H-RA`,
+`Glut-CACNA1H-1`, `Glut-DACH2-LMANsh`, `Glut-DACH2-LMANco`, `Glut-DACH2-5`, `Glut-DACH2-8`.
 
 Two products: one combined figure with all ten types overlaid (distinct
 colors, faceted by section), and ten single-type figures (same layout, one
@@ -38,13 +44,13 @@ select = dplyr::select
 ```
 
 ```{r}
-script_name = "proseg_spatial_maps_no_arco4"
-hpc_dir = path.expand("~/hdd/rstudio/xenium/260811_brainard_adult-425g/hpc_rctd_proseg_no_arco4")
+script_name = "proseg_spatial_maps_hybrid"
+hpc_dir = path.expand("~/hdd/rstudio/xenium/260811_brainard_adult-425g/hpc_rctd_proseg_hybrid")
 out_dir = here::here("xenium/label_transfer", script_name)
 dir.create(out_dir, recursive = T, showWarnings = F)
 
-song_types = c("Glut-HVC-1", "Glut-HVC-2", "Glut-NC-1", "Glut-NC-4", "Glut-RA",
-              "Glut-Arco-1", "Glut-LMAN-1", "Glut-LMAN-2", "Glut-NR-1", "Glut-NR-4")
+song_types = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-DACH2-1", "Glut-DACH2-4", "Glut-CACNA1H-RA",
+              "Glut-CACNA1H-1", "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco", "Glut-DACH2-5", "Glut-DACH2-8")
 
 section_order = c("OR52YW26_1_4", "OR52YW26_1_7", "OR52YW26_2_2", "OR52YW26_2_4", "OR52YW26_2_7",
                   "OR69PU4_1_4", "OR69PU4_1_7", "OR69PU4_2_2", "OR69PU4_2_4", "OR69PU4_2_7")
@@ -133,18 +139,18 @@ highlight %>% count(first_type) %>% arrange(desc(n))
 
 `Seurat::DiscretePalette(..., "polychrome")`'s first two colors are `#5A5156`
 (dark grey) and `#E4E1E3` (near-white) — both nearly invisible against the
-grey background / white page used here, and Glut-HVC-1/Glut-HVC-2 are exactly
+grey background / white page used here, and Glut-DACH2-HVCra/Glut-DACH2-HVCx are exactly
 the two types that most need to stay legible. Picked by hand instead: fully
 saturated, mutually distinguishable, none close to white or grey.
 
-Glut-HVC-1's original color (`#E6194B`) was replaced with black — it was
+Glut-DACH2-HVCra's original color (`#E6194B`) was replaced with black — it was
 nearly identical to `position_colors["ra"]` (`#e31a1c`) in
 `/opt/colquittlab/utils/R/common_aesthetics.R`, the lab's standard color for
 the RA position, which risked being misread as RA in any figure shown
 alongside that convention. Black is unused elsewhere in this palette and
 reads clearly against the grey background. The same fix (that red -> black)
 is applied everywhere else in this document a single fixed highlight color is
-used: `single_type_colour`, `pair_song_colour`, and `pre_colors["Glut-Pre-1"]`.
+used: `single_type_colour`, `pair_song_colour`, and `pre_colors["Glut-NSC"]`.
 
 ```{r}
 type_colors = setNames(
@@ -239,11 +245,11 @@ comparator = blue) rather than a distinct palette per pair.
 ```{r}
 pair_list = tribble(
   ~song,          ~nonsong,
-  "Glut-HVC-1",   "Glut-NC-1",
-  "Glut-HVC-2",   "Glut-NC-4",
-  "Glut-LMAN-1",  "Glut-NR-1",
-  "Glut-LMAN-2",  "Glut-NR-4",
-  "Glut-RA",      "Glut-Arco-1",
+  "Glut-DACH2-HVCra",   "Glut-DACH2-1",
+  "Glut-DACH2-HVCx",   "Glut-DACH2-4",
+  "Glut-DACH2-LMANsh",  "Glut-DACH2-5",
+  "Glut-DACH2-LMANco",  "Glut-DACH2-8",
+  "Glut-CACNA1H-RA",      "Glut-CACNA1H-1",
 )
 stopifnot(all(c(pair_list$song, pair_list$nonsong) %in% song_types))
 
@@ -309,13 +315,13 @@ for (ty in all_types) {
 list.files(out_dir, pattern = "^spatial_all_")
 ```
 
-## Aggregate — Glut-Pre-1/2/3
+## Aggregate — Glut-NSC/2/3
 
 Same construction as the ten-type aggregate above, scoped to the three
 `Glut-Pre-*` types with their own small palette.
 
 ```{r}
-pre_types = c("Glut-Pre-1", "Glut-Pre-2", "Glut-Pre-3")
+pre_types = c("Glut-NSC", "Glut-NB", "Glut-Im")
 stopifnot(all(pre_types %in% unique(d$first_type)))
 
 pre_colors = setNames(c("#000000", "#3CB44B", "#4363D8"), pre_types)
@@ -446,7 +452,7 @@ for (ty in all_types) {
 list.files(out_dir, pattern = "_gte400\\.png$") %>% length()
 ```
 
-### Aggregate — Glut-Pre-1/2/3 (gte400)
+### Aggregate — Glut-NSC/2/3 (gte400)
 
 ```{r}
 panels = map(section_order, pre_section_plot, hl_data = pre_highlight_gte400)

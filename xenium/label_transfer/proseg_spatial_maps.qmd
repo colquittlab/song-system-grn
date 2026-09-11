@@ -262,7 +262,7 @@ for (i in seq_len(nrow(pair_list))) {
   panels = map(section_order, pair_section_plot, song_ty = song_ty, nonsong_ty = nonsong_ty)
   p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
     cowplot::draw_figure_label(
-      paste0(song_ty, " (red)  vs.  ", nonsong_ty, " (blue)"),
+      paste0(song_ty, " (black)  vs.  ", nonsong_ty, " (blue)"),
       position = "top", size = 14)
 
   fname = paste0("spatial_pair_", str_replace_all(song_ty, "-", "_"),
@@ -409,7 +409,7 @@ for (i in seq_len(nrow(pair_list))) {
               hl_data = highlight_gte400)
   p = cowplot::plot_grid(plotlist = panels, ncol = 5) +
     cowplot::draw_figure_label(
-      paste0(song_ty, " (red)  vs.  ", nonsong_ty, " (blue) — nCount >= ", deep_min_counts),
+      paste0(song_ty, " (black)  vs.  ", nonsong_ty, " (blue) — nCount >= ", deep_min_counts),
       position = "top", size = 14)
 
   fname = paste0("spatial_pair_", str_replace_all(song_ty, "-", "_"),
