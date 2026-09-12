@@ -1263,6 +1263,35 @@ if (redo) {
 
 ```
 
+#### Export beds
+```{r}
+## The pre-hybrid Astro-vs-Oligo BEDs in <proj_dir>/peaks/beds came from peaks.qmd's
+## glut bed loop picking up `pairs_full` and `marker_peaks_glut_df` from
+## differential_accessibility.qmd's session -- neither is defined in this file, so it
+## only ever worked by accident and wrote all 435 pairwise contrasts. This exports the
+## Astro-vs-Oligo contrast this section actually computes, from its own objects.
+## The FDR is in the filename: the DAR figures were unreadable after the fact
+## precisely because a threshold shaped the output without appearing in its name.
+astro_fdr = 0.1
+bed_dir = file.path(out_dir, "beds")
+dir.create(bed_dir, showWarnings = FALSE)
+
+iwalk(marker_peaks_astro_gr, function(gr, pair_name) {
+  d_out = as.data.frame(gr) %>%
+    arrange(seqnames, start) %>%
+    mutate(sign = sign(Log2FC),
+           name = sprintf("%s:%s-%s", seqnames, start, end))
+  walk(unique(d_out$sign), function(sign_cur) {
+    d_cur = d_out %>%
+      filter(sign == sign_cur) %>%
+      select(seqnames, start, end, name, Log2FC, strand)
+    fname = file.path(bed_dir, sprintf("Astro_vs_Oligo_fdr%s_%s.bed", astro_fdr, sign_cur))
+    write_delim(d_cur, fname, delim = "\t", col_names = FALSE)
+    message(sprintf("%s: %s regions", basename(fname), nrow(d_cur)))
+  })
+})
+```
+
 ### Song-nonsong differences, same cluster
 ```{r}
 
