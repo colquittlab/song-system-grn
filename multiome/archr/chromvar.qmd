@@ -773,20 +773,54 @@ plotVarDev
 ```
 
 ```{r}
-redo = T
-if (redo) {
-  md = as.data.frame(getCellColData(proj)) %>%
-    rownames_to_column() %>%
-    filter(cluster_hybrid %in% names(hybrid_position))
+## chromVAR deviations on the glut subset are this notebook's entire runtime:
+## 94 of its 102 minutes, measured. They depend only on which cells are in the
+## subset and on the peak set, neither of which changes between renders, so they
+## are computed once into a self-contained project and reloaded thereafter.
+## Delete proj_glut_sub/ to force a recompute.
+##
+## The subset is saved to its own directory *before* the deviations are computed,
+## not after. `proj[cells, ]` keeps the shared project as its output directory, so
+## the previous version had addBgdPeaks writing Background-Peaks.rds into the shared
+## 84 GB project and addDeviationsMatrix writing MotifHSMatrix into its Arrow files
+## -- against this directory's "nothing writes to the ArchR project" convention, and
+## the reason no two notebooks here could render at once. Saving first gives the
+## subset its own Arrow files, so both writes land in the cache instead.
+proj_sub_dir = file.path(out_dir, "proj_glut_sub")
+
+md = as.data.frame(getCellColData(proj)) %>%
+  rownames_to_column() %>%
+  filter(cluster_hybrid %in% names(hybrid_position))
+
+## A cache is only usable if it holds the deviations for exactly these cells with
+## exactly these labels; otherwise it is silently answering a different question.
+cache_ok = FALSE
+if (dir.exists(proj_sub_dir)) {
+  proj_sub = tryCatch(loadArchRProject(proj_sub_dir, showLogo = FALSE),
+                      error = function(e) NULL)
+  if (!is.null(proj_sub) && "MotifHSMatrix" %in% getAvailableMatrices(proj_sub) &&
+      setequal(getCellNames(proj_sub), md$rowname)) {
+    lab_now = setNames(as.character(md$cluster_hybrid), md$rowname)
+    lab_cached = setNames(as.character(getCellColData(proj_sub, "cluster_hybrid")[[1]]),
+                          getCellNames(proj_sub))
+    cache_ok = identical(lab_cached[names(lab_now)], lab_now)
+  }
+  if (!cache_ok) message("proj_glut_sub is stale or incomplete -- recomputing.")
+}
+
+if (!cache_ok) {
   proj_sub = proj[md$rowname,]
-  
+  proj_sub = saveArchRProject(proj_sub, outputDirectory = proj_sub_dir,
+                              overwrite = TRUE, load = TRUE, dropCells = TRUE)
+
   proj_sub <- addBgdPeaks(proj_sub, force=T)
-  
+
   proj_sub <- addDeviationsMatrix(
     ArchRProj = proj_sub,
     peakAnnotation = "MotifHS",
     force = TRUE
   )
+  proj_sub = saveArchRProject(proj_sub, load = TRUE)
 }
 ```
 
