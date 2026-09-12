@@ -81,6 +81,26 @@ which fails the HTML write *after* the R code has already finished. Render seria
 `differential_accessibility.qmd` takes ~90 minutes uncontended (351 pairwise
 contrasts) and its `peaks_glut.rds` is **26 GB** -- check free space first.
 
+`chromvar.qmd` caches the expensive part. `addBgdPeaks` + `addDeviationsMatrix` on
+the glut subset was 94 of its 102 minutes, recomputing a result that depends only on
+the cells and the peak set. It now builds `chromvar_hybrid/proj_glut_sub` once -- a
+self-contained ArchR project with its own Arrow files -- and reloads it after that.
+Delete that directory to force a recompute. Because the subset is saved *before* the
+deviations are computed, both writes land in the cache rather than in the shared
+project, which is what previously forced these notebooks to render one at a time.
+
+**This changed the deviation values, deliberately.** `addDeviationsMatrix` builds its
+per-peak expectation with `.getRowSums(ArrowFiles = ...)`, over every cell in the
+Arrow files rather than over the project's cells. Subsetting with `proj[cells, ]`
+used to leave the full project's Arrows in place, so the expectation was taken over
+all 17,061 cells; the cache holds only the 5,332 glut cells, so it is now taken over
+those. That shifts each deviation by a per-peak constant. Relative structure is
+almost unchanged -- the nonsong-subtracted correlations moved 0.9428 -> 0.9330,
+0.9548 -> 0.9500 and 0.9899 -> 0.9866 -- while the raw ones moved a lot (0.77 -> 0.50,
+0.91 -> 0.83), since those carry the baseline. Normalising within the population being
+compared is the intended behaviour here. Figures predating this carry the old
+baseline; do not mix the two.
+
 `peaks.qmd` is the long one: ~3 hours, almost all of it HOMER. Its
 `findMotifsGenome.pl` call runs de novo motif finding at lengths 8, 10 and 12 over
 five k-means clusters of ~20k regions each. The k-means that defines those clusters
