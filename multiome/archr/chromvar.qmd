@@ -821,6 +821,20 @@ if (!cache_ok) {
     force = TRUE
   )
   proj_sub = saveArchRProject(proj_sub, load = TRUE)
+
+  ## saveArchRProject copies the *whole* source output directory, which here means
+  ## ~15 GB of unrelated analyses that happen to live in the ArchR project folder
+  ## (peaks/, dreme_tfbs/, peaks2geneslinks/, old .qmd files ...). They are copies --
+  ## the originals stay put -- and nothing here reads them, so drop them. Everything
+  ## ArchR owns is kept: loadArchRProject checks GroupCoverages exists and fails
+  ## without it. Peak2GeneLinks is the one ArchR directory it does not need.
+  archr_keep = c("ArrowFiles", "Annotations", "Embeddings", "GroupCoverages",
+                 "IterativeLSI", "LSI_ATAC", "LSI_RNA", "PeakCalls", "Plots",
+                 "RNAIntegration", "ArchRLogs",
+                 "Save-ArchR-Project.rds", "Background-Peaks.rds")
+  copied = setdiff(list.files(proj_sub_dir), archr_keep)
+  unlink(file.path(proj_sub_dir, copied), recursive = TRUE)
+  message(sprintf("Pruned %s copied entries from %s", length(copied), proj_sub_dir))
 }
 ```
 
