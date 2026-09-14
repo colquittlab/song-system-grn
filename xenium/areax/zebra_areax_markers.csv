@@ -1,0 +1,83 @@
+gene,category,regulation,desc
+C11ORF87,general,Down,chromosome 11 open reading frame 87
+CACNA1B,general,Up,"calcium channel, voltage-dependent, N type, alpha 1B subunit"
+CACNA1I,general,Down,"calcium channel, voltage-dependent, T type, alpha 1I subunit"
+CACNA2D3,general,Up,"calcium channel, voltage-dependent, alpha 2/delta subunit 3"
+CACNB4,general,Up,"calcium channel, voltage-dependent, beta 4 subunit"
+CACNG3,general,Down,"calcium channel, voltage-dependent, gamma subunit 3"
+CACNG5,general,Up,"calcium channel, voltage-dependent, gamma subunit 5"
+CADPS2,general,Up,Ca++-dependent secretion activator 2
+CHRNA4,general,Up,"cholinergic receptor, nicotinic, alpha 4 (neuronal)"
+CLMN,general,Up,"calmin (calponin-like, transmembrane)"
+CNTN4,general,Up,contactin 4
+DAPK1,general,Up,death-associated protein kinase 1
+DCLK1,general,Up,doublecortin-like kinase 1
+DNM3,general,Up,dynamin 3
+FLRT2,general,Up,fibronectin leucine rich transmembrane protein 2
+GABRB3,general,Down,"gamma-aminobutyric acid (GABA) A receptor, beta 3"
+GABRE,general,Up,"gamma-aminobutyric acid (GABA) A receptor, epsilon"
+GABRG2,general,Up,"gamma-aminobutyric acid (GABA) A receptor, gamma 2"
+GPM6A,general,Down,glycoprotein M6A
+GRIN1,general,Up,"glutamate receptor, ionotropic, N-methyl D-aspartate 1"
+GRIN2A,general,Up,"glutamate receptor, ionotropic, N-methyl D-aspartate 2A"
+GRM3,general,Down,"glutamate receptor, metabotropic 3"
+HTR1B,general,Up,"5-hydroxytryptamine (serotonin) receptor 1B, G protein-coupled"
+HTR2A,general,Up,"5-hydroxytryptamine (serotonin) receptor 2A, G protein-coupled"
+KCNA1,general,Up,"potassium voltage-gated channel, shaker-related subfamily, member 1 (episodic ataxia with myokymia)"
+KCNA4,general,Down,"potassium voltage-gated channel, shaker-related subfamily, member 4"
+KCNAB1,general,Up,"potassium voltage-gated channel, shaker-related subfamily, beta member 1"
+KCNIP2,general,Up,Kv channel interacting protein 2
+KCNK2,general,Up,"potassium channel, subfamily K, member 2"
+KCNS1,general,Up,"potassium voltage-gated channel, delayed-rectifier, subfamily S, member 1"
+KCNT2,general,Up,"potassium channel, subfamily T, member 2"
+KCTD12,general,Up,potassium channel tetramerisation domain containing 12
+MPPED2,general,Up,metallophosphoesterase domain containing 2
+NDRG4,general,Up,NDRG family member 4
+NEFL,general,Up,"neurofilament, light polypeptide"
+NRP1,general,Up,neuropilin 1
+PAK6,general,Down,p21 protein (Cdc42/Rac)-activated kinase 6
+PCP4,general,Up,Purkinje cell protein 4
+PNLDC1,general,Up,poly(A)-specific ribonuclease (PARN)-like domain containing 1
+PPM1E,general,Up,"protein phosphatase, Mg2+/Mn2+ dependent, 1E"
+QSOX1,general,Up,quiescin Q6 sulfhydryl oxidase 1
+RGS12,general,Up,regulator of G-protein signaling 12
+RGS4,general,Up,regulator of G-protein signaling 4
+RHOB,general,Up,ras homolog family member B
+ROBO1,general,Down,"roundabout, axon guidance receptor, homolog 1 (Drosophila)"
+RYR2,general,Up,ryanodine receptor 2 (cardiac)
+SELENOP2,general,Up,selenoprotein P-like
+SEMA3E,general,Up,"sema domain, immunoglobulin domain (Ig), short basic domain, secreted, (semaphorin) 3E"
+SEMA7A,general,Up,"semaphorin 7A, GPI membrane anchor (John Milton Hagen blood group)"
+SLC4A4,general,Up,"solute carrier family 4, sodium bicarbonate cotransporter, member 4"
+SLC6A6,general,Up,"solute carrier family 6 (neurotransmitter transporter, taurine), member 6"
+SLC9A7,general,Up,"solute carrier family 9, subfamily A (NHE7, cation proton antiporter 7), member 7"
+SNCA,general,Down,"synuclein, alpha (non A4 component of amyloid precursor)"
+SQSTM1,general,Up,sequestosome 1
+SV2B,general,Up,synaptic vesicle glycoprotein 2B
+SYF2,general,Up,"SYF2 homolog, RNA splicing factor (S. cerevisiae)"
+SYNGR3,general,Up,synaptogyrin 3
+TAC1,general,Up,"tachykinin, precursor 1"
+TXNDC9,general,Down,thioredoxin domain containing 9
+UNKNOWN016,general,Up,NA
+UNKNOWN024,general,Up,NA
+VIP,general,Down,vasoactive intestinal peptide
+VLDLR,general,Up,very low density lipoprotein receptor
+WWC1,general,Up,WW and C2 domain containing 1
+ZNF385C,general,Up,zinc finger protein 385C
+CHRNA4,sparse,Up,"cholinergic receptor, nicotinic, alpha 4 (neuronal)"
+CNTN4,sparse,Up,contactin 4
+DPP6,sparse,Up,dipeptidyl-peptidase 6
+KCNF1,sparse,Up,"potassium voltage-gated channel, subfamily F, member 1"
+KCNJ5,sparse,Up,"potassium inwardly-rectifying channel, subfamily J, member 5"
+LMO1,sparse,Up,LIM domain only 1 (rhombotin 1)
+MPZL1,sparse,Up,myelin protein zero-like 1
+NDRG4,sparse,Up,NDRG family member 4
+NEFL,sparse,Up,"neurofilament, light polypeptide"
+NETO1,sparse,Up,neuropilin (NRP) and tolloid (TLL)-like 1
+PATJ,sparse,Up,"PATJ, crumbs cell polarity complex component"
+PPM1E,sparse,Up,"protein phosphatase, Mg2+/Mn2+ dependent, 1E"
+QSOX1,sparse,Up,quiescin Q6 sulfhydryl oxidase 1
+SNCA,sparse,Up,"synuclein, alpha (non A4 component of amyloid precursor)"
+SYF2,sparse,Up,"SYF2 homolog, RNA splicing factor (S. cerevisiae)"
+SYNGR3,sparse,Up,synaptogyrin 3
+UCHL1,sparse,Up,ubiquitin carboxyl-terminal esterase L1 (ubiquitin thiolesterase)
