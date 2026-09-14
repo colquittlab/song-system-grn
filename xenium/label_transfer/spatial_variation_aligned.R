@@ -96,7 +96,13 @@ delta_draw = x$delta; obs_draw = x$obs; null_draw = x$null
 
 cols = colorRamp2(breaks = seq(0, 1, length.out = 9),
                   colors = scales::brewer_pal(palette="Greys")(9))
-RH = 0.13; hm_h = length(ct_order)*RH; hm_w = nrow(tab)*RH
+## Heatmap body sized to match the vertical panel in
+## snrna/trees/celltypes_hclust_all_hybrid.qmd, which uses
+## scale_factor = 0.08 per cell: height = ncol(tab) * 0.08 over the 47
+## cell types, width = nrow(tab) * 0.08 over the 6 positions.
+SCALE_FACTOR = 0.08
+hm_h = 3.765                      # the trees figure's body height
+hm_w = nrow(tab) * SCALE_FACTOR   # 6 positions -> 0.48 in
 
 ann_snrna = HeatmapAnnotation(
   which = "row",
