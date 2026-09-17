@@ -67,11 +67,13 @@ if (redo) {
   obj_int_filt = subset(obj_int_filt, cells=cells)
 
   ## Further omissions, specific to this script rather than to the naming notebook: Glut-SATB2-1 is
-  ## the lone member of its division and Glut-GABA is the mixed-identity cluster (ex Glut-Nido-2).
-  ## Both sit far enough off the DACH2 body to set the scale of the nidopallial embedding while
-  ## saying nothing about it, so they are dropped before the UMAP is fit, not just hidden after.
-  ## They remain in obj_hybrid_labels.qs2 and in every other consumer of it.
-  umap_excluded_labels = c("Glut-SATB2-1", "Glut-GABA")
+  ## the lone member of its division, Glut-GABA is the mixed-identity cluster (ex Glut-Nido-2), and
+  ## Glut-NSC is the neural stem cell head of the precursor series. All three sit far enough off the
+  ## DACH2 body to set the scale of the nidopallial embedding while saying nothing about it, so they
+  ## are dropped before the UMAP is fit, not just hidden after. All three are nidopallial, so the
+  ## arcopallial half is unaffected. They remain in obj_hybrid_labels.qs2 and in every other
+  ## consumer of it.
+  umap_excluded_labels = c("Glut-SATB2-1", "Glut-GABA", "Glut-NSC")
   stopifnot("a umap_excluded_labels entry is not a celltype_hybrid label" =
               all(umap_excluded_labels %in% unique(obj_int_filt@meta.data[[res_to_use]])))
   obj_int_filt = subset(obj_int_filt,
