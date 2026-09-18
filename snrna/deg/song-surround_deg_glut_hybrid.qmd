@@ -217,16 +217,16 @@ Each pair reduces to 6 samples, 3 birds a side: HVC and RA draw on birds 1-3, LM
 bird needs at least `min_cells_pb` cells on *both* sides to be usable, since one side alone cannot
 be paired; none are lost at 20, but the rule is enforced rather than assumed.
 
-**Two things change relative to the unpaired fits, beyond the pairing itself**, and both are worth
-knowing before the numbers are compared:
+Each song type is tested against its **one** corresponding non-song type -- five contrasts, five
+surrounds -- which is what `ident.2 = pair_cur[2]` does in the unpaired fits above and what the
+paired fits do here. The extra clusters in the `pairs` vectors (`Glut-DACH2-6`, `Glut-DACH2-7`) are
+not part of any contrast: they are there for `cts = unlist(pairs)`, which drives the dotplot and
+violin columns further down, where the neighbouring non-song clusters are worth showing alongside
+the tested pair.
 
-1. **Both LMAN surrounds are used.** `ident.2 = pair_cur[2]` took only the first surround cluster of
-   each pair, so LMANco was tested against `Glut-DACH2-8` alone and LMANsh against `Glut-DACH2-5`
-   alone, with `-6` and `-7` carried in the list but never reaching the test. That was an indexing
-   artifact rather than a decision -- the `pairs` list plainly means all of them -- so the paired
-   fits use the full surround set. Revert by passing `p[2]` instead of `p[-1]` below.
-2. **Raw counts, not SCT**, for the reason given in the pooled contrast: DESeq2's model expects
-   summed UMIs.
+**One thing changes relative to the unpaired fits, beyond the pairing itself**: raw counts rather
+than SCT, for the reason given in the pooled contrast -- DESeq2's model and size factors expect
+summed UMIs.
 
 ```{r}
 
@@ -283,7 +283,7 @@ cat(if (redo_paired_pairs) "no cached paired per-pair fits -- fitting\n" else
     sprintf("reusing cached paired per-pair fits: %s\n", paired_pairs_fname))
 
 if (redo_paired_pairs) {
-  markers_paired = imap(pairs, function(p, nm) paired_contrast(p[1], p[-1])) %>%
+  markers_paired = imap(pairs, function(p, nm) paired_contrast(p[1], p[2])) %>%
     bind_rows(.id = "compare")
   saveRDS(markers_paired, paired_pairs_fname)
 } else {
@@ -774,6 +774,115 @@ save_heatmap_horizontal(markers_agg_mat, hc,
                         mark_genes = markers_agg_select_label$gene)
 ```
 
+### Transcription factors only
+
+The same significant-gene heatmap restricted to transcription factors. In a heatmap of a thousand
+genes the TFs are there but unfindable, and they are the ones that carry a claim about regulatory
+identity rather than about effector genes -- so they get their own panel, short enough to label
+every row.
+
+The TF definition is the bundled Lambert et al. list, `data/lambert_tfs/tfs.csv`, filtered to
+`DBD != "Unknown"` exactly as `snrna/trees/celltypes_hclust_glut.qmd` and the ArchR notebooks do.
+That drops the ~1000 entries with no assigned DNA-binding domain, which are the least certain calls
+in that table. Matching those notebooks matters more than the particular cut: a TF here should mean
+the same thing it means elsewhere in the project.
+
+Selection is the same as `heatmap_sig` -- significant at `p_val_adj < sig_thresh` and
+`|avg_log2FC| >= 1` in at least one contrast.
+
+Where it differs is what happens to a TF that was not tested in every contrast. `heatmap_sig` drops
+those rows; here they are kept and the untested cells drawn as zero, following `heatmap_sig_label`.
+Dropping them would lose about half the DE TFs, which defeats a figure whose whole purpose is to
+show the TFs. The cost is that a filled cell reads as "no change" when it really means "too lowly
+expressed in that pair to test" -- the two are not the same, the proportion filled is reported
+below, and the CSV keeps the real values with their NAs intact.
+
+```{r}
+tfs = read_delim(here::here("data/lambert_tfs/tfs.csv"), show_col_types = FALSE) %>%
+  filter(DBD != "Unknown")
+
+tf_de_genes = markers_agg %>%
+  filter(!is.na(p_val_adj), p_val_adj < sig_thresh, abs(avg_log2FC) >= 1, gene %in% tfs$Name) %>%
+  distinct(gene) %>% pull(gene)
+
+## values_fill = 0 rather than dropping incomplete rows. Half the DE TFs are missing a value in at
+## least one contrast -- DESeq2's count prefilter removed them there, which for a TF usually means
+## it is too lowly expressed in that pair to test -- and `na.omit` would have silently halved the
+## panel, which defeats the point of a TF-specific figure.
+##
+## The filled cells are drawn as zero, i.e. as "no change", which is an assumption and not a
+## measurement: a gene too lowly expressed to test is not the same as a gene that did not move. The
+## count is reported below and the accompanying CSV keeps the real values, NAs included, so nothing
+## downstream inherits the imputation.
+tf_mat = markers_agg %>%
+  filter(gene %in% tf_de_genes) %>%
+  select(gene, compare, avg_log2FC) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC", values_fill = 0) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+tf_mat = tf_mat[, song_cts, drop = FALSE]
+
+n_measured = markers_agg %>%
+  filter(gene %in% tf_de_genes, compare %in% song_cts, !is.na(avg_log2FC)) %>% nrow()
+n_complete = markers_agg %>%
+  filter(gene %in% tf_de_genes, compare %in% song_cts, !is.na(avg_log2FC)) %>%
+  dplyr::count(gene) %>% filter(n == length(song_cts)) %>% nrow()
+
+cat(sprintf("TF list: %s with a known DBD; DE TFs: %s (%s complete across all five)\n",
+            nrow(tfs), length(tf_de_genes), n_complete))
+cat(sprintf("heatmap cells: %s measured, %s filled at 0 (%.1f%%)\n",
+            n_measured, length(tf_de_genes) * length(song_cts) - n_measured,
+            100 * (length(tf_de_genes) * length(song_cts) - n_measured) /
+              (length(tf_de_genes) * length(song_cts))))
+
+## Written out with the fold changes, since the point of this panel is usually to pick TFs to follow
+## up rather than to read the colours.
+markers_agg %>%
+  filter(gene %in% rownames(tf_mat)) %>%
+  left_join(tfs %>% select(gene = Name, DBD), by = "gene") %>%
+  arrange(gene, compare) %>%
+  write_csv(file.path(out_dir, "heatmap_tf_de.csv"))
+```
+
+```{r}
+if (nrow(tf_mat) > 1) {
+  max_val = 4
+  cols_cur = circlize::colorRamp2(breaks = c(-max_val, 0, max_val),
+                                  colors = c(scales::muted("blue"), "white", scales::muted("red")))
+
+  hc_tf = hclust(dist(tf_mat), method = "ward.D")
+
+  ## Square cells: one size for both dimensions, so the panel is sized from the row and column
+  ## counts rather than to a fixed height. 0.085 in is about 6 pt, which is the floor for 5 pt row
+  ## labels not to collide -- every row is labelled here, which is the reason this variant exists.
+  cell_size = 0.085
+  height = cell_size * nrow(tf_mat)
+  width  = cell_size * ncol(tf_mat)
+
+  hm = Heatmap(tf_mat, name = "avg_log2FC", col = cols_cur,
+               cluster_rows = hc_tf,
+               cluster_columns = FALSE,
+               show_row_names = TRUE,
+               row_names_gp = gpar(fontsize = 5),
+               column_names_gp = gpar(fontsize = 6),
+               row_dend_gp = gpar(lwd = .5),
+               show_column_dend = FALSE,
+               height = unit(height, "inch"),
+               width = unit(width, "inch"))
+
+  pdf(file.path(out_dir, "heatmap_tf.pdf"), width = width + 3, height = height + 2)
+  print(hm)
+  dev.off()
+  print(hm)
+
+  save_heatmap_horizontal(tf_mat, hc_tf, file.path(out_dir, "heatmap_tf_horizontal.pdf"),
+                          col = cols_cur, height = height, width = width,
+                          show_gene_names = TRUE)
+} else {
+  cat("fewer than two DE TFs with complete rows -- no heatmap drawn\n")
+}
+```
+
 ### UMAPs
 ```{r}
 umap_dir = file.path(out_dir, "umaps")
@@ -1065,10 +1174,11 @@ every one of their surrounds, what separates song neurons from non-song neurons?
 
 Two design points.
 
-**What counts as non-song.** The surrounds already paired with a song nucleus -- `Glut-CACNA1H-1`
-for RA, `Glut-DACH2-1`/`-4` for the two HVC clusters, `Glut-DACH2-5`/`-6`/`-7`/`-8` for the two
-LMAN clusters -- not every other excitatory cluster. Those surrounds are the anatomically matched
-controls, and both sides of the contrast then draw on the same regions in the same proportions.
+**What counts as non-song.** The five surrounds already paired with a song nucleus -- one each:
+`Glut-CACNA1H-1` for RA, `Glut-DACH2-1` and `-4` for the two HVC clusters, `Glut-DACH2-8` and `-5`
+for the two LMAN clusters -- not every other excitatory cluster, and not the additional neighbours
+carried in the `pairs` vectors for the dotplot. Those five are the anatomically matched controls,
+and both sides of the contrast then draw on the same regions in the same proportions.
 Pooling against all excitatory neurons instead would put arcopallial against nidopallial identity
 inside the contrast and confound region with song.
 
@@ -1083,8 +1193,12 @@ run through DESeq2 directly with `~ individual + songness` is the one-step chang
 ```{r}
 songness_fname = file.path(out_dir, sprintf("song_vs_nonsong_%s.rds", assay_to_use))
 
+## The five corresponding non-song types, one per song type -- `pairs[[i]][2]`, the same surround
+## each per-pair contrast uses. Not `setdiff(unlist(pairs), song_cts)`, which would also sweep in
+## Glut-DACH2-6 and -7; those are in the pairs vectors for the dotplot columns, not as contrast
+## terms.
 song_labels    = song_cts
-nonsong_labels = setdiff(unlist(pairs), song_cts)
+nonsong_labels = unname(map_chr(pairs[song_cts], 2))
 stopifnot("song and non-song overlap" = length(intersect(song_labels, nonsong_labels)) == 0)
 cat("song:    ", paste(song_labels, collapse = ", "), "\n")
 cat("non-song:", paste(nonsong_labels, collapse = ", "), "\n")
@@ -1130,10 +1244,21 @@ print(songness_markers %>% filter(sig, displayable) %>% arrange(-abs(avg_log2FC)
 
 ```{r}
 ## Volcano, same construction as the per-pair one below so the two read alike.
+## Labels chosen by significance within each direction, with a fold-change floor -- the same rule as
+## the per-pair volcano below, which ranks on `p_val_adj_mlog10`.
+##
+## Ranking on |avg_log2FC| alone (what this did first) labels the wrong points. These are unshrunk
+## MLE fold changes, so the largest ones belong disproportionately to low-expression genes with wide
+## standard errors: big effect, weak p. On a volcano those sit far out on x but low on y, down in
+## the band near the significance floor, so the labels land on visually unremarkable points while
+## the genes at the top of the plot -- the ones the eye goes to -- go unlabelled.
+##
+## The |log2FC| >= 1 floor keeps the other failure mode out: a very highly expressed gene can reach
+## a tiny p on a fold change too small to care about.
 sn_lab = songness_markers %>%
-  filter(sig, displayable) %>%
-  group_by(sign(avg_log2FC)) %>%
-  slice_max(abs(avg_log2FC), n = 12) %>%
+  filter(sig, displayable, abs(avg_log2FC) >= 1) %>%
+  group_by(direction = sign(avg_log2FC)) %>%
+  slice_min(p_val_adj, n = 12, with_ties = FALSE) %>%
   ungroup() %>%
   transmute(gene, gene_to_label = gene)
 
