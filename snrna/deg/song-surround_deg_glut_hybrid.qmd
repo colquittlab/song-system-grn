@@ -270,8 +270,15 @@ paired_contrast = function(song_ct, surround_cts) {
   dds = dds[keep, ]
   dds = DESeq(dds, quiet = TRUE)
 
-  r = results(dds, name = "grp_song_vs_surround") %>% as.data.frame() %>%
-    rownames_to_column("gene") %>% as_tibble()
+  ## Shrunken effect sizes. apeglm pulls the fold change of a poorly-estimated gene toward zero in
+  ## proportion to its uncertainty, which is exactly the noise that made raw |log2FC| ranking favour
+  ## low-expression genes with wide standard errors. Passing `res =` keeps the p values from the
+  ## Wald test on the unshrunken fit, so only the effect sizes move -- significance is unchanged.
+  ## The MLE is retained alongside so the two can be compared rather than taken on faith.
+  r_mle = results(dds, name = "grp_song_vs_surround")
+  r = lfcShrink(dds, coef = "grp_song_vs_surround", type = "apeglm", res = r_mle, quiet = TRUE) %>%
+    as.data.frame() %>% rownames_to_column("gene") %>% as_tibble() %>%
+    mutate(log2FoldChange_mle = as.numeric(r_mle$log2FoldChange))
   cat(sprintf("  %-20s birds=%s samples=%s tested=%s sig=%s\n", song_ct,
               n_distinct(cd$individual), nrow(cd), nrow(r),
               sum(!is.na(r$padj) & r$padj < sig_thresh)))
@@ -1299,10 +1306,12 @@ Three departures from the chunk above, each deliberate:
   `AggregateExpression`. The sample names then round-trip exactly, which matters because the design
   matrix is keyed on them; Seurat rewrites separators in group names and the two would have to be
   reconciled by string surgery.
-- **No shrinkage on the fold changes.** `apeglm` and `ashr` are not in this library, so `lfcShrink`
-  has nothing good to offer; the reported log2FC is the MLE. A light count prefilter keeps the worst
-  of the low-count noise out, but the fold change for a marginal gene is still noisier than the
-  shrunken estimate would be. Rank by p value, not by log2FC, for anything marginal.
+- **Shrunken fold changes**, via `lfcShrink(type = "apeglm")`. The reported `log2FoldChange` is the
+  posterior estimate, which pulls a poorly-estimated gene toward zero in proportion to its
+  uncertainty; `log2FoldChange_mle` keeps the unshrunken value beside it. The p values come from the
+  Wald test on the unshrunken fit and are passed through untouched, so shrinkage changes effect
+  sizes and nothing else -- but several panels select on `|log2FC| >= 1`, and that threshold now
+  bites differently, which the shrinkage summary below quantifies.
 
 What the pairing does *not* fix: birds 1-3 carry the HVC and RA nuclei, birds 4-6 the LMAN nuclei,
 so "song" means different nuclei in different birds. The paired term asks, within each bird, whether
@@ -1356,10 +1365,15 @@ if (redo_paired) {
   dds = DESeq(dds)
   print(resultsNames(dds))
 
-  paired_res = results(dds, name = "songness_song_vs_nonsong") %>%
+  ## Shrunken, as in the per-pair fits: apeglm on the effect sizes, p values carried through from
+  ## the unshrunken Wald test via `res =`, MLE kept alongside for comparison.
+  res_mle = results(dds, name = "songness_song_vs_nonsong")
+  paired_res = lfcShrink(dds, coef = "songness_song_vs_nonsong", type = "apeglm",
+                         res = res_mle, quiet = TRUE) %>%
     as.data.frame() %>%
     rownames_to_column("gene") %>%
-    as_tibble()
+    as_tibble() %>%
+    mutate(log2FoldChange_mle = as.numeric(res_mle$log2FoldChange))
   saveRDS(paired_res, paired_fname)
 } else {
   paired_res = readRDS(paired_fname)
@@ -1385,6 +1399,67 @@ cat(sprintf("of those, |log2FC| >= 1: %s; >= 2: %s\n",
 write_csv(paired_res %>% arrange(padj),
           file.path(out_dir, "song_vs_nonsong_paired_deg.csv"))
 print(paired_res %>% filter(sig, displayable) %>% arrange(padj) %>% head(30))
+```
+
+```{r}
+## Volcano for the paired fit, the counterpart to the unpaired one above. Same label rule -- most
+## significant per direction, with a fold-change floor -- but on shrunken effect sizes, so the x
+## axis no longer stretches out to accommodate a handful of badly-estimated low-count genes.
+pv_lab = paired_res %>%
+  filter(sig, displayable, abs(log2FoldChange) >= 1) %>%
+  group_by(direction = sign(log2FoldChange)) %>%
+  slice_min(padj, n = 12, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(gene, gene_to_label = gene)
+
+pv_plot = paired_res %>%
+  mutate(p_mlog10 = -log10(padj)) %>%
+  left_join(pv_lab, by = "gene")
+
+gg = ggplot(pv_plot, aes(log2FoldChange, p_mlog10)) +
+  geom_point(aes(colour = sig), size = .3, stroke = 0) +
+  scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
+  ggrepel::geom_text_repel(aes(label = gene_to_label), size = 2.1, max.overlaps = 30, na.rm = TRUE) +
+  labs(x = "log2FoldChange, shrunken (song / non-song, paired)", y = "-log10 adjusted p") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = .25),
+        axis.text = element_text(size = 6),
+        axis.title = element_text(size = 7))
+gg = egg::set_panel_size(gg, width = unit(2.2, "in"), height = unit(2.2, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "song_vs_nonsong_paired_volcano.pdf"), gg,
+          base_height = 2.2 + 1.2, base_width = 2.2 + 1.2)
+```
+
+```{r}
+## What the shrinkage actually did. The p values are untouched by construction, so any change in
+## what passes a |log2FC| threshold comes entirely from the effect sizes being pulled toward zero --
+## worth quantifying, because several panels downstream select on that threshold.
+shrink_cmp = paired_res %>%
+  filter(!is.na(log2FoldChange), !is.na(log2FoldChange_mle))
+cat(sprintf("shrinkage: median |log2FC| %.3f MLE -> %.3f shrunken; max %.1f -> %.1f\n",
+            median(abs(shrink_cmp$log2FoldChange_mle)), median(abs(shrink_cmp$log2FoldChange)),
+            max(abs(shrink_cmp$log2FoldChange_mle)), max(abs(shrink_cmp$log2FoldChange))))
+cat(sprintf("genes with |log2FC| >= 1: %s MLE -> %s shrunken; sign flips: %s\n",
+            sum(abs(shrink_cmp$log2FoldChange_mle) >= 1),
+            sum(abs(shrink_cmp$log2FoldChange) >= 1),
+            sum(sign(shrink_cmp$log2FoldChange_mle) != sign(shrink_cmp$log2FoldChange))))
+
+gg = ggplot(shrink_cmp, aes(log2FoldChange_mle, log2FoldChange)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .25, colour = "grey50") +
+  geom_point(aes(colour = sig), size = .3, stroke = 0, alpha = .4) +
+  scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
+  labs(x = "log2FoldChange, MLE", y = "log2FoldChange, apeglm shrunken") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = .25),
+        axis.text = element_text(size = 6),
+        axis.title = element_text(size = 7))
+gg = egg::set_panel_size(gg, width = unit(2, "in"), height = unit(2, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "song_vs_nonsong_paired_shrinkage.pdf"), gg,
+          base_height = 2 + 1.2, base_width = 2 + 1.2)
 ```
 
 ```{r}
