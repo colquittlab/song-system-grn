@@ -40,7 +40,7 @@ res_to_use = "celltype_hybrid"
 ```
 
 ```{r}
-obj = qs_read(data_obj, nthreads = 8)
+obj = qs_read(data_obj, nthreads = 1)
 
 ## Souporcell doublets. The preprocessing notebook already dropped them, so this is a no-op on the
 ## current object -- kept because it is the guard that made the old version correct and costs
@@ -229,20 +229,86 @@ save_plot(file.path(out_dir, str_interp("scatter_${ct1}_${ct2}.pdf")), gg)
 })
 ```
 ## Correlation
+Spearman correlation of the song-vs-surround log2 fold changes between every pair of song clusters:
+does a gene that moves in HVCra move the same way in RA? The gene set is everything significant in
+**at least one** pair, and each gene's fold change is then read from all five comparisons whether or
+not it was significant there.
+
+That last point is the whole design and the version of this chunk inherited from
+`song-surround_deg_glut.qmd` had it backwards, alongside two other faults -- it correlated with
+Pearson rather than Spearman, passed the gene matrix rather than the correlation matrix to
+`Heatmap()`, and assigned the result without ever printing or saving it, so nothing was produced at
+all.
+
+The gene-set point: filtering to `p_val_adj < .1` *before* pivoting wide leaves NA wherever a gene
+failed significance, and `cor(use = "complete")` then silently keeps only the genes significant in
+**all five** pairs. Genes that clear the threshold everywhere are by construction the consistent
+ones, so that set inflates the correlations it is used to measure. Taking the union and then reading
+the unfiltered fold changes keeps NA meaning one thing only -- `FindMarkers` did not return the gene
+for that comparison, having filtered it for low expression -- and those few rows are dropped.
+
+Spearman rather than Pearson because the question is whether the pairs *rank* genes alike; the
+log2FC distributions differ in spread between comparisons (HVCra and RA return far more significant
+genes than the other three), which a Pearson coefficient would partly be measuring.
+
 ```{r}
-markers_agg_df = markers_agg %>%
-  filter(p_val_adj < .1) %>%
-  select(avg_log2FC, compare, gene) %>%
-  pivot_wider(names_from = "compare", values_from = "avg_log2FC")
-markers_agg_mat = markers_agg_df %>% column_to_rownames("gene") %>%
+sig_genes = markers_agg %>% filter(p_val_adj < .1) %>% distinct(gene) %>% pull(gene)
+
+cor_input = markers_agg %>%
+  filter(gene %in% sig_genes) %>%
+  select(gene, compare, avg_log2FC) %>%
+  pivot_wider(names_from = "compare", values_from = "avg_log2FC") %>%
+  column_to_rownames("gene") %>%
   as.matrix()
+cor_input = cor_input[, song_cts]
 
-markers_agg_cor = cor(markers_agg_mat, use = "complete")
-cols_cur = circlize::colorRamp2(breaks=c(0,1), colors = c("white", "black"))
+n_union = nrow(cor_input)
+cor_input = na.omit(cor_input)
+cat(sprintf("genes significant in >=1 pair: %s; returned by all five comparisons: %s\n",
+            n_union, nrow(cor_input)))
 
-hm = Heatmap(markers_agg_mat, cluster_rows = F, cluster_columns = F, col = cols_cur,
-             column_names_gp =gpar(fontsize=6),
-             row_names_gp = gpar(fontsize=6))
+markers_agg_cor = cor(cor_input, method = "spearman")
+print(round(markers_agg_cor, 3))
+write.csv(round(markers_agg_cor, 4), file.path(out_dir, "correlation_spearman.csv"))
+```
+
+The full matrix, with the diagonal blanked. The diagonal is 1 by construction and, on a scale that
+has to reach 1 to hold it, every off-diagonal coefficient is pushed into the bottom of the ramp;
+blanking it lets the scale be spent on the comparisons that carry information. Both triangles are
+drawn, so each coefficient appears twice, symmetric about the empty diagonal.
+
+```{r}
+## NA, not 0 -- na_col paints these white, and a real zero would also be white, so they must not be
+## made the same value. The diagonal is blank because it is uninformative, not because it is small.
+cor_tri = markers_agg_cor
+diag(cor_tri) = NA
+
+## 0-1 greyscale. Anything at or below zero therefore reads as white and is not distinguishable
+## from a coefficient of zero -- or, here, from the blanked diagonal. The printed matrix above is
+## the check on that, and the range is reported here so a negative value cannot pass unnoticed.
+off_diag = markers_agg_cor[row(markers_agg_cor) != col(markers_agg_cor)]
+cat(sprintf("off-diagonal Spearman rho: min %.3f, max %.3f\n", min(off_diag), max(off_diag)))
+
+cor_cols = circlize::colorRamp2(breaks = c(0, 1), colors = c("white", "black"))
+
+cell_size = 0.2
+hm = Heatmap(cor_tri,
+             name = "Spearman rho",
+             col = cor_cols,
+             na_col = "white",
+             cluster_rows = FALSE, cluster_columns = FALSE,
+             row_names_gp = gpar(fontsize = 6),
+             column_names_gp = gpar(fontsize = 6),
+             rect_gp = gpar(col = "grey80", lwd = 0.5),
+             width = unit(cell_size * ncol(cor_tri), "inch"),
+             height = unit(cell_size * nrow(cor_tri), "inch"))
+
+pdf(file.path(out_dir, "correlation_spearman.pdf"),
+    width = cell_size * ncol(cor_tri) + 2.6,
+    height = cell_size * nrow(cor_tri) + 1.8)
+print(hm)
+dev.off()
+print(hm)
 ```
 
 ## Heatmap
@@ -568,11 +634,14 @@ assays_to_use = c("SCT", "MAGIC_SCT")
 ## surface. The two regions differ because the arcopallial embedding holds a quarter the cells in a
 ## comparable area, so it can carry a larger point on a smaller panel.
 ##
-## Kept rasterised: at these sizes a panel is about 1 MB, where vector points would be several times
-## that for 78 genes and nothing is read at the level of an individual point's outline.
+## Drawn as vector, not rasterised. `FeaturePlot_scCustom(raster = TRUE)` ignores `raster.dpi`
+## outright -- the embedded bitmap comes out 389 x 342 px at 72 ppi whether that argument says 1024,
+## 2048 or 4096 (checked with `pdfimages -list`) -- so the point layer was being baked at 72 ppi and
+## no setting of it would have helped. Vector costs about 900 KB for a nidopallial panel and 225 KB
+## for an arcopallial one, which against the 2 GB of cached objects in this tree is not a reason to
+## ship a soft figure.
 plot_dims = list(arco = c(height = 5, width = 5), nido = c(height = 6, width = 6))
 point_sizes = list(arco = 1.0, nido = 0.6)
-raster_dpi = 2048
 walk(names(obj_umap), function(region_cur) {
   obj_cur = obj_umap[[region_cur]]
   reduction_to_use = reductions_to_use[region_cur]
@@ -585,7 +654,7 @@ walk(names(obj_umap), function(region_cur) {
       gg = FeaturePlot_scCustom(obj_cur,
                                 features=gene_to_plot,
                                 reduction=reduction_to_use,
-                                raster = T, raster.dpi = c(raster_dpi, raster_dpi),
+                                raster = FALSE,
                                 pt.size = point_size) +
         coord_equal()  +
         theme_void()
@@ -609,7 +678,7 @@ mat_expr = mat[to_keep,]
 
 ```{r}
 go_res_fname = file.path(out_dir, "go_res.rds")
-redo = T
+redo = F
 if (redo) {
   entrezid = bitr(Features(obj), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
 
@@ -661,9 +730,25 @@ obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to
 
 ngenes = 5
 
-scale_factor_y = .12
-scale_factor_x = .2
-width = length(cts) * scale_factor_x
+## Canvas = panel + the room the axis labels need, with the two budgeted separately. Folding the
+## label allowance into one per-column factor (the old `length(cts) * .2`) meant the panel geometry
+## moved whenever the label allowance was retuned, and it over-counted the columns: `cts` is the 12
+## entries of `pairs`, but `ct_levels` keeps 10 and the other two are dropped before plotting, so a
+## fifth of the width was being reserved for columns that are never drawn.
+##
+## The x labels are rotated to vertical, so a column costs only the width of its dot -- the label
+## contributes nothing horizontally. At the old size each column had twice the width that each gene
+## row had height, which is the gap this closes: the columns now sit at roughly the row pitch.
+## 0.075 is close to the floor: `dot.scale = 2` puts the largest dot at about 0.078 in across, so
+## at this column pitch a full-size dot fills its column edge to edge. Going narrower again means
+## bringing dot.scale down with it or the dots start to collide.
+dot_col_width   = 0.08  # panel inches per cluster column
+dot_row_height  = 0.078  # panel inches per gene row
+dot_ylab_width  = 0.72   # room for the gene names
+dot_xlab_height = 1.0    # room for the rotated cluster names
+
+n_cols = length(ct_levels)
+width = n_cols * dot_col_width + dot_ylab_width
 
 markers_agg_select_up = markers_agg %>%
   filter(!grepl("^LOC", gene)) %>%
@@ -674,7 +759,7 @@ markers_agg_select_up = markers_agg %>%
 
 markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data")
 markers_agg_mat = markers_agg_mat[markers_agg_select_up, cts]
-height = nrow(markers_agg_mat) * scale_factor_y
+height = nrow(markers_agg_mat) * dot_row_height + dot_xlab_height
 
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
@@ -702,7 +787,7 @@ markers_agg_select_down = markers_agg %>%
 
 markers_agg_mat = GetAssayData(obj_agg_cluster, assay = "SCT", layer = "data")
 markers_agg_mat = markers_agg_mat[markers_agg_select_down, cts]
-height = nrow(markers_agg_mat) * scale_factor_y
+height = nrow(markers_agg_mat) * dot_row_height + dot_xlab_height
 
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
