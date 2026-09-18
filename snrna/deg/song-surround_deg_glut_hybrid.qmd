@@ -26,7 +26,17 @@ library(ComplexHeatmap)
 library(cowplot)
 library(ggpubr)
 library(here)
+suppressPackageStartupMessages(library(DESeq2))
+
+## DESeq2 drags in SummarizedExperiment and matrixStats, which mask things this notebook depends on:
+## SummarizedExperiment::Assays returns an S4 object rather than Seurat's character vector, and
+## matrixStats::count shadows dplyr's. Loaded here at the top, once, rather than part-way down the
+## document, so the masking is the same for every chunk instead of changing halfway -- and the three
+## that matter are pinned back explicitly. `Assays` is qualified at its call site instead, since it
+## is Seurat's generic rather than a plain function.
 select = dplyr::select
+count  = dplyr::count
+filter = dplyr::filter
 
 source(here::here("config/paths.R"))
 ```
@@ -128,6 +138,33 @@ stopifnot("a pair names a label that is not in celltype_hybrid" =
 song_cts = names(pairs)[c(2, 3, 4, 5, 1)]  # HVCra, HVCx, LMANco, LMANsh, RA
 ```
 
+## Genes eligible to be displayed
+
+Every panel below that picks genes by effect size -- the scatter labels, the heatmap marks, the
+volcano labels, the dotplots -- draws from the same eligibility rule, defined once here.
+
+Excluded are the unnamed NCBI gene models (`LOC*`) and the mitochondrial features, which in this
+annotation are `AZ255-gr01`, `AZ255-gr02` and the 45 `nbis-*` entries. There are no standard `MT-`,
+`ND*`, `COX*` or `CYTB` symbols in the object -- those names are what the mitochondrial genome is
+called here. Mitochondrial transcripts are abundant and move together, so left in they crowd out
+named genes whenever a panel is chosen by fold change.
+
+This governs only what is eligible to be *labelled or plotted as a candidate*. Nothing is removed
+from the DE results, the correlation matrix or any of the heatmap matrices.
+
+```{r}
+## Anchored. The previous filters were written three different ways -- "^LOC", "LOC|nbis" and a bare
+## "LOC" -- and the two unanchored ones also dropped BLOC1S2, BLOC1S4, BLOC1S5, BLOC1S6, NPLOC4,
+## ELOC and CLOCK, none of which is an unnamed model. Anchoring to the start fixes that and makes
+## the three sites agree.
+display_exclude = "^LOC|^AZ255|^nbis"
+is_displayable = function(gene) !grepl(display_exclude, gene)
+
+## Significance threshold, shared by the song/non-song contrast and the core-set logic below so the
+## two cannot drift apart. Same 0.1 the rest of the notebook uses.
+sig_thresh = 0.1
+```
+
 # Markers
 
 ```{r}
@@ -165,6 +202,147 @@ if (redo_markers) {
 } else {
   markers_agg = readRDS(markers_fname)
 }
+
+markers_unpaired = markers_agg
+```
+
+## The five contrasts, paired
+
+The fits above treat the pseudobulk columns as independent samples. They are not: each bird
+contributes both a song and a surround column, so bird identity is a nuisance term that can be
+modelled instead of left in the residual. Same argument as the pooled song/non-song contrast below,
+applied per pair -- `~ individual + grp`, raw `RNA` counts, DESeq2 directly.
+
+Each pair reduces to 6 samples, 3 birds a side: HVC and RA draw on birds 1-3, LMAN on birds 4-6. A
+bird needs at least `min_cells_pb` cells on *both* sides to be usable, since one side alone cannot
+be paired; none are lost at 20, but the rule is enforced rather than assumed.
+
+**Two things change relative to the unpaired fits, beyond the pairing itself**, and both are worth
+knowing before the numbers are compared:
+
+1. **Both LMAN surrounds are used.** `ident.2 = pair_cur[2]` took only the first surround cluster of
+   each pair, so LMANco was tested against `Glut-DACH2-8` alone and LMANsh against `Glut-DACH2-5`
+   alone, with `-6` and `-7` carried in the list but never reaching the test. That was an indexing
+   artifact rather than a decision -- the `pairs` list plainly means all of them -- so the paired
+   fits use the full surround set. Revert by passing `p[2]` instead of `p[-1]` below.
+2. **Raw counts, not SCT**, for the reason given in the pooled contrast: DESeq2's model expects
+   summed UMIs.
+
+```{r}
+
+paired_pairs_fname = file.path(out_dir, "song_surround_paired_deseq2.rds")
+min_cells_pb = 20
+
+paired_contrast = function(song_ct, surround_cts) {
+  labs = c(song_ct, surround_cts)
+  o = subset(obj, cells = Cells(obj)[obj@meta.data[[res_to_use]] %in% labs])
+  o$grp = if_else(o@meta.data[[res_to_use]] == song_ct, "song", "surround")
+
+  ## BPCells-backed on disk; pulled in as dgCMatrix so the indicator multiply below is ordinary
+  ## Matrix arithmetic. Built by hand rather than via AggregateExpression so the sample names
+  ## round-trip exactly into the design matrix.
+  cts = as(GetAssayData(o, assay = "RNA", layer = "counts"), "dgCMatrix")
+  g = factor(paste(o$grp, o$individual, sep = "__"))
+  n_cells = as.integer(table(g))
+  pb = as.matrix(cts %*% Matrix::sparse.model.matrix(~ 0 + g))
+  colnames(pb) = levels(g)
+
+  cd = tibble(sample = colnames(pb), n_cells = n_cells) %>%
+    separate(sample, into = c("grp", "individual"), sep = "__", remove = FALSE)
+
+  ## A bird is usable only if both of its sides clear the cell floor.
+  ok = cd %>% filter(n_cells >= min_cells_pb) %>%
+    dplyr::count(individual) %>% filter(n == 2) %>% pull(individual)
+  dropped = setdiff(unique(cd$individual), ok)
+  if (length(dropped)) cat(sprintf("  %s: dropping %s (under %s cells on one side)\n",
+                                   song_ct, paste(dropped, collapse = ", "), min_cells_pb))
+
+  cd = cd %>% filter(individual %in% ok) %>%
+    mutate(grp = factor(grp, levels = c("surround", "song")), individual = factor(individual))
+  pb = pb[, cd$sample, drop = FALSE]
+  cd = cd %>% column_to_rownames("sample")
+
+  stopifnot("not enough paired birds for this contrast" =
+              nrow(cd) >= 4 && n_distinct(cd$individual) >= 2)
+
+  dds = DESeqDataSetFromMatrix(round(pb), colData = cd, design = ~ individual + grp)
+  keep = rowSums(counts(dds) >= 10) >= (ncol(dds) / 2)
+  dds = dds[keep, ]
+  dds = DESeq(dds, quiet = TRUE)
+
+  r = results(dds, name = "grp_song_vs_surround") %>% as.data.frame() %>%
+    rownames_to_column("gene") %>% as_tibble()
+  cat(sprintf("  %-20s birds=%s samples=%s tested=%s sig=%s\n", song_ct,
+              n_distinct(cd$individual), nrow(cd), nrow(r),
+              sum(!is.na(r$padj) & r$padj < sig_thresh)))
+  r
+}
+
+redo_paired_pairs = !file.exists(paired_pairs_fname)
+cat(if (redo_paired_pairs) "no cached paired per-pair fits -- fitting\n" else
+    sprintf("reusing cached paired per-pair fits: %s\n", paired_pairs_fname))
+
+if (redo_paired_pairs) {
+  markers_paired = imap(pairs, function(p, nm) paired_contrast(p[1], p[-1])) %>%
+    bind_rows(.id = "compare")
+  saveRDS(markers_paired, paired_pairs_fname)
+} else {
+  markers_paired = readRDS(paired_pairs_fname)
+}
+
+## Mapped into the column names the rest of the notebook expects, so every figure downstream reads
+## the paired fits without further change.
+markers_paired_std = markers_paired %>%
+  transmute(compare, gene,
+            p_val = pvalue,
+            avg_log2FC = log2FoldChange,
+            p_val_adj = padj,
+            baseMean, lfcSE)
+```
+
+```{r}
+## Paired against unpaired, per contrast. The pairing should buy power without moving the direction
+## of the effect; where the fold-change correlation is weak, the two fits are not saying the same
+## thing and that is worth knowing before either is trusted.
+cmp_pairs = markers_paired_std %>%
+  select(compare, gene, lfc_p = avg_log2FC, padj_p = p_val_adj) %>%
+  inner_join(markers_unpaired %>% select(compare, gene, lfc_u = avg_log2FC, padj_u = p_val_adj),
+             by = c("compare", "gene"))
+
+cmp_pairs %>%
+  group_by(compare) %>%
+  summarise(tested_both = n(),
+            sig_paired = sum(!is.na(padj_p) & padj_p < sig_thresh),
+            sig_unpaired = sum(!is.na(padj_u) & padj_u < sig_thresh),
+            sig_both = sum(!is.na(padj_p) & padj_p < sig_thresh &
+                             !is.na(padj_u) & padj_u < sig_thresh),
+            rho_log2FC = cor(lfc_p, lfc_u, method = "spearman", use = "complete"),
+            .groups = "drop") %>%
+  as.data.frame() %>% print()
+
+write_csv(markers_paired_std %>% arrange(compare, p_val_adj),
+          file.path(out_dir, "song_surround_paired_deg.csv"))
+```
+
+```{r}
+## The switch. TRUE makes the paired fits the result set every figure below is built from; FALSE
+## restores the unpaired FindMarkers fits. Nothing else in the notebook needs editing either way --
+## the schemas match -- so this is the one line to change to see the whole document both ways.
+use_paired_pairs = TRUE
+
+markers_agg = if (use_paired_pairs) markers_paired_std else markers_unpaired
+cat(sprintf("downstream figures use the %s fits: %s significant of %s rows\n",
+            if (use_paired_pairs) "PAIRED" else "unpaired",
+            sum(!is.na(markers_agg$p_val_adj) & markers_agg$p_val_adj < sig_thresh),
+            nrow(markers_agg)))
+
+## What the display-eligibility rule removes from whichever result set is in play.
+local({
+  g = unique(markers_agg$gene)
+  cat(sprintf("display candidates: %s of %s genes; excluded %s LOC, %s AZ255, %s nbis\n",
+              sum(is_displayable(g)), length(g),
+              sum(grepl("^LOC", g)), sum(grepl("^AZ255", g)), sum(grepl("^nbis", g))))
+})
 ```
 
 ## Scatters
@@ -187,7 +365,7 @@ ct_pairs = combn(names(pairs), m = 2, simplify = F)
 ngenes = 50
 
 markers_agg_df_cur = markers_agg_df %>%
-    filter(!grepl("^LOC", gene))
+    filter(is_displayable(gene))
 
 walk(ct_pairs, function(x) {
   ct1 = x[1]
@@ -498,7 +676,7 @@ markers_agg_select = markers_agg %>%
 
 markers_agg_select_label = markers_agg_select %>%
   group_by(compare, avg_log2FC_sign ) %>%
-  filter(!grepl("LOC|nbis", gene)) %>%
+  filter(is_displayable(gene)) %>%
   top_n(5, abs(avg_log2FC)) %>%
   ungroup() %>%
   distinct(gene)
@@ -557,7 +735,7 @@ hc_cut_df = data.frame(gene = rownames(markers_agg_mat), hc_cut = hc_cut)
 markers_agg_select_label = markers_agg_select %>%
   left_join(hc_cut_df) %>%
   group_by(hc_cut) %>%
-  filter(!grepl("LOC|nbis", gene)) %>%
+  filter(is_displayable(gene)) %>%
   top_n(4, abs(avg_log2FC)) %>%
   ungroup() %>%
   distinct(gene)
@@ -599,7 +777,13 @@ save_heatmap_horizontal(markers_agg_mat, hc,
 ### UMAPs
 ```{r}
 umap_dir = file.path(out_dir, "umaps")
-dir.create(umap_dir)
+dir.create(umap_dir, showWarnings = FALSE, recursive = TRUE)
+
+## Cleared first. The gene list here is whatever the label selection returned this run, so a panel
+## for a gene that has since dropped out would otherwise sit in the directory indefinitely, dated
+## from an old run and indistinguishable from current output. (This bit me: two AZ255 panels from an
+## interrupted render survived the run that excluded them, and looked like the exclusion had failed.)
+unlink(list.files(umap_dir, pattern = "\\.pdf$", full.names = TRUE))
 ```
 
 ```{r}
@@ -634,23 +818,40 @@ assays_to_use = c("SCT", "MAGIC_SCT")
 ## surface. The two regions differ because the arcopallial embedding holds a quarter the cells in a
 ## comparable area, so it can carry a larger point on a smaller panel.
 ##
-## Drawn as vector, not rasterised. `FeaturePlot_scCustom(raster = TRUE)` ignores `raster.dpi`
-## outright -- the embedded bitmap comes out 389 x 342 px at 72 ppi whether that argument says 1024,
-## 2048 or 4096 (checked with `pdfimages -list`) -- so the point layer was being baked at 72 ppi and
-## no setting of it would have helped. Vector costs about 900 KB for a nidopallial panel and 225 KB
-## for an arcopallial one, which against the 2 GB of cached objects in this tree is not a reason to
-## ship a soft figure.
+## Points rasterised, everything else vector -- but through ggrastr directly, not through
+## `FeaturePlot_scCustom(raster = TRUE)`, which ignores `raster.dpi` outright: the embedded bitmap
+## comes out 389 x 342 px at 72 ppi whether that argument says 1024, 2048 or 4096 (checked with
+## `pdfimages -list`). That 72 ppi is the soft resolution, and no value of raster.dpi would have
+## changed it.
+##
+## Building the plot with `raster = FALSE` and rasterising the Point layer afterwards puts the
+## points at a dpi that is actually honoured -- 3230 x 2842 px at 600 ppi for a nidopallial panel --
+## while the title, colourbar and its labels stay as real text. 600 dpi to match fig_save() in
+## config/figure_theme.R. About 1.5 MB a nidopallial panel, 720 KB an arcopallial one.
 plot_dims = list(arco = c(height = 5, width = 5), nido = c(height = 6, width = 6))
 point_sizes = list(arco = 1.0, nido = 0.6)
+umap_raster_dpi = 600
 walk(names(obj_umap), function(region_cur) {
   obj_cur = obj_umap[[region_cur]]
   reduction_to_use = reductions_to_use[region_cur]
   plot_dim = plot_dims[[region_cur]]
   point_size = point_sizes[[region_cur]]
 
-  walk(intersect(assays_to_use, Assays(obj_cur)), function(assay_to_use) {
+  walk(intersect(assays_to_use, SeuratObject::Assays(obj_cur)), function(assay_to_use) {
     DefaultAssay(obj_cur) = assay_to_use
-    walk(genes_to_plot, function(gene_to_plot) {
+
+    ## Only the genes this object actually carries. The embedding objects were re-SCTransformed per
+    ## region, so their SCT assay holds a reduced feature set, while the paired fits name genes from
+    ## the full RNA assay -- a gene can be a legitimate marker and still have no row here. Before
+    ## the switch to paired fits the two sets came from the same SCT matrix and this never bit.
+    genes_present = intersect(genes_to_plot, rownames(obj_cur))
+    missing_genes = setdiff(genes_to_plot, genes_present)
+    if (length(missing_genes))
+      cat(sprintf("%s/%s: %s of %s label genes absent from the %s assay (%s)\n",
+                  region_cur, assay_to_use, length(missing_genes), length(genes_to_plot),
+                  assay_to_use, paste(missing_genes, collapse = ", ")))
+
+    walk(genes_present, function(gene_to_plot) {
       gg = FeaturePlot_scCustom(obj_cur,
                                 features=gene_to_plot,
                                 reduction=reduction_to_use,
@@ -658,6 +859,7 @@ walk(names(obj_umap), function(region_cur) {
                                 pt.size = point_size) +
         coord_equal()  +
         theme_void()
+      gg = ggrastr::rasterise(gg, layers = "Point", dpi = umap_raster_dpi)
       save_plot(file.path(umap_dir,
                           str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}.pdf")),
                 gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
@@ -751,7 +953,7 @@ n_cols = length(ct_levels)
 width = n_cols * dot_col_width + dot_ylab_width
 
 markers_agg_select_up = markers_agg %>%
-  filter(!grepl("^LOC", gene)) %>%
+  filter(is_displayable(gene)) %>%
   group_by(compare) %>%
   top_n(ngenes, avg_log2FC) %>%
   ungroup() %>%
@@ -779,7 +981,7 @@ save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}.pdf")), gg, base_h
 
 
 markers_agg_select_down = markers_agg %>%
-  filter(!grepl("^LOC", gene)) %>%
+  filter(is_displayable(gene)) %>%
   group_by(compare) %>%
   top_n(-1*ngenes, avg_log2FC) %>%
   ungroup() %>%
@@ -821,7 +1023,7 @@ markers_agg = markers_agg %>%
 
 markers_agg_to_plot = markers_agg %>%
   group_by(avg_log2FC_sign, compare) %>%
-  filter(!grepl("LOC", gene)) %>%
+  filter(is_displayable(gene)) %>%
   top_n(5, p_val_adj_mlog10) %>%
   mutate(gene_to_label = gene) %>% select(compare, gene_to_label, gene)
 
@@ -854,6 +1056,402 @@ obj_sub_vln@meta.data[[res_to_use]] = factor(obj_sub_vln@meta.data[[res_to_use]]
 
 ```{r}
 VlnPlot_scCustom(obj_sub_vln, features = c("DPP6", "ADARB1"), group.by=res_to_use)
+```
+
+## Song vs non-song, as one contrast
+
+The five pairs asked five separate questions. This asks one: pooling every song cluster against
+every one of their surrounds, what separates song neurons from non-song neurons?
+
+Two design points.
+
+**What counts as non-song.** The surrounds already paired with a song nucleus -- `Glut-CACNA1H-1`
+for RA, `Glut-DACH2-1`/`-4` for the two HVC clusters, `Glut-DACH2-5`/`-6`/`-7`/`-8` for the two
+LMAN clusters -- not every other excitatory cluster. Those surrounds are the anatomically matched
+controls, and both sides of the contrast then draw on the same regions in the same proportions.
+Pooling against all excitatory neurons instead would put arcopallial against nidopallial identity
+inside the contrast and confound region with song.
+
+**What counts as a replicate.** The bird, not the cluster. Aggregating to one pseudobulk per
+song/non-song per bird gives 6 against 6 rather than treating each cluster x bird column as an
+independent sample, which would be pseudoreplication -- the same trap `assignment` sets further up.
+Each bird contributes to both sides, so the design is naturally paired, and `FindMarkers` cannot
+model that. Ignoring the pairing inflates the within-group dispersion and so costs power: the test
+is conservative here, not anti-conservative. If a paired fit is wanted, the same pseudobulk matrix
+run through DESeq2 directly with `~ individual + songness` is the one-step change.
+
+```{r}
+songness_fname = file.path(out_dir, sprintf("song_vs_nonsong_%s.rds", assay_to_use))
+
+song_labels    = song_cts
+nonsong_labels = setdiff(unlist(pairs), song_cts)
+stopifnot("song and non-song overlap" = length(intersect(song_labels, nonsong_labels)) == 0)
+cat("song:    ", paste(song_labels, collapse = ", "), "\n")
+cat("non-song:", paste(nonsong_labels, collapse = ", "), "\n")
+
+obj_songness = subset(obj, cells = Cells(obj)[obj@meta.data[[res_to_use]] %in%
+                                                c(song_labels, nonsong_labels)])
+obj_songness$songness = if_else(obj_songness@meta.data[[res_to_use]] %in% song_labels,
+                                "song", "nonsong")
+print(table(obj_songness$songness, obj_songness$individual))
+
+redo_songness = !file.exists(songness_fname)
+cat(if (redo_songness) "no cached song/non-song contrast -- fitting\n" else
+    sprintf("reusing cached song/non-song contrast: %s\n", songness_fname))
+
+if (redo_songness) {
+  obj_agg_songness = AggregateExpression(obj_songness, assay = assay_to_use,
+                                         group.by = c("songness", "individual"),
+                                         return.seurat = TRUE)
+  Idents(obj_agg_songness) = obj_agg_songness$songness
+
+  songness_markers = FindMarkers(obj_agg_songness, assay = assay_to_use,
+                                 ident.1 = "song", ident.2 = "nonsong",
+                                 test.use = "DESeq2", only.pos = FALSE) %>%
+    rownames_to_column(var = "gene")
+  saveRDS(songness_markers, songness_fname)
+} else {
+  songness_markers = readRDS(songness_fname)
+}
+
+songness_markers = songness_markers %>%
+  mutate(sig = !is.na(p_val_adj) & p_val_adj < sig_thresh,
+         displayable = is_displayable(gene))
+
+cat(sprintf("song vs non-song: %s significant of %s tested (%s up, %s down)\n",
+            sum(songness_markers$sig), nrow(songness_markers),
+            sum(songness_markers$sig & songness_markers$avg_log2FC > 0),
+            sum(songness_markers$sig & songness_markers$avg_log2FC < 0)))
+
+write_csv(songness_markers %>% arrange(p_val_adj),
+          file.path(out_dir, "song_vs_nonsong_deg.csv"))
+print(songness_markers %>% filter(sig, displayable) %>% arrange(-abs(avg_log2FC)) %>% head(30))
+```
+
+```{r}
+## Volcano, same construction as the per-pair one below so the two read alike.
+sn_lab = songness_markers %>%
+  filter(sig, displayable) %>%
+  group_by(sign(avg_log2FC)) %>%
+  slice_max(abs(avg_log2FC), n = 12) %>%
+  ungroup() %>%
+  transmute(gene, gene_to_label = gene)
+
+sn_plot = songness_markers %>%
+  mutate(p_mlog10 = -log10(p_val_adj)) %>%
+  left_join(sn_lab, by = "gene")
+
+gg = ggplot(sn_plot, aes(avg_log2FC, p_mlog10)) +
+  geom_point(aes(colour = sig), size = .3, stroke = 0) +
+  scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
+  ggrepel::geom_text_repel(aes(label = gene_to_label), size = 2.1, max.overlaps = 30, na.rm = TRUE) +
+  labs(x = "avg_log2FC (song / non-song)", y = "-log10 adjusted p") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = .25),
+        axis.text = element_text(size = 6),
+        axis.title = element_text(size = 7))
+gg = egg::set_panel_size(gg, width = unit(2.2, "in"), height = unit(2.2, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "song_vs_nonsong_volcano.pdf"), gg,
+          base_height = 2.2 + 1.2, base_width = 2.2 + 1.2)
+```
+
+### Paired, in DESeq2 directly
+
+The contrast above leaves the pairing on the table. Every bird contributes both a song and a
+non-song sample, so bird-to-bird differences are a nuisance term that can be modelled rather than
+absorbed into the residual. `~ individual + songness` does that; `FindMarkers` has no way to express
+it.
+
+Three departures from the chunk above, each deliberate:
+
+- **Raw counts, from the `RNA` assay.** DESeq2's negative binomial model and its size factors expect
+  summed UMI counts; SCT's corrected values are already variance-stabilised and are not what the
+  model is written for. The chunk above uses SCT because that is what the five per-pair fits use and
+  comparability mattered there. Here correctness does, so the pseudobulk is built from raw counts.
+- **The pseudobulk is built by hand**, as a cell-by-group indicator multiply, rather than through
+  `AggregateExpression`. The sample names then round-trip exactly, which matters because the design
+  matrix is keyed on them; Seurat rewrites separators in group names and the two would have to be
+  reconciled by string surgery.
+- **No shrinkage on the fold changes.** `apeglm` and `ashr` are not in this library, so `lfcShrink`
+  has nothing good to offer; the reported log2FC is the MLE. A light count prefilter keeps the worst
+  of the low-count noise out, but the fold change for a marginal gene is still noisier than the
+  shrunken estimate would be. Rank by p value, not by log2FC, for anything marginal.
+
+What the pairing does *not* fix: birds 1-3 carry the HVC and RA nuclei, birds 4-6 the LMAN nuclei,
+so "song" means different nuclei in different birds. The paired term asks, within each bird, whether
+its song neurons differ from its own surround -- which is the right question, but it is not the same
+as asking it of one nucleus.
+
+```{r}
+
+paired_fname = file.path(out_dir, "song_vs_nonsong_paired_deseq2.rds")
+
+redo_paired = !file.exists(paired_fname)
+cat(if (redo_paired) "no cached paired fit -- fitting\n" else
+    sprintf("reusing cached paired fit: %s\n", paired_fname))
+
+if (redo_paired) {
+  ## The RNA counts layer is BPCells-backed (on disk), not an in-memory sparse matrix, so it has no
+  ## @x slot and does not take a matrix product directly. Pulled into memory as dgCMatrix first --
+  ## 14k cells is nothing, and everything downstream is then ordinary Matrix arithmetic.
+  cts_cells = as(GetAssayData(obj_songness, assay = "RNA", layer = "counts"), "dgCMatrix")
+
+  ## Raw counts, asserted rather than assumed -- a non-integer matrix here would mean the RNA layer
+  ## is not what this model wants, and DESeq2 would round it silently.
+  stopifnot("RNA counts layer is not integer-valued" =
+              all(abs(cts_cells@x - round(cts_cells@x)) < 1e-8))
+
+  grp = factor(paste(obj_songness$songness, obj_songness$individual, sep = "__"))
+  pb = cts_cells %*% Matrix::sparse.model.matrix(~ 0 + grp)
+  colnames(pb) = levels(grp)
+  pb = as.matrix(pb)
+
+  coldata = tibble(sample = colnames(pb)) %>%
+    separate(sample, into = c("songness", "individual"), sep = "__", remove = FALSE) %>%
+    mutate(songness = factor(songness, levels = c("nonsong", "song")),
+           individual = factor(individual)) %>%
+    column_to_rownames("sample")
+
+  ## Every bird must appear on both sides or the paired term is not estimable.
+  stopifnot("design is not paired -- a bird is missing one side" =
+              all(table(coldata$individual, coldata$songness) == 1))
+  print(table(coldata$individual, coldata$songness))
+
+  dds = DESeqDataSetFromMatrix(round(pb), colData = coldata,
+                              design = ~ individual + songness)
+
+  ## Prefilter: expressed in at least half the samples. Keeps DESeq2's dispersion fit off the long
+  ## tail of genes seen in one or two pseudobulk columns.
+  keep = rowSums(counts(dds) >= 10) >= (ncol(dds) / 2)
+  cat(sprintf("prefilter keeps %s of %s genes\n", sum(keep), length(keep)))
+  dds = dds[keep, ]
+
+  dds = DESeq(dds)
+  print(resultsNames(dds))
+
+  paired_res = results(dds, name = "songness_song_vs_nonsong") %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    as_tibble()
+  saveRDS(paired_res, paired_fname)
+} else {
+  paired_res = readRDS(paired_fname)
+}
+
+paired_res = paired_res %>%
+  mutate(sig = !is.na(padj) & padj < sig_thresh,
+         displayable = is_displayable(gene))
+
+cat(sprintf("paired song vs non-song: %s significant of %s tested (%s up, %s down)\n",
+            sum(paired_res$sig), nrow(paired_res),
+            sum(paired_res$sig & paired_res$log2FoldChange > 0),
+            sum(paired_res$sig & paired_res$log2FoldChange < 0)))
+
+## About a third of tested genes clear p_adj < 0.1 here, which is a property of the design rather
+## than a licence to call them all interesting: six deep pseudobulk columns a side, with the bird
+## effect modelled out, leave DESeq2 with very little dispersion, and a tiny consistent shift then
+## reaches significance. The fold change is what separates a real difference from a detectable one.
+cat(sprintf("of those, |log2FC| >= 1: %s; >= 2: %s\n",
+            sum(paired_res$sig & abs(paired_res$log2FoldChange) >= 1),
+            sum(paired_res$sig & abs(paired_res$log2FoldChange) >= 2)))
+
+write_csv(paired_res %>% arrange(padj),
+          file.path(out_dir, "song_vs_nonsong_paired_deg.csv"))
+print(paired_res %>% filter(sig, displayable) %>% arrange(padj) %>% head(30))
+```
+
+```{r}
+## Paired against unpaired, on the genes both tested. The pairing should buy power without moving
+## the effect sizes much -- if the fold changes disagree, the two are not measuring the same thing
+## and the discrepancy matters more than either result.
+cmp = paired_res %>%
+  select(gene, lfc_paired = log2FoldChange, sig_paired = sig) %>%
+  inner_join(songness_markers %>% select(gene, lfc_unpaired = avg_log2FC, sig_unpaired = sig),
+             by = "gene")
+
+cat(sprintf("genes in both: %s\n", nrow(cmp)))
+cat(sprintf("significant: paired %s, unpaired %s, both %s\n",
+            sum(cmp$sig_paired), sum(cmp$sig_unpaired), sum(cmp$sig_paired & cmp$sig_unpaired)))
+cat(sprintf("log2FC Spearman: %.3f; Pearson: %.3f\n",
+            cor(cmp$lfc_paired, cmp$lfc_unpaired, method = "spearman"),
+            cor(cmp$lfc_paired, cmp$lfc_unpaired, method = "pearson")))
+
+gg = ggplot(cmp, aes(lfc_unpaired, lfc_paired)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .25, colour = "grey50") +
+  geom_point(size = .3, stroke = 0, alpha = .4) +
+  labs(x = "avg_log2FC, unpaired (SCT, FindMarkers)",
+       y = "log2FoldChange, paired (RNA, ~ individual + songness)") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = .25),
+        axis.text = element_text(size = 6),
+        axis.title = element_text(size = 6))
+gg = egg::set_panel_size(gg, width = unit(2, "in"), height = unit(2, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "song_vs_nonsong_paired_vs_unpaired.pdf"), gg,
+          base_height = 2 + 1.4, base_width = 2 + 1.4)
+```
+
+## Core and shared gene sets
+
+Which genes separate a song nucleus from its surround in the *same direction* everywhere, and which
+do so only within HVC or only within LMAN.
+
+Direction is the point. The UpSet and `intersects` below take the intersection of significant gene
+lists without regard to sign, so a gene up in HVCra and down in RA counts as shared there; here it
+does not. A gene qualifies for a set only if it is significant in every comparison of that set *and*
+its fold change has the same sign in all of them.
+
+Three sets, plus their exclusive forms:
+
+- **core** -- same direction in all five song/surround pairs, significant in at least three of them.
+- **HVC-common** -- both HVC pairs (HVCra, HVCx), significant in both.
+- **LMAN-common** -- both LMAN pairs (LMANco, LMANsh), significant in both.
+
+"Exclusive" means the gene additionally fails to reach significance in *any* of the pairs outside
+that set -- so HVC-exclusive genes are HVC's own, not core genes seen through an HVC window.
+
+Because core needs significance in only three of five, it is **not** a subset of HVC-common or of
+LMAN-common: a core gene can make its three elsewhere and miss in HVCx, say. The counts printed
+below report that overlap rather than assume it. Requiring all five instead gave a core of 5 genes,
+which was largely a statement about the weakest comparison's power.
+
+The threshold is `p_val_adj < 0.1`, the same one the rest of the notebook uses, and the
+per-comparison fold changes and adjusted p values are written out alongside so a near-miss can be
+told from a real divergence.
+
+```{r}
+
+hvc_cts  = c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx")
+lman_cts = c("Glut-DACH2-LMANco", "Glut-DACH2-LMANsh")
+
+de_long = markers_agg %>%
+  transmute(gene, compare,
+            avg_log2FC,
+            sig = !is.na(p_val_adj) & p_val_adj < sig_thresh,
+            dir = sign(avg_log2FC))
+
+## Same-signed across *every* comparison in `cts`, and significant in at least `k` of them.
+##
+## The two conditions do different work. Direction concordance is required everywhere, including
+## where the gene misses significance, so a gene that moves the other way in one nucleus is out
+## regardless of how strong it is in the rest. Significance is required only k times, which is what
+## keeps the least-powered pair from setting the size of the set: HVCra and RA return 1422 and 1252
+## significant genes, HVCx, LMANco and LMANsh only 194, 160 and 256, so demanding all five made the
+## core a function of the weakest comparison's power more than of shared biology.
+##
+## The gene must also have been returned for all of `cts` -- otherwise its direction is undefined
+## somewhere and "same direction everywhere" cannot be checked.
+concordant_set = function(cts, k = length(cts)) {
+  stopifnot(k <= length(cts))
+  de_long %>%
+    filter(compare %in% cts) %>%
+    group_by(gene) %>%
+    summarise(n_present = n_distinct(compare),
+              n_sig = sum(sig),
+              n_dir = n_distinct(dir[dir != 0]),
+              direction = if (n_distinct(dir[dir != 0]) == 1) dir[dir != 0][1] else NA_real_,
+              .groups = "drop") %>%
+    filter(n_present == length(cts), n_sig >= k, n_dir == 1) %>%
+    transmute(gene, direction = if_else(direction > 0, "up", "down"))
+}
+
+## k = 3 of 5 for the core set. The two-comparison sets keep k = 2, their full size -- there is no
+## room to relax a set of two without it ceasing to mean "shared".
+core_k = 3
+core_set = concordant_set(song_cts, k = core_k)
+hvc_set  = concordant_set(hvc_cts)
+lman_set = concordant_set(lman_cts)
+
+## Exclusive: not significant in any comparison outside the set, in either direction.
+sig_outside = function(cts) {
+  de_long %>% filter(!compare %in% cts, sig) %>% distinct(gene) %>% pull(gene)
+}
+hvc_excl  = hvc_set  %>% filter(!gene %in% sig_outside(hvc_cts))
+lman_excl = lman_set %>% filter(!gene %in% sig_outside(lman_cts))
+
+cat(sprintf(paste0("core (same direction in all 5, significant in >=", core_k, "): %s  (%s up, %s down)\n",
+                   "HVC-common: %s   HVC-exclusive: %s\n",
+                   "LMAN-common: %s  LMAN-exclusive: %s\n",
+                   "core genes also in HVC-common: %s; in LMAN-common: %s\n"),
+            nrow(core_set), sum(core_set$direction == "up"), sum(core_set$direction == "down"),
+            nrow(hvc_set), nrow(hvc_excl), nrow(lman_set), nrow(lman_excl),
+            sum(core_set$gene %in% hvc_set$gene), sum(core_set$gene %in% lman_set$gene)))
+```
+
+```{r}
+## One table, one row per gene per set, carrying the five fold changes and the five adjusted p
+## values so a membership can be checked against the numbers behind it. `displayable` flags the
+## unnamed models and mitochondrial features -- they are kept in the analysis and only excluded
+## from figure labels, so the flag is how they stay visible here.
+wide_fc = markers_agg %>%
+  select(gene, compare, avg_log2FC) %>%
+  pivot_wider(names_from = compare, values_from = avg_log2FC,
+              names_glue = "log2FC_{compare}")
+wide_p = markers_agg %>%
+  select(gene, compare, p_val_adj) %>%
+  pivot_wider(names_from = compare, values_from = p_val_adj,
+              names_glue = "padj_{compare}")
+
+core_gene_sets = bind_rows(
+  core_set %>% mutate(set = "core"),
+  hvc_set  %>% mutate(set = "HVC-common"),
+  hvc_excl %>% mutate(set = "HVC-exclusive"),
+  lman_set %>% mutate(set = "LMAN-common"),
+  lman_excl %>% mutate(set = "LMAN-exclusive")
+) %>%
+  mutate(set = factor(set, levels = c("core", "HVC-common", "HVC-exclusive",
+                                      "LMAN-common", "LMAN-exclusive")),
+         displayable = is_displayable(gene)) %>%
+  left_join(wide_fc, by = "gene") %>%
+  left_join(wide_p, by = "gene") %>%
+  arrange(set, direction, gene)
+
+write_csv(core_gene_sets, file.path(out_dir, "core_gene_sets.csv"))
+print(core_gene_sets %>% count(set, direction))
+```
+
+```{r}
+## The core genes as a heatmap over the five pairs. Rows ordered by mean fold change rather than
+## clustered: the set is defined by having the same sign everywhere, so a dendrogram would mostly
+## re-say that, where the ordering shows how strongly each gene separates and in which direction.
+core_mat = core_gene_sets %>%
+  filter(set == "core") %>%
+  distinct(gene, .keep_all = TRUE) %>%
+  select(gene, all_of(paste0("log2FC_", song_cts))) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+colnames(core_mat) = song_cts
+core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
+
+if (nrow(core_mat) > 0) {
+  max_val = 4
+  cols_cur = circlize::colorRamp2(breaks = c(-max_val, 0, max_val),
+                                  colors = c(scales::muted("blue"), "white", scales::muted("red")))
+
+  ## Labelled only where the name means something; the flag above keeps the rest in the table.
+  core_label = rownames(core_mat)[is_displayable(rownames(core_mat))]
+  core_label_ind = match(core_label, rownames(core_mat))
+
+  cell_h = 0.10
+  hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
+               cluster_rows = FALSE, cluster_columns = FALSE,
+               show_row_names = FALSE,
+               column_names_gp = gpar(fontsize = 6),
+               right_annotation = rowAnnotation(
+                 foo = anno_mark(at = core_label_ind, labels = core_label,
+                                 labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5))),
+               width = unit(0.12 * ncol(core_mat), "inch"),
+               height = unit(cell_h * nrow(core_mat), "inch"))
+
+  pdf(file.path(out_dir, "core_genes_heatmap.pdf"),
+      width = 0.12 * ncol(core_mat) + 3, height = cell_h * nrow(core_mat) + 2)
+  print(hm)
+  dev.off()
+  print(hm)
+}
 ```
 
 ## Overlap of DEG
