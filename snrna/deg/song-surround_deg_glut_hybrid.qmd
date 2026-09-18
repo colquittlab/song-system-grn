@@ -163,6 +163,37 @@ is_displayable = function(gene) !grepl(display_exclude, gene)
 ## Significance threshold, shared by the song/non-song contrast and the core-set logic below so the
 ## two cannot drift apart. Same 0.1 the rest of the notebook uses.
 sig_thresh = 0.1
+
+## Volcano label highlight. A ring around each labelled point and a matching leader line, so a label
+## can be traced to its point in a crowded corner without counting nearest neighbours. Defined once
+## so all three volcanoes agree. The ring is redundant with the text rather than carrying identity
+## on its own, which is what keeps it from being a colour-only encoding.
+volcano_hl = "#e34948"
+
+## Rasterisation for the volcano point clouds. Each is ~7-10k points and the per-pair volcano draws
+## five of them; as vector they bloat the PDF and slow every viewer that opens it, and nothing in a
+## volcano is read at the level of an individual point.
+##
+## Only the base point layer is wrapped, not the whole plot: the highlight rings, the labels, their
+## leader lines and the axes stay vector, which is what keeps the text selectable and the rings
+## crisp. 600 dpi, matching the gene UMAPs and fig_save() in config/figure_theme.R.
+fig_raster_dpi = 600
+
+volcano_points = function(..., dpi = fig_raster_dpi) {
+  ggrastr::rasterise(ggplot2::geom_point(...), dpi = dpi)
+}
+
+volcano_label_layers = function(df, size = 2.1, ring_size = 1.4) {
+  hl = dplyr::filter(df, !is.na(gene_to_label))
+  list(
+    ggplot2::geom_point(data = hl, shape = 21, fill = NA, colour = volcano_hl,
+                        size = ring_size, stroke = 0.4),
+    ggrepel::geom_text_repel(data = df, ggplot2::aes(label = gene_to_label), size = size,
+                             max.overlaps = 30, na.rm = TRUE,
+                             segment.colour = volcano_hl, segment.size = 0.25,
+                             min.segment.length = 0)
+  )
+}
 ```
 
 # Markers
@@ -1042,6 +1073,28 @@ DefaultAssay(obj_sub) = assay_to_use
 
 obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
 
+## Which genes the dotplot can actually draw.
+##
+## `dot.min` suppresses any dot below that fraction of cells expressing, so a gene under the cutoff
+## in *every* plotted cluster occupies a row and shows nothing. Selecting the top N by fold change
+## and hoping they clear the cutoff is what produced those blank rows: a large fold change on a gene
+## detected in 3% of cells is exactly the case that fails here.
+##
+## So plottability becomes part of the candidate rule, applied before the top-N rather than after --
+## filtering afterwards would silently return fewer than N genes per comparison. Computed on the
+## same assay, layer and cell subset DotPlot_scCustom reads, so the two cannot disagree about which
+## genes clear the cutoff.
+dot_min = 0.1
+
+dot_expr = as(GetAssayData(obj_sub, assay = assay_to_use, layer = "data"), "dgCMatrix")
+dot_grp = factor(obj_sub@meta.data[[res_to_use]], levels = ct_levels)
+dot_pct = vapply(levels(dot_grp),
+                 function(l) Matrix::rowMeans(dot_expr[, which(dot_grp == l), drop = FALSE] > 0),
+                 numeric(nrow(dot_expr)))
+dot_plottable = rownames(dot_pct)[apply(dot_pct, 1, max) >= dot_min]
+
+cat(sprintf("dotplot: %s of %s genes reach %.0f%% expressing in at least one of the %s plotted clusters\n",
+            length(dot_plottable), nrow(dot_pct), 100 * dot_min, nlevels(dot_grp)))
 ```
 
 ```{r}
@@ -1069,7 +1122,7 @@ n_cols = length(ct_levels)
 width = n_cols * dot_col_width + dot_ylab_width
 
 markers_agg_select_up = markers_agg %>%
-  filter(is_displayable(gene)) %>%
+  filter(is_displayable(gene), gene %in% dot_plottable) %>%
   group_by(compare) %>%
   top_n(ngenes, avg_log2FC) %>%
   ungroup() %>%
@@ -1097,7 +1150,7 @@ save_plot(file.path(out_dir, str_interp("dotplot_up_${ngenes}.pdf")), gg, base_h
 
 
 markers_agg_select_down = markers_agg %>%
-  filter(is_displayable(gene)) %>%
+  filter(is_displayable(gene), gene %in% dot_plottable) %>%
   group_by(compare) %>%
   top_n(-1*ngenes, avg_log2FC) %>%
   ungroup() %>%
@@ -1145,8 +1198,9 @@ markers_agg_to_plot = markers_agg %>%
 
 markers_agg_tmp = markers_agg %>% left_join(markers_agg_to_plot)
 gg = ggplot(markers_agg_tmp, aes(avg_log2FC, p_val_adj_mlog10)) +
-  geom_point(size=.1) +
-  ggrepel::geom_text_repel(aes(label=gene_to_label), size=2.1) +
+  volcano_points(size=.1) +
+  ## Smaller ring: these facet panels are 0.6 in wide and the base points are size .1.
+  volcano_label_layers(markers_agg_tmp, ring_size = 0.8) +
   facet_grid(.~compare, scales="free") +
   labs(x="", y="") +
   theme_bw() +
@@ -1274,9 +1328,9 @@ sn_plot = songness_markers %>%
   left_join(sn_lab, by = "gene")
 
 gg = ggplot(sn_plot, aes(avg_log2FC, p_mlog10)) +
-  geom_point(aes(colour = sig), size = .3, stroke = 0) +
+  volcano_points(aes(colour = sig), size = .3, stroke = 0) +
   scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
-  ggrepel::geom_text_repel(aes(label = gene_to_label), size = 2.1, max.overlaps = 30, na.rm = TRUE) +
+  volcano_label_layers(sn_plot) +
   labs(x = "avg_log2FC (song / non-song)", y = "-log10 adjusted p") +
   theme_bw() +
   theme(panel.grid.minor = element_blank(),
@@ -1417,9 +1471,9 @@ pv_plot = paired_res %>%
   left_join(pv_lab, by = "gene")
 
 gg = ggplot(pv_plot, aes(log2FoldChange, p_mlog10)) +
-  geom_point(aes(colour = sig), size = .3, stroke = 0) +
+  volcano_points(aes(colour = sig), size = .3, stroke = 0) +
   scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
-  ggrepel::geom_text_repel(aes(label = gene_to_label), size = 2.1, max.overlaps = 30, na.rm = TRUE) +
+  volcano_label_layers(pv_plot) +
   labs(x = "log2FoldChange, shrunken (song / non-song, paired)", y = "-log10 adjusted p") +
   theme_bw() +
   theme(panel.grid.minor = element_blank(),
