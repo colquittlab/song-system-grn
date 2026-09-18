@@ -1018,7 +1018,14 @@ walk(names(obj_umap), function(region_cur) {
 ### GO, DEG clusters
 
 ```{r}
-obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=res_to_use, return.seurat = T)
+## Aggregated once. This same call appeared in three separate chunks with identical arguments -- a
+## pseudobulk over ~24k cells recomputed from scratch each time for no gain -- so it is computed
+## here and the two later chunks reuse it. Guarded by `exists` rather than plain assignment so the
+## chunks still stand alone if one is re-run on its own in a session.
+if (!exists("obj_agg_cluster")) {
+  obj_agg_cluster = AggregateExpression(obj, assay = assay_to_use, group.by = res_to_use,
+                                        return.seurat = TRUE)
+}
 mat = GetAssayData(obj_agg_cluster, assay = assay_to_use, layer = "data")
 
 to_keep = apply(mat, 1, function(x) sum(x>0) >= (ncol(mat) * 1))
@@ -1071,7 +1078,7 @@ obj_sub = subset(obj_sub, cells = Cells(obj_sub)[!is.na(obj_sub@meta.data[[res_t
 Idents(obj_sub) = obj_sub@meta.data[[res_to_use]]
 DefaultAssay(obj_sub) = assay_to_use
 
-obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=c(res_to_use), return.seurat = T)
+## Reuses the obj_agg_cluster aggregated above.
 
 ## Which genes the dotplot can actually draw.
 ##
@@ -1671,8 +1678,21 @@ print(core_gene_sets %>% count(set, direction))
 ## The core genes as a heatmap over the five pairs. Rows ordered by mean fold change rather than
 ## clustered: the set is defined by having the same sign everywhere, so a dendrogram would mostly
 ## re-say that, where the ordering shows how strongly each gene separates and in which direction.
+## The top 20 each way rather than all of them. The core set runs to a few hundred genes, which as a
+## heatmap is a couple of feet tall and unreadable; the point of this panel is to name the genes,
+## which needs a figure that fits on a page.
+##
+## Ranked on the mean fold change across the five contrasts. Because a core gene has the same sign
+## in all five by construction, that mean carries its direction, so the most negative 20 are the
+## down set and the most positive 20 the up set -- one ordering does both. The full set stays in
+## core_gene_sets.csv.
+##
+## Restricted to displayable genes before ranking, not after: an unnamed model taking a slot it
+## cannot be labelled in would waste a row in a panel that exists to be read.
+core_top_n = 20
+
 core_mat = core_gene_sets %>%
-  filter(set == "core") %>%
+  filter(set == "core", displayable) %>%
   distinct(gene, .keep_all = TRUE) %>%
   select(gene, all_of(paste0("log2FC_", song_cts))) %>%
   column_to_rownames("gene") %>%
@@ -1680,16 +1700,27 @@ core_mat = core_gene_sets %>%
 colnames(core_mat) = song_cts
 core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
 
+n_core_all = nrow(core_mat)
+if (n_core_all > 2 * core_top_n) {
+  core_mat = core_mat[c(seq_len(core_top_n),
+                        seq(n_core_all - core_top_n + 1, n_core_all)), , drop = FALSE]
+}
+cat(sprintf("core heatmap: %s of %s displayable core genes (top %s each direction)\n",
+            nrow(core_mat), n_core_all, core_top_n))
+
 if (nrow(core_mat) > 0) {
   max_val = 4
   cols_cur = circlize::colorRamp2(breaks = c(-max_val, 0, max_val),
                                   colors = c(scales::muted("blue"), "white", scales::muted("red")))
 
-  ## Labelled only where the name means something; the flag above keeps the rest in the table.
-  core_label = rownames(core_mat)[is_displayable(rownames(core_mat))]
-  core_label_ind = match(core_label, rownames(core_mat))
+  ## Every row is displayable now, so all of them are marked. anno_mark rather than plain row names
+  ## because the panel is fixed at 2.5 in: 40 rows is 0.06 in of pitch, under the 5 pt the project
+  ## sets as the floor for tick-sized text, and anno_mark spreads the labels past that pitch on
+  ## leader lines instead of shrinking the type below it.
+  core_label = rownames(core_mat)
+  core_label_ind = seq_along(core_label)
 
-  cell_h = 0.10
+  core_panel_height = 2.5
   hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
                cluster_rows = FALSE, cluster_columns = FALSE,
                show_row_names = FALSE,
@@ -1698,10 +1729,10 @@ if (nrow(core_mat) > 0) {
                  foo = anno_mark(at = core_label_ind, labels = core_label,
                                  labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5))),
                width = unit(0.12 * ncol(core_mat), "inch"),
-               height = unit(cell_h * nrow(core_mat), "inch"))
+               height = unit(core_panel_height, "inch"))
 
   pdf(file.path(out_dir, "core_genes_heatmap.pdf"),
-      width = 0.12 * ncol(core_mat) + 3, height = cell_h * nrow(core_mat) + 2)
+      width = 0.12 * ncol(core_mat) + 3, height = core_panel_height + 2)
   print(hm)
   dev.off()
   print(hm)
@@ -1743,7 +1774,7 @@ intersects = map(intersect_names, function(inter_cur) {
 ## GO Terms
 
 ```{r}
-obj_agg_cluster = AggregateExpression(obj, assay=assay_to_use, group.by=res_to_use, return.seurat = T)
+## Reuses obj_agg_cluster from the GO chunk above -- same arguments, same result.
 mat = GetAssayData(obj_agg_cluster, assay = assay_to_use, layer = "data")
 
 thresh = .05
@@ -1781,26 +1812,44 @@ gmt_pathway = gmtPathways(gmt_files)
 ```
 
 ```{r}
-gse_res_list = map(markers_agg_split, function(compare) {
-  compare = compare %>%
-    arrange(-avg_log2FC)
-  gene_set = compare %>% select(avg_log2FC) %>% unlist()
-  names(gene_set) = compare$gene
-  gene_set = gene_set[!is.na(gene_set)]
-  gene_set = gene_set[!is.na(names(gene_set))]
-  gsea_res = fgseaMultilevel(pathways = gmt_pathway,
-                             stats = gene_set,
-                             minSize=20,
-                             maxSize=200)
+## Cached, on the same principle as the DESeq2 fits above. fgseaMultilevel plus collapsePathways
+## across the five contrasts is the second most expensive step in the document -- about 3.5 minutes,
+## roughly a third of a full render -- and like the fits it is an input to the plotting rather than
+## part of it. Set TRUE by hand, or delete the rds, after anything that changes the ranked gene
+## lists: the result set behind markers_agg, the pairs, or the gene universe.
+gsea_fname = file.path(out_dir, "gsea_res.rds")
 
-  gsea_res_filt = gsea_res %>% filter(padj<.2) %>% arrange(pval)
-  collapsedPathways = collapsePathways(gsea_res_filt, pathways = gmt_pathway, stats = gene_set, pval.threshold = .05)
-  gsea_res_ind = gsea_res %>% filter(pathway %in% collapsedPathways$mainPathways) %>%
-    arrange(-NES)
-  return(list(gsea_res, gsea_res_ind))
-})
-gse_res = map(gse_res_list, 1) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
-gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+redo_gsea = !file.exists(gsea_fname)
+cat(if (redo_gsea) "no cached GSEA -- fitting\n" else
+    sprintf("reusing cached GSEA: %s\n", gsea_fname))
+
+if (redo_gsea) {
+  gse_res_list = map(markers_agg_split, function(compare) {
+    compare = compare %>%
+      arrange(-avg_log2FC)
+    gene_set = compare %>% select(avg_log2FC) %>% unlist()
+    names(gene_set) = compare$gene
+    gene_set = gene_set[!is.na(gene_set)]
+    gene_set = gene_set[!is.na(names(gene_set))]
+    gsea_res = fgseaMultilevel(pathways = gmt_pathway,
+                               stats = gene_set,
+                               minSize=20,
+                               maxSize=200)
+
+    gsea_res_filt = gsea_res %>% filter(padj<.2) %>% arrange(pval)
+    collapsedPathways = collapsePathways(gsea_res_filt, pathways = gmt_pathway, stats = gene_set, pval.threshold = .05)
+    gsea_res_ind = gsea_res %>% filter(pathway %in% collapsedPathways$mainPathways) %>%
+      arrange(-NES)
+    return(list(gsea_res, gsea_res_ind))
+  })
+  gse_res = map(gse_res_list, 1) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+  gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
+  saveRDS(list(gse_res = gse_res, gse_res_ind = gse_res_ind), gsea_fname)
+} else {
+  gsea_cached = readRDS(gsea_fname)
+  gse_res = gsea_cached$gse_res
+  gse_res_ind = gsea_cached$gse_res_ind
+}
 ```
 
 ```{r}
