@@ -46,7 +46,20 @@ params = expand_grid(dims_list, n.neighbors_list, min.dist_list)
 print(params)
 set.seed(10)
 
-redo = T
+## Cache. The embeddings are the expensive half -- SCTransform, PCA and 27 UMAPs per region, some
+## twelve minutes -- while everything below them is plotting, which gets iterated on far more often.
+## They are also deterministic given the set.seed(10) above, so a re-run for a plotting change
+## reproduces them exactly and refitting is pure cost. `redo` is therefore driven by whether the
+## cached object is on disk.
+##
+## Set it TRUE by hand (or delete the cache) after changing anything the embedding depends on: the
+## cluster exclusions, the assay, the parameter grid, or the upstream object. Nothing here detects
+## that for you -- a stale cache is the one way this script can silently disagree with its own
+## source.
+redo = !file.exists(data_out_obj_fname)
+cat(if (redo) "no cached embedding -- fitting\n" else
+    sprintf("reusing cached embedding: %s\n", data_out_obj_fname))
+
 if (redo) {
   obj_int_filt = qs_read(data_fname, nthreads = 8)
   obj_int_filt$region = case_when(obj_int_filt$position %in% c("arco", "ra") ~ "arco",
@@ -178,6 +191,18 @@ iwalk(objs, function(obj_cur, region_cur) {
 
 # Plot UMAP --------------------------------------------------------------------
 
+## Panel size, per region. The arcopallial half is a quarter the cell count of the nidopallial one
+## (3,917 against 15,275) and five labels against fifteen, so at the shared 7 in it was mostly white
+## space; it is drawn at half linear size. Applied as a scale on every save below rather than as a
+## second set of literals, so the aspect ratios and the relative proportions of the three panel
+## kinds stay as they are and only the canvas moves.
+##
+## Text does not scale with the canvas. The cluster labels, the facet strips and the legend keep
+## their point size and so become twice as large relative to an arco panel -- which is the whole
+## reason this is applied to one region and not to both, and why the output is checked rather than
+## assumed. Nothing here carries a title, subtitle or caption to re-budget.
+panel_scale = c(arco = 0.5, nido = 1)
+
 iwalk(objs, function(obj_int_filt, region_cur) {
   reductions = Reductions(obj_int_filt)
   reductions = grep("dims", reductions, value=T)
@@ -202,7 +227,7 @@ iwalk(objs, function(obj_int_filt, region_cur) {
         ) +
         labs(x="", y="UMAP2")
       gg
-      save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.pdf", region_cur, ca, reduction.name)), gg, base_height=7, base_asp =1)
+      save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.pdf", region_cur, ca, reduction.name)), gg, base_height=7*panel_scale[[region_cur]], base_asp =1)
     }
 
     ca = "position"
@@ -216,8 +241,8 @@ iwalk(objs, function(obj_int_filt, region_cur) {
       scale_color_manual(values=position_colors)
 
     gg
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.pdf", region_cur,  reduction.name, ca)), gg, base_height=7, base_asp =1 )
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.png", region_cur, reduction.name, ca)), gg, base_height=7, base_asp =1 )
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.pdf", region_cur,  reduction.name, ca)), gg, base_height=7*panel_scale[[region_cur]], base_asp =1 )
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s.png", region_cur, reduction.name, ca)), gg, base_height=7*panel_scale[[region_cur]], base_asp =1 )
 
     ca = res_to_use
     ncat = length(unique(obj_int_filt@meta.data[,ca]))
@@ -232,8 +257,8 @@ iwalk(objs, function(obj_int_filt, region_cur) {
       )
 
     gg
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s_no-label.pdf", region_cur, reduction.name, ca)), gg, base_height=7, base_asp =1 )
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s_no-label.png", region_cur, reduction.name, ca)), gg, base_height=7, base_asp =1 )
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s_no-label.pdf", region_cur, reduction.name, ca)), gg, base_height=7*panel_scale[[region_cur]], base_asp =1 )
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_%s_no-label.png", region_cur, reduction.name, ca)), gg, base_height=7*panel_scale[[region_cur]], base_asp =1 )
   }
 })
 
@@ -301,12 +326,12 @@ iwalk(objs, function(obj_int_filt, region_cur) {
       mutate(individual = droplevels(individual))
 
     gg = plot_by_individual(ind_df)
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual.pdf", region_cur, reduction.name)), gg, base_height = 7, base_asp = 1.15)
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual.png", region_cur, reduction.name)), gg, base_height = 7, base_asp = 1.15)
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual.pdf", region_cur, reduction.name)), gg, base_height = 7 * panel_scale[[region_cur]], base_asp = 1.15)
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual.png", region_cur, reduction.name)), gg, base_height = 7 * panel_scale[[region_cur]], base_asp = 1.15)
 
     gg = split_by_individual(ind_df, ncol = 3)
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split.pdf", region_cur, reduction.name)), gg, base_height = 7, base_asp = 1.5)
-    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split.png", region_cur, reduction.name)), gg, base_height = 7, base_asp = 1.5)
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split.pdf", region_cur, reduction.name)), gg, base_height = 7 * panel_scale[[region_cur]], base_asp = 1.5)
+    save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split.png", region_cur, reduction.name)), gg, base_height = 7 * panel_scale[[region_cur]], base_asp = 1.5)
 
     ## Per batch, where there is more than one. Birds are only comparable within a batch and the two
     ## batches cover different regions, so the combined split panels put a two-region cloud next to
@@ -317,7 +342,7 @@ iwalk(objs, function(obj_int_filt, region_cur) {
       for (b in batches) {
         df_b = ind_df %>% filter(soup_batch == b) %>% mutate(individual = droplevels(individual))
         gg = split_by_individual(df_b, ncol = 3)
-        save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split_%s.png", region_cur, reduction.name, b)), gg, base_height = 4, base_asp = 2.6)
+        save_plot(file.path(out_dir, sprintf("umap_%s_%s_individual_split_%s.png", region_cur, reduction.name, b)), gg, base_height = 4 * panel_scale[[region_cur]], base_asp = 2.6)
       }
     }
   }

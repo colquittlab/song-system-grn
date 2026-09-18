@@ -107,8 +107,8 @@ surround. Renamed one-for-one from the `cluster`-based version:
 | `Glut-RA` | `Glut-Arco-1` | `Glut-CACNA1H-RA` | `Glut-CACNA1H-1` |
 | `Glut-HVC-1` | `Glut-NC-1` | `Glut-DACH2-HVCra` | `Glut-DACH2-1` |
 | `Glut-HVC-2` | `Glut-NC-4` | `Glut-DACH2-HVCx` | `Glut-DACH2-4` |
-| `Glut-LMAN-1` | `Glut-NR-1`, `Glut-NR-3` | `Glut-DACH2-LMANsh` | `Glut-DACH2-5`, `Glut-DACH2-7` |
 | `Glut-LMAN-2` | `Glut-NR-4`, `Glut-NR-2` | `Glut-DACH2-LMANco` | `Glut-DACH2-8`, `Glut-DACH2-6` |
+| `Glut-LMAN-1` | `Glut-NR-1`, `Glut-NR-3` | `Glut-DACH2-LMANsh` | `Glut-DACH2-5`, `Glut-DACH2-7` |
 
 `Glut-DACH2-1` is `Glut-NC-1` **and** `Glut-Nido-1` merged, so the HVCra surround is a larger,
 slightly different set of cells than it was -- the one place where the comparison itself, not just
@@ -118,14 +118,14 @@ its name, has moved.
 pairs = list(`Glut-CACNA1H-RA`   = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1"),
              `Glut-DACH2-HVCra`  = c("Glut-DACH2-HVCra", "Glut-DACH2-1"),
              `Glut-DACH2-HVCx`   = c("Glut-DACH2-HVCx", "Glut-DACH2-4"),
-             `Glut-DACH2-LMANsh` = c("Glut-DACH2-LMANsh", c("Glut-DACH2-5", "Glut-DACH2-7")),
-             `Glut-DACH2-LMANco` = c("Glut-DACH2-LMANco", c("Glut-DACH2-8", "Glut-DACH2-6")))
+             `Glut-DACH2-LMANco` = c("Glut-DACH2-LMANco", c("Glut-DACH2-8", "Glut-DACH2-6")),
+             `Glut-DACH2-LMANsh` = c("Glut-DACH2-LMANsh", c("Glut-DACH2-5", "Glut-DACH2-7")))
 
 stopifnot("a pair names a label that is not in celltype_hybrid" =
             all(unlist(pairs) %in% levels(obj@meta.data[[res_to_use]])))
 
 ## The song clusters, in the order every figure below uses.
-song_cts = names(pairs)[c(2, 3, 4, 5, 1)]  # HVCra, HVCx, LMANsh, LMANco, RA
+song_cts = names(pairs)[c(2, 3, 4, 5, 1)]  # HVCra, HVCx, LMANco, LMANsh, RA
 ```
 
 # Markers
@@ -140,7 +140,14 @@ stopifnot("AggregateExpression did not carry the grouping variable through" =
             res_to_use %in% colnames(obj_agg@meta.data))
 Idents(obj_agg) = obj_agg@meta.data[[res_to_use]]
 
-redo_markers = T
+## Cached on the same principle as the embeddings in combined_all_umap_glut_hybrid.R: the DESeq2
+## pseudobulk fits are the expensive step here and everything below them is plotting. Set TRUE by
+## hand (or delete the rds) after changing the pairs, the object, the assay or the pseudobulk
+## grouping -- nothing detects that for you.
+redo_markers = !file.exists(markers_fname)
+cat(if (redo_markers) "no cached markers -- fitting\n" else
+    sprintf("reusing cached markers: %s\n", markers_fname))
+
 if (redo_markers) {
 
   ## As in the `cluster`-based version, `ident.2` takes the first surround cluster only -- the pair
@@ -239,6 +246,66 @@ hm = Heatmap(markers_agg_mat, cluster_rows = F, cluster_columns = F, col = cols_
 ```
 
 ## Heatmap
+
+The heatmaps below are drawn gene-per-row: a tall, half-inch-wide strip, which is the right shape
+for reading down a gene list and the wrong shape for a figure that has to sit across a column. Each
+one therefore also gets a horizontal counterpart -- the same matrix transposed, so the comparisons
+are rows and the genes are columns, the gene dendrogram moves to the top and the height and width
+budgets swap with it. Same data, same clustering, same colour scale; only the orientation changes.
+
+In the transposed version the comparison names become row labels, read horizontally instead of
+rotated, and the gene marks (where there are any) hang off the bottom rather than the right.
+
+```{r}
+save_heatmap_horizontal = function(mat, hc, fname, col,
+                                   height = 15, width = 0.5,
+                                   mark_genes = NULL,
+                                   show_gene_names = FALSE,
+                                   name = "avg_log2FC") {
+  mat_t = t(mat)
+
+  ## `height`/`width` are the *vertical* figure's budget, passed through unchanged so the two
+  ## orientations stay tied to one set of numbers: the gene axis keeps `height` inches and the
+  ## comparison axis keeps `width`, they simply change places.
+  ##
+  ## The marks are taken as gene *names* and resolved against the matrix here, so the positions and
+  ## the labels are derived from one lookup and cannot fall out of step -- a gene that is not in the
+  ## matrix drops from both. (The vertical versions above pass a na.omit()'d index alongside the
+  ## unfiltered label vector, which is only correct while every gene matches.)
+  ha = NULL
+  if (length(mark_genes) > 0) {
+    idx = match(mark_genes, colnames(mat_t))
+    keep = !is.na(idx)
+    if (any(keep)) {
+      ha = HeatmapAnnotation(
+        foo = anno_mark(at = idx[keep], labels = mark_genes[keep], side = "bottom",
+                        labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5)),
+        which = "column"
+      )
+    }
+  }
+
+  ## Named, so the legend reads `avg_log2FC` rather than the auto-generated `matrix_N` the
+  ## unnamed vertical versions above fall back to.
+  hm = Heatmap(mat_t, col = col, name = name,
+               cluster_rows = FALSE,
+               cluster_columns = hc,
+               show_row_dend = FALSE,
+               show_column_dend = TRUE,
+               column_dend_gp = gpar(lwd = .5),
+               show_column_names = show_gene_names,
+               row_names_gp = gpar(fontsize = 6),
+               bottom_annotation = ha,
+               height = unit(width, "inch"),
+               width = unit(height, "inch"))
+
+  pdf(fname, width = height + 4, height = width + 4)
+  print(hm)
+  dev.off()
+  invisible(hm)
+}
+```
+
 ```{r}
 ngenes = 50
 markers_agg_select = markers_agg %>%
@@ -288,6 +355,9 @@ pdf(file.path(out_dir, "heatmap_no_genes.pdf"), width = width + 4, height = heig
 print(hm)
 dev.off()
 
+## Literal 15/0.5 rather than `height`/`width`, which were just reassigned for the no-genes variant.
+save_heatmap_horizontal(markers_agg_mat, hc, file.path(out_dir, "heatmap_horizontal.pdf"),
+                        col = cols_cur, height = 15, width = 0.5)
 ```
 ```{r}
 
@@ -340,6 +410,9 @@ hm = Heatmap(markers_agg_mat, col = cols_cur,
 pdf(file.path(out_dir, "heatmap_sig_no_genes.pdf"), width = width + 4, height = height + 4)
 print(hm)
 dev.off()
+
+save_heatmap_horizontal(markers_agg_mat, hc, file.path(out_dir, "heatmap_sig_horizontal.pdf"),
+                        col = cols_cur, height = 15, width = 0.5)
 
 
 dist_mat = as.matrix(dist(markers_agg_mat))
@@ -404,6 +477,10 @@ pdf(file.path(out_dir, "heatmap_sig_label.pdf"), width = width + 4, height = hei
 print(hm)
 dev.off()
 
+save_heatmap_horizontal(markers_agg_mat, hc, file.path(out_dir, "heatmap_sig_label_horizontal.pdf"),
+                        col = cols_cur, height = 3, width = 0.5,
+                        mark_genes = markers_agg_select_label$gene)
+
 
 
 dist_mat = as.matrix(dist(markers_agg_mat))
@@ -447,6 +524,10 @@ pdf(file.path(out_dir, "heatmap_sig_label_cluster.pdf"), width = width + 4, heig
 print(hm)
 dev.off()
 
+save_heatmap_horizontal(markers_agg_mat, hc,
+                        file.path(out_dir, "heatmap_sig_label_cluster_horizontal.pdf"),
+                        col = cols_cur, height = 3, width = 0.5,
+                        mark_genes = markers_agg_select_label$gene)
 ```
 
 ### UMAPs
@@ -474,13 +555,29 @@ genes_to_plot = markers_agg_select_label$gene
 ## MAGIC_SCT is not on obj_hybrid_labels.qs2, so in practice only SCT is plotted; the intersect
 ## keeps the loop correct either way.
 assays_to_use = c("SCT", "MAGIC_SCT")
-plot_dims = list(arco = c(height = 3, width = 3), nido = c(height = 4, width = 4 ))
-point_size_factors = list(arco = 1.5, nido = 1)
+
+## Panel size and point size. The old values -- 3/4 in panels at pt.size 3/2 -- drew points several
+## times wider than the spacing between cells, so 15,000 nidopallial cells merged into a field of
+## overlapping discs and nothing below the level of a whole cluster could be read. `pt.size` is in
+## ggplot size units here, not pixels, so the rasteriser was never the cause and raising
+## raster.dpi alone would not have helped.
+##
+## These were set by rendering the same gene at a range of sizes and looking at the output: the
+## panels are enlarged and the points are brought down to roughly the inter-cell spacing, which is
+## the value at which individual cells resolve and the expression gradient is still readable as a
+## surface. The two regions differ because the arcopallial embedding holds a quarter the cells in a
+## comparable area, so it can carry a larger point on a smaller panel.
+##
+## Kept rasterised: at these sizes a panel is about 1 MB, where vector points would be several times
+## that for 78 genes and nothing is read at the level of an individual point's outline.
+plot_dims = list(arco = c(height = 5, width = 5), nido = c(height = 6, width = 6))
+point_sizes = list(arco = 1.0, nido = 0.6)
+raster_dpi = 2048
 walk(names(obj_umap), function(region_cur) {
   obj_cur = obj_umap[[region_cur]]
   reduction_to_use = reductions_to_use[region_cur]
   plot_dim = plot_dims[[region_cur]]
-  point_size_factor = point_size_factors[[region_cur]]
+  point_size = point_sizes[[region_cur]]
 
   walk(intersect(assays_to_use, Assays(obj_cur)), function(assay_to_use) {
     DefaultAssay(obj_cur) = assay_to_use
@@ -488,8 +585,8 @@ walk(names(obj_umap), function(region_cur) {
       gg = FeaturePlot_scCustom(obj_cur,
                                 features=gene_to_plot,
                                 reduction=reduction_to_use,
-                                raster = T, raster.dpi = c(1024,1024),
-                                pt.size=2 * point_size_factor) +
+                                raster = T, raster.dpi = c(raster_dpi, raster_dpi),
+                                pt.size = point_size) +
         coord_equal()  +
         theme_void()
       save_plot(file.path(umap_dir,
@@ -546,8 +643,8 @@ cts = unlist(pairs)
 ## outside the factor levels and is dropped on the next line.
 ct_levels = c("Glut-DACH2-HVCra", "Glut-DACH2-1",
               "Glut-DACH2-HVCx", "Glut-DACH2-4",
-              "Glut-DACH2-LMANsh", "Glut-DACH2-5",
               "Glut-DACH2-LMANco", "Glut-DACH2-8",
+              "Glut-DACH2-LMANsh", "Glut-DACH2-5",
               "Glut-CACNA1H-RA", "Glut-CACNA1H-1")
 
 obj_sub = subset(obj, cells = Cells(obj)[obj@meta.data[[res_to_use]] %in% cts])
@@ -685,7 +782,7 @@ markers_agg_sig = map(markers_agg_split, function(x) {
     unlist()
 })
 set_order = rev(c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-CACNA1H-RA",
-                  "Glut-DACH2-LMANsh", "Glut-DACH2-LMANco"))
+                  "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh"))
 markers_agg_sig_upset = fromList(markers_agg_sig)
 gg = upset(fromList(markers_agg_sig), group.by = "sets", order.by="freq", keep.order = T, sets = set_order, empty.intersections = "on", nintersects = 100)
 gg
