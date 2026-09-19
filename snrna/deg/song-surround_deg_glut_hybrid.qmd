@@ -38,6 +38,31 @@ select = dplyr::select
 count  = dplyr::count
 filter = dplyr::filter
 
+## Per-chunk timing, summarised at the end of the document.
+##
+## Worth the few lines: output-file timestamps only bracket a chunk that writes a file, so a long
+## tail containing several chunks and one figure gets attributed entirely to whichever step you
+## already suspect. That is exactly how GSEA was blamed for a 3.5-minute block it shared with the GO
+## enrichment. Measure the chunks, not the gaps between files.
+## Chunks are unnamed, so the first line of code is recorded alongside the time -- "unnamed-chunk-46"
+## on its own means nothing without counting chunks by hand to find out which one it is.
+.chunk_times = new.env(parent = emptyenv())
+.chunk_code = new.env(parent = emptyenv())
+knitr::knit_hooks$set(chunk_timer = function(before, options, envir) {
+  if (before) {
+    assign(options$label, Sys.time(), envir = .chunk_times)
+    first = options$code[!grepl("^\\s*(#|$)", options$code)][1]
+    assign(options$label, if (is.na(first)) "" else substr(trimws(first), 1, 60), envir = .chunk_code)
+  } else {
+    t0 = get0(options$label, envir = .chunk_times)
+    if (inherits(t0, "POSIXct"))
+      assign(options$label, as.numeric(difftime(Sys.time(), t0, units = "secs")),
+             envir = .chunk_times)
+  }
+  NULL
+})
+knitr::opts_chunk$set(chunk_timer = TRUE)
+
 source(here::here("config/paths.R"))
 ```
 
@@ -1785,21 +1810,37 @@ mat_expr = map(1:ncol(mat), function(i) rownames(mat)[mat[,i] >= thresh]) %>%
 
 ```{r}
 
-entrezid = bitr(markers_agg_split[[1]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+## Cached. Measured at 159 s -- 27% of a full render and the second most expensive step in the
+## document, behind only the gene UMAPs. `enrichGO` runs seven times here, once per intersect set,
+## each against its own universe. Delete the rds, or set the flag TRUE, after anything that changes
+## the intersects: the result set behind markers_agg, the pairs, or intersect_names itself.
+go_terms_fname = file.path(out_dir, "go_terms_by_intersect.rds")
 
-go_res = map(names(intersect_names), function(compare) {
-  cts = intersect_names[[compare]]
+redo_go_terms = !file.exists(go_terms_fname)
+cat(if (redo_go_terms) "no cached GO terms -- fitting\n" else
+    sprintf("reusing cached GO terms: %s\n", go_terms_fname))
 
-  gene_set = entrezid$ENTREZID[match(intersects[[compare]], entrezid$SYMBOL)]
-  gene_set = gene_set[!is.na(gene_set)]
+if (redo_go_terms) {
+  entrezid = bitr(markers_agg_split[[1]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
 
-  universe = Reduce(intersect, mat_expr[cts])
-  universe = entrezid$ENTREZID[match(universe, entrezid$SYMBOL)]
-  universe = universe[!is.na(universe)]
+  go_res = map(names(intersect_names), function(compare) {
+    cts = intersect_names[[compare]]
 
-  go_res = enrichGO(gene_set, universe = universe, OrgDb = org.Hs.eg.db, ont = "ALL", maxGSSize = 200 )
-  as.data.frame(go_res)
-}) %>% set_names(names(intersect_names)) %>% bind_rows(.id="compare")
+    gene_set = entrezid$ENTREZID[match(intersects[[compare]], entrezid$SYMBOL)]
+    gene_set = gene_set[!is.na(gene_set)]
+
+    universe = Reduce(intersect, mat_expr[cts])
+    universe = entrezid$ENTREZID[match(universe, entrezid$SYMBOL)]
+    universe = universe[!is.na(universe)]
+
+    go_res = enrichGO(gene_set, universe = universe, OrgDb = org.Hs.eg.db, ont = "ALL", maxGSSize = 200 )
+    as.data.frame(go_res)
+  }) %>% set_names(names(intersect_names)) %>% bind_rows(.id="compare")
+
+  saveRDS(go_res, go_terms_fname)
+} else {
+  go_res = readRDS(go_terms_fname)
+}
 ```
 
 ## GSEA
@@ -1924,4 +1965,28 @@ set_order = song_cts
   gg = egg::set_panel_size(gg, width = unit(width, "in"), height = unit(height, "in"))
   plot(gg)
   save_plot(file.path(out_dir, sprintf("gse_terms_by_compare.pdf")), gg, base_height = height + 4, base_width = width + 4)
+```
+
+## Render profile
+
+Where the time went. Anything cached shows only its read cost, so a big number here is a step that
+still runs every time and is a candidate for caching or for cheaper settings.
+
+```{r}
+## Only entries whose end hook has fired are durations; this chunk's own entry is still the POSIXct
+## it was stamped with on entry, and as.numeric() would turn that into 1.8 billion seconds and
+## swamp the table. Keep the numerics, drop the timestamps.
+.times = mget(ls(.chunk_times), envir = .chunk_times)
+.times = .times[vapply(.times, function(x) is.numeric(x) && !inherits(x, "POSIXct"), logical(1))]
+
+tibble(chunk = names(.times),
+       secs = as.numeric(unlist(.times))) %>%
+  mutate(code = unlist(mget(chunk, envir = .chunk_code, ifnotfound = ""))) %>%
+  arrange(-secs) %>%
+  mutate(pct = round(100 * secs / sum(secs), 1)) %>%
+  head(20) %>%
+  as.data.frame() %>%
+  print(right = FALSE, digits = 3)
+
+cat(sprintf("\ntotal timed chunk time: %.1f min\n", sum(as.numeric(unlist(.times))) / 60))
 ```
