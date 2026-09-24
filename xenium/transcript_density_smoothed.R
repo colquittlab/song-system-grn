@@ -18,10 +18,13 @@ source(here::here("config/paths.R"))
 source(here::here("config/figure_theme.R"))
 select <- dplyr::select
 
-SECTION  <- "OR52YW26_1_7"
+## Section from the command line so both can run through the same code:
+##   Rscript xenium/transcript_density_smoothed.R OR52YW26_1_4
+.args   <- commandArgs(trailingOnly = TRUE)
+SECTION <- if (length(.args)) .args[1] else "OR52YW26_1_7"
 BASE_BIN <- 10                 # bin size of the CSV on disk
 BINS     <- c(10, 20, 40)      # 20 and 40 are aggregated from BASE_BIN
-SIGMA_UM <- 30                 # Gaussian sd for the smoothed panels, in microns
+SIGMA_UM <- 20                 # Gaussian sd for the smoothed panels, in microns
 PALETTE  <- "viridis"
 out_dir  <- here::here("xenium", "transcript_density")
 sec_dir  <- file.path(path.expand(XENIUM_PROSEG_DIR), SECTION)
@@ -29,13 +32,34 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 pal_cols <- if (PALETTE == "viridis") viridisLite::viridis(256) else FIG_SEQ
 
-## Orientation: unlike OR52YW26_1_4 (which needs none), this section is ccw90
-## in the table the spatial maps use, so both the cells and the transcript bins
-## are rotated into the shared posterior-left / dorsal-up frame.
-## ccw90 is (x, y) -> (-y, x).
-rot_ccw90 <- function(df, xcol = "x", ycol = "y") {
+## Orientation: the same per-section table the spatial maps use, so every
+## panel lands in the shared posterior-left / dorsal-up frame. Sections differ
+## here -- OR52YW26_1_4 needs none, OR52YW26_1_7 is ccw90 -- so this is looked
+## up rather than hardcoded. Rotations are in the standard sense (x right, y
+## up): ccw90 is (x,y) -> (-y,x), cw90 is (x,y) -> (y,-x); a flip negates x
+## after any rotation.
+SECTION_TRANSFORM <- tibble::tribble(
+  ~section_id,     ~rotate,  ~flip_h,
+  "OR52YW26_1_4",  "none",   FALSE,
+  "OR52YW26_1_7",  "ccw90",  FALSE,
+  "OR52YW26_2_2",  "ccw90",  TRUE,
+  "OR52YW26_2_4",  "ccw90",  FALSE,
+  "OR52YW26_2_7",  "cw90",   TRUE,
+  "OR69PU4_1_4",   "none",   FALSE,
+  "OR69PU4_1_7",   "ccw90",  TRUE,
+  "OR69PU4_2_2",   "cw90",   FALSE,
+  "OR69PU4_2_4",   "ccw90",  FALSE,
+  "OR69PU4_2_7",   "ccw90",  FALSE)
+stopifnot("section not in the orientation table" = SECTION %in% SECTION_TRANSFORM$section_id)
+.tf <- SECTION_TRANSFORM[SECTION_TRANSFORM$section_id == SECTION, ]
+cat("section:", SECTION, " rotate:", .tf$rotate, " flip_h:", .tf$flip_h, "\n")
+
+orient_xy <- function(df, xcol = "x", ycol = "y") {
   x <- df[[xcol]]; y <- df[[ycol]]
-  df[[xcol]] <- -y; df[[ycol]] <- x
+  xr <- switch(.tf$rotate, none = x, ccw90 = -y, cw90 =  y)
+  yr <- switch(.tf$rotate, none = y, ccw90 =  x, cw90 = -x)
+  df[[xcol]] <- if (.tf$flip_h) -xr else xr
+  df[[ycol]] <- yr
   df
 }
 
@@ -44,7 +68,7 @@ cm <- nanoparquet::read_parquet(file.path(sec_dir, "cell-metadata.parquet"))
 m  <- Matrix::readMM(gzfile(file.path(sec_dir, "expected-counts.csv.gz")))
 stopifnot(nrow(m) == nrow(cm))
 cells <- tibble(x = cm$centroid_x, y = cm$centroid_y, n_tx = Matrix::rowSums(m)) |>
-  rot_ccw90()
+  orient_xy()
 n_zero <- sum(cells$n_tx <= 0)
 cells <- cells |> filter(n_tx > 0)
 cat("cells:", nrow(cells) + n_zero, " median tx/cell:", round(median(cells$n_tx), 1),
@@ -139,10 +163,14 @@ add_scalebar <- function(p) p +
   annotate("text", x = bx + bar_um / 2, y = by + 0.028 * diff(yr),
            label = "1 mm", size = fig_pt(5), colour = FIG_INK_SECONDARY)
 
-## The ccw90 rotation puts this section in the same posterior-left/dorsal-up
-## frame as the others, which is LANDSCAPE (7898 x 5369 um after rotation) --
-## the raw section is portrait, so it is the rotated extent that sets the panel.
-PW <- 3.4; PH <- 2.1
+## Panel sized from the ROTATED extent, not the raw one: OR52YW26_1_7 is
+## portrait on the slide but landscape once oriented, and hardcoding the raw
+## aspect produced a badly squashed panel. Width fixed, height follows the
+## data aspect, with headroom for the legend.
+.asp <- diff(range(cells$y)) / diff(range(cells$x))
+PW <- 3.4; PH <- max(1.5, PW * .asp * 1.08)
+cat("rotated extent:", round(diff(range(cells$x))), "x", round(diff(range(cells$y))),
+    "um -> panel", PW, "x", round(PH, 2), "in\n")
 
 ## --- A: per-cell -------------------------------------------------------------
 lim_a <- quantile(cells$n_tx, c(0.01, 0.99))
@@ -161,7 +189,7 @@ fig_save(add_scalebar(pa), file.path(out_dir, paste0("per_cell_transcripts_", SE
 ## --- B: density, raw and smoothed, at each bin size --------------------------
 stats_rows <- list()
 for (b in BINS) {
-  d <- aggregate_bins(dens0, BASE_BIN, b) |> rot_ccw90()
+  d <- aggregate_bins(dens0, BASE_BIN, b) |> orient_xy()
   floor_n <- 100 * (b / 20)^2                       # "in tissue" scales with bin area
   lim <- unname(quantile(d$n[d$n >= floor_n], c(0.05, 0.95)))
   brk <- signif(seq(lim[1], lim[2], length.out = 3), 2)
@@ -181,8 +209,11 @@ for (b in BINS) {
   ds <- smooth_grid(d, b, SIGMA_UM)
   lim_s <- unname(quantile(ds$n[ds$n >= floor_n], c(0.02, 0.98)))
   brk_s <- signif(seq(lim_s[1], lim_s[2], length.out = 3), 2)
+  ## geom_tile, not geom_raster: masking leaves gaps in the retained grid
+  ## (OR52YW26_1_4 has an internal band of unoccupied bins), so the spacing is
+  ## uneven and geom_raster shifts pixels to force a regular grid.
   p_sm <- ggplot(ds, aes(x, y, fill = n)) +
-    geom_raster() +
+    geom_tile(width = b, height = b) +
     scale_fill_gradientn(colours = pal_cols, limits = lim_s, oob = scales::squish,
                          breaks = brk_s, labels = scales::comma(brk_s),
                          name = paste0("transcripts\nper ", b, " µm bin\n(",
