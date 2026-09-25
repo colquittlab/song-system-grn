@@ -43,15 +43,25 @@ ct_order <- c("Glut-DACH2-HVCra", "Glut-DACH2-HVCra-Int", "Glut-DACH2-HVCx",
              "Oligo-1", "Oligo-2", "Oligo-3", "OPC", "Micro", "Endo")
 
 ## ---- snRNA side: position x celltype, exactly as the tree notebook ---------
-obj = qs_read(obj_fname, nthreads = 8)
-stopifnot(res_to_use %in% colnames(obj@meta.data))
-md = obj@meta.data %>% select(position, all_of(res_to_use)); rm(obj); gc()
-stopifnot(setequal(ct_order, unique(md[[res_to_use]])))
-
-tab = table(md$position, md[[res_to_use]])
-tab = tab[c("hvc","nc","lman","nr","ra","arco"), ct_order]
-tab = sweep(tab, 1, rowSums(tab), FUN = "/")
-tab = sweep(tab, 2, colSums(tab), FUN = "/")
+## Cached: the only thing needed from obj_subset.qs2 is a position x celltype
+## contingency table, and reloading 3 GB to rebuild the same small matrix on
+## every figure tweak is wasted minutes. Delete the cache to force a rebuild.
+tab_cache = file.path(out_dir, "snrna_position_table.csv")
+if (file.exists(tab_cache)) {
+  tab = as.matrix(read.csv(tab_cache, row.names = 1, check.names = FALSE))
+  message("using cached snRNA position table: ", tab_cache)
+} else {
+  obj = qs_read(obj_fname, nthreads = 8)
+  stopifnot(res_to_use %in% colnames(obj@meta.data))
+  md = obj@meta.data %>% select(position, all_of(res_to_use)); rm(obj); gc()
+  stopifnot(setequal(ct_order, unique(md[[res_to_use]])))
+  tab = table(md$position, md[[res_to_use]])
+  tab = tab[c("hvc","nc","lman","nr","ra","arco"), ct_order]
+  tab = sweep(tab, 1, rowSums(tab), FUN = "/")
+  tab = sweep(tab, 2, colSums(tab), FUN = "/")
+  write.csv(tab, tab_cache)
+}
+stopifnot(identical(colnames(tab), ct_order))
 tab_spec = apply(tab, 2, calc_tissue_specificity)[ct_order]
 
 ## ---- Xenium side ----------------------------------------------------------
@@ -86,25 +96,33 @@ delta_draw = x$delta; obs_draw = x$obs; null_draw = x$null
 
 cols = colorRamp2(breaks = seq(0, 1, length.out = 9),
                   colors = scales::brewer_pal(palette="Greys")(9))
-RH = 0.13; hm_h = length(ct_order)*RH; hm_w = nrow(tab)*RH
+## Heatmap body sized to match the vertical panel in
+## snrna/trees/celltypes_hclust_all_hybrid.qmd, which uses
+## scale_factor = 0.08 per cell: height = ncol(tab) * 0.08 over the 47
+## cell types, width = nrow(tab) * 0.08 over the 6 positions.
+SCALE_FACTOR = 0.08
+hm_h = 3.765                      # the trees figure's body height
+hm_w = nrow(tab) * SCALE_FACTOR   # 6 positions -> 0.48 in
 
 ann_snrna = HeatmapAnnotation(
   which = "row",
-  "snRNA\nspecificity" = anno_barplot(tab_spec, 0, border=TRUE, gp=gpar(fill=bar_colors),
-                                      width=unit(1.1,"in"), axis_param=list(gp=gpar(fontsize=5))),
+  ## width matches snrna/trees/celltypes_hclust_all_hybrid.qmd, which passes no
+  ## width and so gets anno_barplot's 1cm default; stated explicitly here.
+  "snRNA\nspecificity" = anno_barplot(tab_spec, 0, border=FALSE, gp=gpar(fill=bar_colors),
+                                      width=unit(1,"cm"), axis_param=list(gp=gpar(fontsize=5))),
   annotation_name_gp = gpar(fontsize=6), gap = unit(2,"mm"))
 ann_xen = HeatmapAnnotation(
   which = "row",
-  "Xenium\nlocalisation" = anno_barplot(delta_draw, 0, border=TRUE, gp=gpar(fill=bar_colors),
-                                        width=unit(1.1,"in"), axis_param=list(gp=gpar(fontsize=5))),
+  "Xenium\nlocalisation" = anno_barplot(delta_draw, 0, border=FALSE, gp=gpar(fill=bar_colors),
+                                        width=unit(1,"cm"), axis_param=list(gp=gpar(fontsize=5))),
   annotation_name_gp = gpar(fontsize=6), gap = unit(2,"mm"))
 ## observed vs permutation null, same rows
 ann_pts = HeatmapAnnotation(
   which = "row",
-  "obs vs null" = anno_points(cbind(obs_draw, null_draw), border=TRUE,
+  "obs vs null" = anno_points(cbind(obs_draw, null_draw), border=FALSE,
                               pch=c(16,1), size=unit(1.1,"mm"),
                               gp=gpar(col=c("black","grey55")),
-                              width=unit(1.1,"in"), axis_param=list(gp=gpar(fontsize=5))),
+                              width=unit(1,"cm"), axis_param=list(gp=gpar(fontsize=5))),
   annotation_name_gp = gpar(fontsize=6), gap = unit(2,"mm"))
 
 hm = Heatmap(t(tab), cluster_rows=FALSE, cluster_columns=FALSE,
@@ -117,7 +135,7 @@ hm = Heatmap(t(tab), cluster_rows=FALSE, cluster_columns=FALSE,
 
 for (variant in c("bars","bars_points")) {
   ht = if (variant=="bars") hm + ann_snrna + ann_xen else hm + ann_snrna + ann_xen + ann_pts
-  w = if (variant=="bars") 7.5 else 9
+  w = if (variant=="bars") 5.2 else 6.0
   pdf(file.path(out_dir, paste0("spatial_variation_aligned_",variant,".pdf")),
       height=hm_h+2, width=w); draw(ht, merge_legend=TRUE); dev.off()
   png(file.path(out_dir, paste0("spatial_variation_aligned_",variant,".png")),
