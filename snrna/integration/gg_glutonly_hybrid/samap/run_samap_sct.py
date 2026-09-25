@@ -28,12 +28,16 @@ from samap.mapping import SAMAP
 from samap.analysis import get_mapping_scores
 
 BASE = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/samap")
+# The saved h5ad objects (not in git) still carry pre-rename labels; apply the current
+# naming (snrna/naming/hybrid_division_naming.qmd) at load time so outputs match the
+# tracked result tables and downstream ct_order lists.
+LABEL_RENAME = {"Glut-DACH2-HVCra-Pre": "Glut-DACH2-HVCra-Int"}
 SCT_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/samap/data")
 
 
 def load_sam_sct(h5ad: Path, label_col: str, name: str) -> SAM:
     a = sc.read_h5ad(h5ad)
-    a.obs[label_col] = a.obs[label_col].astype(str)
+    a.obs[label_col] = a.obs[label_col].astype(str).replace(LABEL_RENAME)
     sam = SAM(counts=a)
     # sum_norm=None, norm=None: skip SAM's own normalization entirely (data is already
     # SCT-corrected) -- see module docstring for why sum_norm=1 would be wrong here.

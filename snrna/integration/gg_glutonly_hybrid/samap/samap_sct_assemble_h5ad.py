@@ -1,7 +1,9 @@
 """Reassemble SCT-corrected h5ads for SAMap from R/sct_transform_export.R's mtx output +
 the original per-species .obs metadata (cell order/identity unaffected by SCTransform;
 gene set may have shrunk to SCTransform's own filter, which is fine -- SAMap works with
-whatever genes are present in each object's X)."""
+whatever genes are present in each object's X). `--subset` selects the same finch/chicken
+combination as samap_sct_export_inputs.py."""
+import argparse
 from pathlib import Path
 
 import anndata as ad
@@ -11,7 +13,12 @@ import scipy.io as sio
 IN = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/samap/data")
 GLUTONLY = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult-glutonly/data")
 
-SPECIES = [("finch", GLUTONLY / "bf_adult_glut_hybrid.h5ad"), ("chicken", GLUTONLY / "gg_adult_ex.h5ad")]
+SUBSETS = {
+    "base": [("finch", "bf_adult_glut_hybrid.h5ad"), ("chicken", "gg_adult_ex.h5ad")],
+    "plusSATB2": [("finch_plusSATB2", "bf_adult_glut_hybrid_plusSATB2.h5ad"), ("chicken", "gg_adult_ex.h5ad")],
+    "noMeso": [("finch", "bf_adult_glut_hybrid.h5ad"), ("chicken_noMeso", "gg_adult_ex_noMeso.h5ad")],
+    "plusSATB2_noPre": [("finch_plusSATB2", "bf_adult_glut_hybrid_plusSATB2.h5ad"), ("chicken_noPre", "gg_adult_ex_noPre.h5ad")],
+}
 
 
 def assemble(name: str, orig_h5ad: Path):
@@ -32,5 +39,8 @@ def assemble(name: str, orig_h5ad: Path):
 
 
 if __name__ == "__main__":
-    for name, orig in SPECIES:
-        assemble(name, orig)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--subset", choices=list(SUBSETS), default="base")
+    args = ap.parse_args()
+    for name, orig in SUBSETS[args.subset]:
+        assemble(name, GLUTONLY / orig)
