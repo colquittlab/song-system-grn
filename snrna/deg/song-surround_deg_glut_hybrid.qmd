@@ -204,6 +204,19 @@ volcano_hl = "#e34948"
 ## crisp. 600 dpi, matching the gene UMAPs and fig_save() in config/figure_theme.R.
 fig_raster_dpi = 600
 
+## Heatmap bodies rasterised, everything around them vector. Masks ComplexHeatmap::Heatmap for the
+## rest of the document so all eleven heatmaps inherit it from one place instead of eleven edits
+## that can drift. `use_raster` bakes only the cell matrix into a bitmap; row and column names,
+## legends, dendrograms and anno_mark labels stay as real text, editable downstream.
+##
+## `raster_quality` multiplies a 72 ppi base -- the default of 1 gives a 72 ppi body, checked with
+## `pdfimages -list` -- so 600 dpi is 600 / 72. The bitmap is drawn without interpolation, so cell
+## edges stay sharp rather than blending into their neighbours. Pass `use_raster = FALSE` to opt a
+## single heatmap out.
+Heatmap = function(..., use_raster = TRUE, raster_quality = fig_raster_dpi / 72) {
+  ComplexHeatmap::Heatmap(..., use_raster = use_raster, raster_quality = raster_quality)
+}
+
 volcano_points = function(..., dpi = fig_raster_dpi) {
   ggrastr::rasterise(ggplot2::geom_point(...), dpi = dpi)
 }
@@ -1716,52 +1729,120 @@ print(core_gene_sets %>% count(set, direction))
 ## cannot be labelled in would waste a row in a panel that exists to be read.
 core_top_n = 20
 
-core_mat = core_gene_sets %>%
-  filter(set == "core", displayable) %>%
-  distinct(gene, .keep_all = TRUE) %>%
-  select(gene, all_of(paste0("log2FC_", song_cts))) %>%
-  column_to_rownames("gene") %>%
-  as.matrix()
-colnames(core_mat) = song_cts
-core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
+## Drawn by one function so this panel and the LMANsh-excluded one below are built identically --
+## same ranking, same top-N, same geometry -- and differ only in the gene set and the contrasts.
+draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n,
+                             panel_height = 2.5) {
+  core_mat = gene_sets %>%
+    filter(set == set_name, displayable) %>%
+    distinct(gene, .keep_all = TRUE) %>%
+    select(gene, all_of(paste0("log2FC_", cts))) %>%
+    column_to_rownames("gene") %>%
+    as.matrix()
+  colnames(core_mat) = cts
+  core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
 
-n_core_all = nrow(core_mat)
-if (n_core_all > 2 * core_top_n) {
-  core_mat = core_mat[c(seq_len(core_top_n),
-                        seq(n_core_all - core_top_n + 1, n_core_all)), , drop = FALSE]
-}
-cat(sprintf("core heatmap: %s of %s displayable core genes (top %s each direction)\n",
-            nrow(core_mat), n_core_all, core_top_n))
+  n_all = nrow(core_mat)
+  if (n_all > 2 * top_n) {
+    core_mat = core_mat[c(seq_len(top_n), seq(n_all - top_n + 1, n_all)), , drop = FALSE]
+  }
+  cat(sprintf("%s heatmap: %s of %s displayable genes (top %s each direction)\n",
+              set_name, nrow(core_mat), n_all, top_n))
+  if (nrow(core_mat) == 0) return(invisible(NULL))
 
-if (nrow(core_mat) > 0) {
   max_val = 4
   cols_cur = circlize::colorRamp2(breaks = c(-max_val, 0, max_val),
                                   colors = c(scales::muted("blue"), "white", scales::muted("red")))
 
-  ## Every row is displayable now, so all of them are marked. anno_mark rather than plain row names
-  ## because the panel is fixed at 2.5 in: 40 rows is 0.06 in of pitch, under the 5 pt the project
-  ## sets as the floor for tick-sized text, and anno_mark spreads the labels past that pitch on
-  ## leader lines instead of shrinking the type below it.
-  core_label = rownames(core_mat)
-  core_label_ind = seq_along(core_label)
-
-  core_panel_height = 2.5
+  ## Every row is displayable, so all are marked. anno_mark rather than plain row names because the
+  ## panel is fixed at 2.5 in: 40 rows is 0.06 in of pitch, under the 5 pt floor for tick-sized
+  ## text, and anno_mark spreads the labels on leader lines instead of shrinking the type.
   hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
                cluster_rows = FALSE, cluster_columns = FALSE,
                show_row_names = FALSE,
                column_names_gp = gpar(fontsize = 6),
                right_annotation = rowAnnotation(
-                 foo = anno_mark(at = core_label_ind, labels = core_label,
+                 foo = anno_mark(at = seq_len(nrow(core_mat)), labels = rownames(core_mat),
                                  labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5))),
                width = unit(0.12 * ncol(core_mat), "inch"),
-               height = unit(core_panel_height, "inch"))
+               height = unit(panel_height, "inch"))
 
-  pdf(file.path(out_dir, "core_genes_heatmap.pdf"),
-      width = 0.12 * ncol(core_mat) + 3, height = core_panel_height + 2)
+  pdf(fname, width = 0.12 * ncol(core_mat) + 3, height = panel_height + 2)
   print(hm)
   dev.off()
   print(hm)
+  invisible(hm)
 }
+
+draw_core_heatmap(core_gene_sets, "core", song_cts, file.path(out_dir, "core_genes_heatmap.pdf"))
+```
+
+### Core without LMANsh
+
+The same analysis on four contrasts, leaving out LMANsh against `Glut-DACH2-5`. Same rule --
+concordant direction in every contrast used, significant in at least `core_k` = 3 of them -- so the
+two sets differ only in which pairs get a vote.
+
+Dropping a contrast does two things at once, and the counts below separate them. It **admits**
+genes LMANsh had been excluding, either by pointing the other way (the direction rule applies to
+every contrast, significant or not) or by not having been tested there at all (a gene must have a
+value in every contrast for "same direction everywhere" to be checkable). And it **loses** genes
+that had needed LMANsh to reach their three significant contrasts. The first effect is the reason
+to run this: a gene vetoed by an opposite-signed LMANsh is not a gene LMANsh merely lacked the power
+to confirm.
+
+Three of four is proportionally stricter than three of five, so k = 2 and k = 4 are reported too.
+
+```{r}
+no_lmansh_cts = setdiff(song_cts, "Glut-DACH2-LMANsh")
+stopifnot(length(no_lmansh_cts) == 4)
+
+core_nosh_set = concordant_set(no_lmansh_cts, k = core_k)
+
+## Sensitivity to k, and how each set relates to the five-contrast core.
+tibble(k = 2:4) %>%
+  mutate(set = map(k, ~ concordant_set(no_lmansh_cts, k = .x)),
+         n = map_int(set, nrow),
+         up = map_int(set, ~ sum(.x$direction == "up")),
+         down = map_int(set, ~ sum(.x$direction == "down")),
+         in_5contrast_core = map_int(set, ~ sum(.x$gene %in% core_set$gene)),
+         new = n - in_5contrast_core) %>%
+  select(-set) %>%
+  as.data.frame() %>% print()
+
+## What LMANsh said about each gene -- the column that explains why a gene is in one core and not
+## the other.
+lmansh_status = de_long %>%
+  filter(compare == "Glut-DACH2-LMANsh") %>%
+  select(gene, lmansh_dir = dir, lmansh_sig = sig)
+
+core_nosh = core_nosh_set %>%
+  left_join(lmansh_status, by = "gene") %>%
+  mutate(in_5contrast_core = gene %in% core_set$gene,
+         lmansh = case_when(
+           is.na(lmansh_dir) ~ "not tested",
+           lmansh_dir != if_else(direction == "up", 1, -1) & lmansh_sig ~ "opposite, significant",
+           lmansh_dir != if_else(direction == "up", 1, -1) ~ "opposite, n.s.",
+           lmansh_sig ~ "same, significant",
+           TRUE ~ "same, n.s.")) %>%
+  select(-lmansh_dir, -lmansh_sig)
+
+cat("\nLMANsh status of the 4-contrast core, by whether the gene is also in the 5-contrast core:\n")
+print(core_nosh %>% count(in_5contrast_core, lmansh) %>% as.data.frame())
+
+lost = setdiff(core_set$gene, core_nosh$gene)
+cat(sprintf("\n5-contrast core genes not in the 4-contrast core: %s -- they needed LMANsh for their three\n",
+            length(lost)))
+
+core_nosh_gene_sets = core_nosh %>%
+  mutate(set = "core-no-LMANsh", displayable = is_displayable(gene)) %>%
+  left_join(wide_fc, by = "gene") %>%
+  left_join(wide_p, by = "gene") %>%
+  arrange(direction, gene)
+write_csv(core_nosh_gene_sets, file.path(out_dir, "core_no_lmansh_gene_sets.csv"))
+
+draw_core_heatmap(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts,
+                  file.path(out_dir, "core_no_lmansh_heatmap.pdf"))
 ```
 
 ## Overlap of DEG
