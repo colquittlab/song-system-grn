@@ -1419,24 +1419,26 @@ as asking it of one nucleus.
 
 ```{r}
 
-paired_fname = file.path(out_dir, "song_vs_nonsong_paired_deseq2.rds")
-
-redo_paired = !file.exists(paired_fname)
-cat(if (redo_paired) "no cached paired fit -- fitting\n" else
-    sprintf("reusing cached paired fit: %s\n", paired_fname))
-
-if (redo_paired) {
+## The paired song/non-song fit, as a function so the full contrast and the no-LMANsh one below are
+## fitted identically and differ only in which cells go in. `obj_in` must carry `songness` and
+## `individual`. Cached per `fname`.
+fit_paired_songness = function(obj_in, fname) {
+  if (file.exists(fname)) {
+    cat(sprintf("reusing cached paired fit: %s\n", fname))
+    return(readRDS(fname))
+  }
+  cat(sprintf("no cached paired fit -- fitting: %s\n", fname))
   ## The RNA counts layer is BPCells-backed (on disk), not an in-memory sparse matrix, so it has no
   ## @x slot and does not take a matrix product directly. Pulled into memory as dgCMatrix first --
   ## 14k cells is nothing, and everything downstream is then ordinary Matrix arithmetic.
-  cts_cells = as(GetAssayData(obj_songness, assay = "RNA", layer = "counts"), "dgCMatrix")
+  cts_cells = as(GetAssayData(obj_in, assay = "RNA", layer = "counts"), "dgCMatrix")
 
   ## Raw counts, asserted rather than assumed -- a non-integer matrix here would mean the RNA layer
   ## is not what this model wants, and DESeq2 would round it silently.
   stopifnot("RNA counts layer is not integer-valued" =
               all(abs(cts_cells@x - round(cts_cells@x)) < 1e-8))
 
-  grp = factor(paste(obj_songness$songness, obj_songness$individual, sep = "__"))
+  grp = factor(paste(obj_in$songness, obj_in$individual, sep = "__"))
   pb = cts_cells %*% Matrix::sparse.model.matrix(~ 0 + grp)
   colnames(pb) = levels(grp)
   pb = as.matrix(pb)
@@ -1467,16 +1469,18 @@ if (redo_paired) {
   ## Shrunken, as in the per-pair fits: apeglm on the effect sizes, p values carried through from
   ## the unshrunken Wald test via `res =`, MLE kept alongside for comparison.
   res_mle = results(dds, name = "songness_song_vs_nonsong")
-  paired_res = lfcShrink(dds, coef = "songness_song_vs_nonsong", type = "apeglm",
-                         res = res_mle, quiet = TRUE) %>%
+  res = lfcShrink(dds, coef = "songness_song_vs_nonsong", type = "apeglm",
+                  res = res_mle, quiet = TRUE) %>%
     as.data.frame() %>%
     rownames_to_column("gene") %>%
     as_tibble() %>%
     mutate(log2FoldChange_mle = as.numeric(res_mle$log2FoldChange))
-  saveRDS(paired_res, paired_fname)
-} else {
-  paired_res = readRDS(paired_fname)
+  saveRDS(res, fname)
+  res
 }
+
+paired_fname = file.path(out_dir, "song_vs_nonsong_paired_deseq2.rds")
+paired_res = fit_paired_songness(obj_songness, paired_fname)
 
 paired_res = paired_res %>%
   mutate(sig = !is.na(padj) & padj < sig_thresh,
@@ -1504,31 +1508,36 @@ print(paired_res %>% filter(sig, displayable) %>% arrange(padj) %>% head(30))
 ## Volcano for the paired fit, the counterpart to the unpaired one above. Same label rule -- most
 ## significant per direction, with a fold-change floor -- but on shrunken effect sizes, so the x
 ## axis no longer stretches out to accommodate a handful of badly-estimated low-count genes.
-pv_lab = paired_res %>%
-  filter(sig, displayable, abs(log2FoldChange) >= 1) %>%
-  group_by(direction = sign(log2FoldChange)) %>%
-  slice_min(padj, n = 12, with_ties = FALSE) %>%
-  ungroup() %>%
-  transmute(gene, gene_to_label = gene)
+paired_volcano = function(res, fname, xlab) {
+  lab = res %>%
+    filter(sig, displayable, abs(log2FoldChange) >= 1) %>%
+    group_by(direction = sign(log2FoldChange)) %>%
+    slice_min(padj, n = 12, with_ties = FALSE) %>%
+    ungroup() %>%
+    transmute(gene, gene_to_label = gene)
 
-pv_plot = paired_res %>%
-  mutate(p_mlog10 = -log10(padj)) %>%
-  left_join(pv_lab, by = "gene")
+  df = res %>%
+    mutate(p_mlog10 = -log10(padj)) %>%
+    left_join(lab, by = "gene")
 
-gg = ggplot(pv_plot, aes(log2FoldChange, p_mlog10)) +
-  volcano_points(aes(colour = sig), size = .3, stroke = 0) +
-  scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
-  volcano_label_layers(pv_plot) +
-  labs(x = "log2FoldChange, shrunken (song / non-song, paired)", y = "-log10 adjusted p") +
-  theme_bw() +
-  theme(panel.grid.minor = element_blank(),
-        panel.grid.major = element_line(linewidth = .25),
-        axis.text = element_text(size = 6),
-        axis.title = element_text(size = 7))
-gg = egg::set_panel_size(gg, width = unit(2.2, "in"), height = unit(2.2, "in"))
-plot(gg)
-save_plot(file.path(out_dir, "song_vs_nonsong_paired_volcano.pdf"), gg,
-          base_height = 2.2 + 1.2, base_width = 2.2 + 1.2)
+  gg = ggplot(df, aes(log2FoldChange, p_mlog10)) +
+    volcano_points(aes(colour = sig), size = .3, stroke = 0) +
+    scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
+    volcano_label_layers(df) +
+    labs(x = xlab, y = "-log10 adjusted p") +
+    theme_bw() +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_line(linewidth = .25),
+          axis.text = element_text(size = 6),
+          axis.title = element_text(size = 7))
+  gg = egg::set_panel_size(gg, width = unit(2.2, "in"), height = unit(2.2, "in"))
+  plot(gg)
+  save_plot(fname, gg, base_height = 2.2 + 1.2, base_width = 2.2 + 1.2)
+  invisible(gg)
+}
+
+paired_volcano(paired_res, file.path(out_dir, "song_vs_nonsong_paired_volcano.pdf"),
+               "log2FoldChange, shrunken (song / non-song, paired)")
 ```
 
 ```{r}
@@ -1591,6 +1600,88 @@ gg = egg::set_panel_size(gg, width = unit(2, "in"), height = unit(2, "in"))
 plot(gg)
 save_plot(file.path(out_dir, "song_vs_nonsong_paired_vs_unpaired.pdf"), gg,
           base_height = 2 + 1.4, base_width = 2 + 1.4)
+```
+
+### Paired, without LMANsh
+
+The same paired fit with LMANsh taken out of the song side and its surround, `Glut-DACH2-5`, out of
+the non-song side: four song types against their four surrounds. This mirrors the core set without
+LMANsh above -- there LMANsh vetoed 126 genes by pointing the other way, so it is worth seeing what
+the pooled contrast looks like when it is not in the pool at all.
+
+The design stays paired. Birds 4-6 lose their LMANsh and `Glut-DACH2-5` cells but keep LMANco and
+`Glut-DACH2-8`, so each still contributes one song and one non-song column; the fit asserts that
+before it runs. What changes for those birds is that their song side is now a single nucleus, so
+the batch-2 half of the contrast is LMANco alone.
+
+```{r}
+nosh_drop = c("Glut-DACH2-LMANsh", "Glut-DACH2-5")
+stopifnot("LMANsh pair not found" = all(nosh_drop %in% c(song_labels, nonsong_labels)))
+
+obj_songness_nosh = subset(obj_songness,
+                           cells = Cells(obj_songness)[!obj_songness@meta.data[[res_to_use]] %in% nosh_drop])
+cat("song:    ", paste(setdiff(song_labels, nosh_drop), collapse = ", "), "\n")
+cat("non-song:", paste(setdiff(nonsong_labels, nosh_drop), collapse = ", "), "\n")
+print(table(obj_songness_nosh$songness, obj_songness_nosh$individual))
+
+paired_nosh_res = fit_paired_songness(
+  obj_songness_nosh, file.path(out_dir, "song_vs_nonsong_paired_no_lmansh_deseq2.rds")) %>%
+  mutate(sig = !is.na(padj) & padj < sig_thresh,
+         displayable = is_displayable(gene))
+
+cat(sprintf("paired song vs non-song, no LMANsh: %s significant of %s tested (%s up, %s down)\n",
+            sum(paired_nosh_res$sig), nrow(paired_nosh_res),
+            sum(paired_nosh_res$sig & paired_nosh_res$log2FoldChange > 0),
+            sum(paired_nosh_res$sig & paired_nosh_res$log2FoldChange < 0)))
+cat(sprintf("of those, |log2FC| >= 1: %s; >= 2: %s\n",
+            sum(paired_nosh_res$sig & abs(paired_nosh_res$log2FoldChange) >= 1),
+            sum(paired_nosh_res$sig & abs(paired_nosh_res$log2FoldChange) >= 2)))
+
+write_csv(paired_nosh_res %>% arrange(padj),
+          file.path(out_dir, "song_vs_nonsong_paired_no_lmansh_deg.csv"))
+print(paired_nosh_res %>% filter(sig, displayable) %>% arrange(padj) %>% head(30))
+
+paired_volcano(paired_nosh_res, file.path(out_dir, "song_vs_nonsong_paired_no_lmansh_volcano.pdf"),
+               "log2FoldChange, shrunken (song / non-song, paired, no LMANsh)")
+```
+
+```{r}
+## Against the full pooled fit, gene by gene. Removing a fifth of the song side should leave most of
+## the contrast intact; where it does not, the genes that change are the ones LMANsh was driving.
+nosh_cmp = paired_res %>%
+  select(gene, lfc_full = log2FoldChange, sig_full = sig) %>%
+  inner_join(paired_nosh_res %>% select(gene, lfc_nosh = log2FoldChange, sig_nosh = sig),
+             by = "gene") %>%
+  mutate(status = case_when(sig_full & sig_nosh & sign(lfc_full) == sign(lfc_nosh) ~ "both, same sign",
+                            sig_full & sig_nosh ~ "both, sign flips",
+                            sig_full ~ "full only",
+                            sig_nosh ~ "no-LMANsh only",
+                            TRUE ~ "neither"))
+
+cat(sprintf("genes tested in both fits: %s\n", nrow(nosh_cmp)))
+print(nosh_cmp %>% count(status) %>% as.data.frame())
+cat(sprintf("log2FC Spearman, full vs no-LMANsh: %.3f\n",
+            cor(nosh_cmp$lfc_full, nosh_cmp$lfc_nosh, method = "spearman")))
+
+cat("\nlargest gains in significance without LMANsh (displayable):\n")
+print(nosh_cmp %>% filter(status == "no-LMANsh only", is_displayable(gene)) %>%
+        left_join(paired_nosh_res %>% select(gene, padj), by = "gene") %>%
+        arrange(padj) %>% head(15) %>% as.data.frame(), digits = 3)
+
+gg = ggplot(nosh_cmp, aes(lfc_full, lfc_nosh)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .25, colour = "grey50") +
+  volcano_points(aes(colour = sig_full | sig_nosh), size = .3, stroke = 0, alpha = .5) +
+  scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
+  labs(x = "log2FoldChange, all five song types", y = "log2FoldChange, without LMANsh") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = .25),
+        axis.text = element_text(size = 6),
+        axis.title = element_text(size = 7))
+gg = egg::set_panel_size(gg, width = unit(2, "in"), height = unit(2, "in"))
+plot(gg)
+save_plot(file.path(out_dir, "song_vs_nonsong_paired_full_vs_no_lmansh.pdf"), gg,
+          base_height = 2 + 1.2, base_width = 2 + 1.2)
 ```
 
 ## Core and shared gene sets
