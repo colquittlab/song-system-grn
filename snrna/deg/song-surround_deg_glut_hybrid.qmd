@@ -1807,65 +1807,84 @@ print(core_gene_sets %>% count(set, direction))
 ## The core genes as a heatmap over the five pairs. Rows ordered by mean fold change rather than
 ## clustered: the set is defined by having the same sign everywhere, so a dendrogram would mostly
 ## re-say that, where the ordering shows how strongly each gene separates and in which direction.
-## The top 20 each way rather than all of them. The core set runs to a few hundred genes, which as a
-## heatmap is a couple of feet tall and unreadable; the point of this panel is to name the genes,
-## which needs a figure that fits on a page.
+## Which genes the core heatmaps show.
 ##
-## Ranked on the mean fold change across the five contrasts. Because a core gene has the same sign
-## in all five by construction, that mean carries its direction, so the most negative 20 are the
-## down set and the most positive 20 the up set -- one ordering does both. The full set stays in
-## core_gene_sets.csv.
+## Chosen from the pooled paired DESeq2 fit rather than from the core set: adjusted p < 0.01, split
+## by the sign of the pooled fold change, and the 20 largest |log2FC| on each side. The pooled fit is
+## one test of song against non-song with the bird modelled out, so it gives each gene a single p
+## value and a single shrunken effect size to rank on -- the core set is a membership rule and has
+## neither. The five-type panel draws on the five-type fit and the no-LMANsh panel on the no-LMANsh
+## fit, so each panel's genes come from the contrast its columns describe.
 ##
-## Restricted to displayable genes before ranking, not after: an unnamed model taking a slot it
-## cannot be labelled in would waste a row in a panel that exists to be read.
+## The cells are still the per-pair fold changes, so the panel reads as "the strongest pooled song
+## genes, and how each nucleus carries them". A selected gene need not be a core-set member -- the
+## pooled fit can be driven by some nuclei more than others -- and the chunk reports how many are.
+##
+## Displayable genes only, filtered before ranking, so an unnamed model cannot take one of the forty
+## rows. Untested cells (the gene was prefiltered out of that pair) are drawn grey, not as zero.
+core_padj_max = 0.01
 core_top_n = 20
 
-## Drawn by one function so this panel and the LMANsh-excluded one below are built identically --
-## same ranking, same top-N, same geometry -- and differ only in the gene set and the contrasts.
-draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n,
-                             panel_height = 2.5) {
-  core_mat = gene_sets %>%
-    filter(set == set_name, displayable) %>%
-    distinct(gene, .keep_all = TRUE) %>%
-    select(gene, all_of(paste0("log2FC_", cts))) %>%
+## Row names drawn directly rather than through anno_mark, so the panel height follows the row
+## count: 0.085 in a row is about 6 pt of pitch, enough for 5 pt names not to collide.
+core_row_h = 0.085
+core_col_w = 0.12
+
+draw_core_heatmap = function(pooled_res, cts, fname, core_genes = NULL, label = "",
+                             padj_max = core_padj_max, top_n = core_top_n,
+                             row_h = core_row_h, col_w = core_col_w) {
+  sel = pooled_res %>%
+    filter(!is.na(padj), padj < padj_max, displayable, log2FoldChange != 0) %>%
+    group_by(direction = sign(log2FoldChange)) %>%
+    slice_max(abs(log2FoldChange), n = top_n, with_ties = FALSE) %>%
+    ungroup() %>%
+    arrange(log2FoldChange)
+
+  core_mat = markers_agg %>%
+    filter(gene %in% sel$gene, compare %in% cts) %>%
+    select(gene, compare, avg_log2FC) %>%
+    pivot_wider(names_from = "compare", values_from = "avg_log2FC") %>%
     column_to_rownames("gene") %>%
     as.matrix()
-  colnames(core_mat) = cts
-  core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
+  ## A gene tested in no pair at all would have no row; match() adds it back as all-NA so the panel
+  ## keeps one row per selected gene, in pooled-fold-change order.
+  core_mat = core_mat[match(sel$gene, rownames(core_mat)), , drop = FALSE]
+  rownames(core_mat) = sel$gene
+  core_mat = core_mat[, cts, drop = FALSE]
 
-  n_all = nrow(core_mat)
-  if (n_all > 2 * top_n) {
-    core_mat = core_mat[c(seq_len(top_n), seq(n_all - top_n + 1, n_all)), , drop = FALSE]
-  }
-  cat(sprintf("%s heatmap: %s of %s displayable genes (top %s each direction)\n",
-              set_name, nrow(core_mat), n_all, top_n))
+  n_up = sum(pooled_res$padj < padj_max & pooled_res$displayable & pooled_res$log2FoldChange > 0, na.rm = TRUE)
+  n_dn = sum(pooled_res$padj < padj_max & pooled_res$displayable & pooled_res$log2FoldChange < 0, na.rm = TRUE)
+  cat(sprintf("%s: %s up / %s down pass padj < %s; showing %s up, %s down\n", label,
+              n_up, n_dn, padj_max, sum(sel$log2FoldChange > 0), sum(sel$log2FoldChange < 0)))
+  if (!is.null(core_genes))
+    cat(sprintf("  %s of the %s shown are in the matching core set\n",
+                sum(sel$gene %in% core_genes), nrow(sel)))
+  cat(sprintf("  untested cells drawn grey: %s of %s\n", sum(is.na(core_mat)), length(core_mat)))
   if (nrow(core_mat) == 0) return(invisible(NULL))
 
   max_val = 4
   cols_cur = circlize::colorRamp2(breaks = c(-max_val, 0, max_val),
                                   colors = c(scales::muted("blue"), "white", scales::muted("red")))
 
-  ## Every row is displayable, so all are marked. anno_mark rather than plain row names because the
-  ## panel is fixed at 2.5 in: 40 rows is 0.06 in of pitch, under the 5 pt floor for tick-sized
-  ## text, and anno_mark spreads the labels on leader lines instead of shrinking the type.
-  hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
+  height = row_h * nrow(core_mat)
+  width = col_w * ncol(core_mat)
+  hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur, na_col = "grey85",
                cluster_rows = FALSE, cluster_columns = FALSE,
-               show_row_names = FALSE,
+               show_row_names = TRUE,
+               row_names_gp = gpar(fontsize = 5),
                column_names_gp = gpar(fontsize = 6),
-               right_annotation = rowAnnotation(
-                 foo = anno_mark(at = seq_len(nrow(core_mat)), labels = rownames(core_mat),
-                                 labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5))),
-               width = unit(0.12 * ncol(core_mat), "inch"),
-               height = unit(panel_height, "inch"))
+               width = unit(width, "inch"),
+               height = unit(height, "inch"))
 
-  pdf(fname, width = 0.12 * ncol(core_mat) + 3, height = panel_height + 2)
+  pdf(fname, width = width + 2.5, height = height + 1.8)
   print(hm)
   dev.off()
   print(hm)
   invisible(hm)
 }
 
-draw_core_heatmap(core_gene_sets, "core", song_cts, file.path(out_dir, "core_genes_heatmap.pdf"))
+draw_core_heatmap(paired_res, song_cts, file.path(out_dir, "core_genes_heatmap.pdf"),
+                  core_genes = core_set$gene, label = "core heatmap (five-type pooled fit)")
 ```
 
 ### Core without LMANsh
@@ -1932,8 +1951,8 @@ core_nosh_gene_sets = core_nosh %>%
   arrange(direction, gene)
 write_csv(core_nosh_gene_sets, file.path(out_dir, "core_no_lmansh_gene_sets.csv"))
 
-draw_core_heatmap(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts,
-                  file.path(out_dir, "core_no_lmansh_heatmap.pdf"))
+draw_core_heatmap(paired_nosh_res, no_lmansh_cts, file.path(out_dir, "core_no_lmansh_heatmap.pdf"),
+                  core_genes = core_nosh$gene, label = "core heatmap (no-LMANsh pooled fit)")
 ```
 
 ## Overlap of DEG
