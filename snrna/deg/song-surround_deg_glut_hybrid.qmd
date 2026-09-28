@@ -1807,22 +1807,21 @@ print(core_gene_sets %>% count(set, direction))
 ## The core genes as a heatmap over the five pairs. Rows ordered by mean fold change rather than
 ## clustered: the set is defined by having the same sign everywhere, so a dendrogram would mostly
 ## re-say that, where the ordering shows how strongly each gene separates and in which direction.
-## Which genes the core heatmaps show.
+## Which genes the core heatmaps show: the top 20 each way from the core set itself -- genes whose
+## fold change has the same sign in every song/surround pair and reaches significance in at least
+## core_k of them. The core set runs to a few hundred genes, which as a heatmap is a couple of feet
+## tall; the point of this panel is to name the genes.
 ##
-## Chosen from the pooled paired DESeq2 fit rather than from the core set: adjusted p < 0.01, split
-## by the sign of the pooled fold change, and the 20 largest |log2FC| on each side. The pooled fit is
-## one test of song against non-song with the bird modelled out, so it gives each gene a single p
-## value and a single shrunken effect size to rank on -- the core set is a membership rule and has
-## neither. The five-type panel draws on the five-type fit and the no-LMANsh panel on the no-LMANsh
-## fit, so each panel's genes come from the contrast its columns describe.
+## Ranked on the mean per-pair fold change. Because a core gene has the same sign in every pair by
+## construction, that mean carries its direction, so the most negative 20 are the down set and the
+## most positive 20 the up set -- one ordering does both. The full set stays in the CSVs.
 ##
-## The cells are still the per-pair fold changes, so the panel reads as "the strongest pooled song
-## genes, and how each nucleus carries them". A selected gene need not be a core-set member -- the
-## pooled fit can be driven by some nuclei more than others -- and the chunk reports how many are.
+## (Selecting instead from the pooled paired fit -- padj < 0.01, top |log2FC| -- was tried and
+## dropped: the largest pooled effects are mostly nucleus-restricted, low-count genes, so only 2 of
+## 40 were core members and about half the cells were untested in their pair.)
 ##
-## Displayable genes only, filtered before ranking, so an unnamed model cannot take one of the forty
-## rows. Untested cells (the gene was prefiltered out of that pair) are drawn grey, not as zero.
-core_padj_max = 0.01
+## Displayable genes only, filtered before ranking, so an unnamed model cannot take one of the rows.
+## A core gene has a value in every contrast used, so there are no untested cells to draw.
 core_top_n = 20
 
 ## Row names drawn directly rather than through anno_mark, so the panel height follows the row
@@ -1830,36 +1829,24 @@ core_top_n = 20
 core_row_h = 0.085
 core_col_w = 0.12
 
-draw_core_heatmap = function(pooled_res, cts, fname, core_genes = NULL, label = "",
-                             padj_max = core_padj_max, top_n = core_top_n,
+draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n,
                              row_h = core_row_h, col_w = core_col_w) {
-  sel = pooled_res %>%
-    filter(!is.na(padj), padj < padj_max, displayable, log2FoldChange != 0) %>%
-    group_by(direction = sign(log2FoldChange)) %>%
-    slice_max(abs(log2FoldChange), n = top_n, with_ties = FALSE) %>%
-    ungroup() %>%
-    arrange(log2FoldChange)
-
-  core_mat = markers_agg %>%
-    filter(gene %in% sel$gene, compare %in% cts) %>%
-    select(gene, compare, avg_log2FC) %>%
-    pivot_wider(names_from = "compare", values_from = "avg_log2FC") %>%
+  core_mat = gene_sets %>%
+    filter(set == set_name, displayable) %>%
+    distinct(gene, .keep_all = TRUE) %>%
+    select(gene, all_of(paste0("log2FC_", cts))) %>%
     column_to_rownames("gene") %>%
     as.matrix()
-  ## A gene tested in no pair at all would have no row; match() adds it back as all-NA so the panel
-  ## keeps one row per selected gene, in pooled-fold-change order.
-  core_mat = core_mat[match(sel$gene, rownames(core_mat)), , drop = FALSE]
-  rownames(core_mat) = sel$gene
-  core_mat = core_mat[, cts, drop = FALSE]
+  colnames(core_mat) = cts
+  core_mat = core_mat[order(rowMeans(core_mat)), , drop = FALSE]
 
-  n_up = sum(pooled_res$padj < padj_max & pooled_res$displayable & pooled_res$log2FoldChange > 0, na.rm = TRUE)
-  n_dn = sum(pooled_res$padj < padj_max & pooled_res$displayable & pooled_res$log2FoldChange < 0, na.rm = TRUE)
-  cat(sprintf("%s: %s up / %s down pass padj < %s; showing %s up, %s down\n", label,
-              n_up, n_dn, padj_max, sum(sel$log2FoldChange > 0), sum(sel$log2FoldChange < 0)))
-  if (!is.null(core_genes))
-    cat(sprintf("  %s of the %s shown are in the matching core set\n",
-                sum(sel$gene %in% core_genes), nrow(sel)))
-  cat(sprintf("  untested cells drawn grey: %s of %s\n", sum(is.na(core_mat)), length(core_mat)))
+  n_all = nrow(core_mat)
+  if (n_all > 2 * top_n) {
+    core_mat = core_mat[c(seq_len(top_n), seq(n_all - top_n + 1, n_all)), , drop = FALSE]
+  }
+  cat(sprintf("%s heatmap: %s of %s displayable genes (top %s each direction)\n",
+              set_name, nrow(core_mat), n_all, top_n))
+  stopifnot("core gene with an untested contrast" = !anyNA(core_mat))
   if (nrow(core_mat) == 0) return(invisible(NULL))
 
   max_val = 4
@@ -1868,7 +1855,7 @@ draw_core_heatmap = function(pooled_res, cts, fname, core_genes = NULL, label = 
 
   height = row_h * nrow(core_mat)
   width = col_w * ncol(core_mat)
-  hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur, na_col = "grey85",
+  hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
                cluster_rows = FALSE, cluster_columns = FALSE,
                show_row_names = TRUE,
                row_names_gp = gpar(fontsize = 5),
@@ -1883,8 +1870,7 @@ draw_core_heatmap = function(pooled_res, cts, fname, core_genes = NULL, label = 
   invisible(hm)
 }
 
-draw_core_heatmap(paired_res, song_cts, file.path(out_dir, "core_genes_heatmap.pdf"),
-                  core_genes = core_set$gene, label = "core heatmap (five-type pooled fit)")
+draw_core_heatmap(core_gene_sets, "core", song_cts, file.path(out_dir, "core_genes_heatmap.pdf"))
 ```
 
 ### Core without LMANsh
@@ -1951,8 +1937,8 @@ core_nosh_gene_sets = core_nosh %>%
   arrange(direction, gene)
 write_csv(core_nosh_gene_sets, file.path(out_dir, "core_no_lmansh_gene_sets.csv"))
 
-draw_core_heatmap(paired_nosh_res, no_lmansh_cts, file.path(out_dir, "core_no_lmansh_heatmap.pdf"),
-                  core_genes = core_nosh$gene, label = "core heatmap (no-LMANsh pooled fit)")
+draw_core_heatmap(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts,
+                  file.path(out_dir, "core_no_lmansh_heatmap.pdf"))
 ```
 
 ## Overlap of DEG
