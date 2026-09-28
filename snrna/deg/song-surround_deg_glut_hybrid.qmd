@@ -959,100 +959,6 @@ if (nrow(tf_mat) > 1) {
 }
 ```
 
-### UMAPs
-```{r}
-umap_dir = file.path(out_dir, "umaps")
-dir.create(umap_dir, showWarnings = FALSE, recursive = TRUE)
-
-## Cleared first. The gene list here is whatever the label selection returned this run, so a panel
-## for a gene that has since dropped out would otherwise sit in the directory indefinitely, dated
-## from an old run and indistinguishable from current output. (This bit me: two AZ255 panels from an
-## interrupted render survived the run that excluded them, and looked like the exclusion had failed.)
-unlink(list.files(umap_dir, pattern = "\\.pdf$", full.names = TRUE))
-```
-
-```{r}
-obj_umap_fname = here::here("snrna/reduction_viz/combined_all_umap_glut_hybrid", "obj_clustered.qs2")
-obj_umap = qs_read(obj_umap_fname, nthreads = 8)
-```
-
-```{r}
-## Same parameter names as the `cluster`-based version -- the sweep in
-## combined_all_umap_glut_hybrid.R is the same grid -- but these were originally picked by eye from
-## the old embeddings. The hybrid embeddings are fit on a different cell set, so the panels in
-## snrna/reduction_viz/combined_all_umap_glut_hybrid are worth a look before these are trusted as
-## the best of the nine.
-reductions_to_use = c(arco="dims10nn30mindist0.4", nido="dims20nn40mindist0.5")
-```
-
-```{r}
-genes_to_plot = markers_agg_select_label$gene
-## MAGIC_SCT is not on obj_hybrid_labels.qs2, so in practice only SCT is plotted; the intersect
-## keeps the loop correct either way.
-assays_to_use = c("SCT", "MAGIC_SCT")
-
-## Panel size and point size. The old values -- 3/4 in panels at pt.size 3/2 -- drew points several
-## times wider than the spacing between cells, so 15,000 nidopallial cells merged into a field of
-## overlapping discs and nothing below the level of a whole cluster could be read. `pt.size` is in
-## ggplot size units here, not pixels, so the rasteriser was never the cause and raising
-## raster.dpi alone would not have helped.
-##
-## These were set by rendering the same gene at a range of sizes and looking at the output: the
-## panels are enlarged and the points are brought down to roughly the inter-cell spacing, which is
-## the value at which individual cells resolve and the expression gradient is still readable as a
-## surface. The two regions differ because the arcopallial embedding holds a quarter the cells in a
-## comparable area, so it can carry a larger point on a smaller panel.
-##
-## Points rasterised, everything else vector -- but through ggrastr directly, not through
-## `FeaturePlot_scCustom(raster = TRUE)`, which ignores `raster.dpi` outright: the embedded bitmap
-## comes out 389 x 342 px at 72 ppi whether that argument says 1024, 2048 or 4096 (checked with
-## `pdfimages -list`). That 72 ppi is the soft resolution, and no value of raster.dpi would have
-## changed it.
-##
-## Building the plot with `raster = FALSE` and rasterising the Point layer afterwards puts the
-## points at a dpi that is actually honoured -- 3230 x 2842 px at 600 ppi for a nidopallial panel --
-## while the title, colourbar and its labels stay as real text. 600 dpi to match fig_save() in
-## config/figure_theme.R. About 1.5 MB a nidopallial panel, 720 KB an arcopallial one.
-plot_dims = list(arco = c(height = 5, width = 5), nido = c(height = 6, width = 6))
-point_sizes = list(arco = 1.0, nido = 0.6)
-umap_raster_dpi = 600
-walk(names(obj_umap), function(region_cur) {
-  obj_cur = obj_umap[[region_cur]]
-  reduction_to_use = reductions_to_use[region_cur]
-  plot_dim = plot_dims[[region_cur]]
-  point_size = point_sizes[[region_cur]]
-
-  walk(intersect(assays_to_use, SeuratObject::Assays(obj_cur)), function(assay_to_use) {
-    DefaultAssay(obj_cur) = assay_to_use
-
-    ## Only the genes this object actually carries. The embedding objects were re-SCTransformed per
-    ## region, so their SCT assay holds a reduced feature set, while the paired fits name genes from
-    ## the full RNA assay -- a gene can be a legitimate marker and still have no row here. Before
-    ## the switch to paired fits the two sets came from the same SCT matrix and this never bit.
-    genes_present = intersect(genes_to_plot, rownames(obj_cur))
-    missing_genes = setdiff(genes_to_plot, genes_present)
-    if (length(missing_genes))
-      cat(sprintf("%s/%s: %s of %s label genes absent from the %s assay (%s)\n",
-                  region_cur, assay_to_use, length(missing_genes), length(genes_to_plot),
-                  assay_to_use, paste(missing_genes, collapse = ", ")))
-
-    walk(genes_present, function(gene_to_plot) {
-      gg = FeaturePlot_scCustom(obj_cur,
-                                features=gene_to_plot,
-                                reduction=reduction_to_use,
-                                raster = FALSE,
-                                pt.size = point_size) +
-        coord_equal()  +
-        theme_void()
-      gg = ggrastr::rasterise(gg, layers = "Point", dpi = umap_raster_dpi)
-      save_plot(file.path(umap_dir,
-                          str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}.pdf")),
-                gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
-    })
-  })
-})
-```
-
 ### GO, DEG clusters
 
 ```{r}
@@ -1829,8 +1735,8 @@ core_top_n = 20
 core_row_h = 0.085
 core_col_w = 0.12
 
-draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n,
-                             row_h = core_row_h, col_w = core_col_w) {
+## The top-N selection, separate from the drawing so the gene UMAPs below use exactly these genes.
+core_top_genes = function(gene_sets, set_name, cts, top_n = core_top_n) {
   core_mat = gene_sets %>%
     filter(set == set_name, displayable) %>%
     distinct(gene, .keep_all = TRUE) %>%
@@ -1847,6 +1753,12 @@ draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n
   cat(sprintf("%s heatmap: %s of %s displayable genes (top %s each direction)\n",
               set_name, nrow(core_mat), n_all, top_n))
   stopifnot("core gene with an untested contrast" = !anyNA(core_mat))
+  core_mat
+}
+
+draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n,
+                             row_h = core_row_h, col_w = core_col_w) {
+  core_mat = core_top_genes(gene_sets, set_name, cts, top_n)
   if (nrow(core_mat) == 0) return(invisible(NULL))
 
   max_val = 4
@@ -1939,6 +1851,125 @@ write_csv(core_nosh_gene_sets, file.path(out_dir, "core_no_lmansh_gene_sets.csv"
 
 draw_core_heatmap(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts,
                   file.path(out_dir, "core_no_lmansh_heatmap.pdf"))
+```
+
+### UMAPs
+
+Gene expression on the joint excitatory embedding (`all` in `combined_all_umap_glut_hybrid.R`,
+arcopallium and nidopallium fitted together), for the genes shown in the no-LMANsh core heatmap
+above. The joint embedding is the point: a core gene is by definition concordant across nuclei in
+both divisions, and the per-half embeddings could only ever show one division at a time.
+
+The gene list is taken from the same selection function the heatmap uses, so the panels and the
+heatmap rows cannot disagree. Plotting the whole no-LMANsh core instead is a one-line change but
+costs about 3.7 s a panel -- the full displayable set would add roughly 25 minutes to every render.
+```{r}
+umap_dir = file.path(out_dir, "umaps")
+dir.create(umap_dir, showWarnings = FALSE, recursive = TRUE)
+
+## Cleared first. The gene list here is whatever the label selection returned this run, so a panel
+## for a gene that has since dropped out would otherwise sit in the directory indefinitely, dated
+## from an old run and indistinguishable from current output. (This bit me: two AZ255 panels from an
+## interrupted render survived the run that excluded them, and looked like the exclusion had failed.)
+unlink(list.files(umap_dir, pattern = "\\.pdf$", full.names = TRUE))
+```
+
+```{r}
+obj_umap_fname = here::here("snrna/reduction_viz/combined_all_umap_glut_hybrid", "obj_clustered.qs2")
+obj_umap = qs_read(obj_umap_fname, nthreads = 8)
+```
+
+```{r}
+## Same parameter names as the `cluster`-based version -- the sweep in
+## combined_all_umap_glut_hybrid.R is the same grid -- but these were originally picked by eye from
+## the old embeddings. The hybrid embeddings are fit on a different cell set, so the panels in
+## snrna/reduction_viz/combined_all_umap_glut_hybrid are worth a look before these are trusted as
+## the best of the nine.
+## One reduction per embedding. arco/nido were picked by eye from the old embeddings; `all` was picked
+## from the joint embedding's cell-type panels in snrna/reduction_viz/combined_all_umap_glut_hybrid.
+reductions_to_use = c(arco = "dims10nn30mindist0.4", nido = "dims20nn40mindist0.5",
+                      all = "dims30nn40mindist0.4")
+
+## Which embeddings to draw the gene panels on. `all` only by default; add "arco"/"nido" for the
+## per-half views, at the cost of another panel per gene each.
+gene_umap_regions = c("all")
+stopifnot("no reduction chosen for a requested region" =
+            all(gene_umap_regions %in% names(reductions_to_use)),
+          "requested region not in the embedding object" =
+            all(gene_umap_regions %in% names(obj_umap)))
+```
+
+```{r}
+genes_to_plot = rownames(core_top_genes(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts))
+cat(sprintf("gene UMAPs: %s genes from the no-LMANsh core heatmap, on %s\n",
+            length(genes_to_plot), paste(gene_umap_regions, collapse = ", ")))
+## MAGIC_SCT is not on obj_hybrid_labels.qs2, so in practice only SCT is plotted; the intersect
+## keeps the loop correct either way.
+assays_to_use = c("SCT", "MAGIC_SCT")
+
+## Panel size and point size. The old values -- 3/4 in panels at pt.size 3/2 -- drew points several
+## times wider than the spacing between cells, so 15,000 nidopallial cells merged into a field of
+## overlapping discs and nothing below the level of a whole cluster could be read. `pt.size` is in
+## ggplot size units here, not pixels, so the rasteriser was never the cause and raising
+## raster.dpi alone would not have helped.
+##
+## These were set by rendering the same gene at a range of sizes and looking at the output: the
+## panels are enlarged and the points are brought down to roughly the inter-cell spacing, which is
+## the value at which individual cells resolve and the expression gradient is still readable as a
+## surface. The two regions differ because the arcopallial embedding holds a quarter the cells in a
+## comparable area, so it can carry a larger point on a smaller panel.
+##
+## Points rasterised, everything else vector -- but through ggrastr directly, not through
+## `FeaturePlot_scCustom(raster = TRUE)`, which ignores `raster.dpi` outright: the embedded bitmap
+## comes out 389 x 342 px at 72 ppi whether that argument says 1024, 2048 or 4096 (checked with
+## `pdfimages -list`). That 72 ppi is the soft resolution, and no value of raster.dpi would have
+## changed it.
+##
+## Building the plot with `raster = FALSE` and rasterising the Point layer afterwards puts the
+## points at a dpi that is actually honoured -- 3230 x 2842 px at 600 ppi for a nidopallial panel --
+## while the title, colourbar and its labels stay as real text. 600 dpi to match fig_save() in
+## config/figure_theme.R. About 1.5 MB a nidopallial panel, 720 KB an arcopallial one.
+## `all` holds both halves, ~19k cells, so it gets the larger panel and a slightly smaller point than
+## the nidopallial one to keep the same visual density.
+plot_dims = list(arco = c(height = 5, width = 5), nido = c(height = 6, width = 6),
+                 all = c(height = 6, width = 6))
+point_sizes = list(arco = 1.0, nido = 0.6, all = 0.5)
+umap_raster_dpi = 600
+walk(gene_umap_regions, function(region_cur) {
+  obj_cur = obj_umap[[region_cur]]
+  reduction_to_use = reductions_to_use[region_cur]
+  plot_dim = plot_dims[[region_cur]]
+  point_size = point_sizes[[region_cur]]
+
+  walk(intersect(assays_to_use, SeuratObject::Assays(obj_cur)), function(assay_to_use) {
+    DefaultAssay(obj_cur) = assay_to_use
+
+    ## Only the genes this object actually carries. The embedding objects were re-SCTransformed per
+    ## region, so their SCT assay holds a reduced feature set, while the paired fits name genes from
+    ## the full RNA assay -- a gene can be a legitimate marker and still have no row here. Before
+    ## the switch to paired fits the two sets came from the same SCT matrix and this never bit.
+    genes_present = intersect(genes_to_plot, rownames(obj_cur))
+    missing_genes = setdiff(genes_to_plot, genes_present)
+    if (length(missing_genes))
+      cat(sprintf("%s/%s: %s of %s label genes absent from the %s assay (%s)\n",
+                  region_cur, assay_to_use, length(missing_genes), length(genes_to_plot),
+                  assay_to_use, paste(missing_genes, collapse = ", ")))
+
+    walk(genes_present, function(gene_to_plot) {
+      gg = FeaturePlot_scCustom(obj_cur,
+                                features=gene_to_plot,
+                                reduction=reduction_to_use,
+                                raster = FALSE,
+                                pt.size = point_size) +
+        coord_equal()  +
+        theme_void()
+      gg = ggrastr::rasterise(gg, layers = "Point", dpi = umap_raster_dpi)
+      save_plot(file.path(umap_dir,
+                          str_interp("${region_cur}_${gene_to_plot}_${assay_to_use}.pdf")),
+                gg, base_height = plot_dim["height"], base_width = plot_dim["width"])
+    })
+  })
+})
 ```
 
 ## Overlap of DEG

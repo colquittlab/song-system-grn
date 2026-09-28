@@ -46,21 +46,21 @@ params = expand_grid(dims_list, n.neighbors_list, min.dist_list)
 print(params)
 set.seed(10)
 
-## Cache. The embeddings are the expensive half -- SCTransform, PCA and 27 UMAPs per region, some
-## twelve minutes -- while everything below them is plotting, which gets iterated on far more often.
-## They are also deterministic given the set.seed(10) above, so a re-run for a plotting change
-## reproduces them exactly and refitting is pure cost. `redo` is therefore driven by whether the
-## cached object is on disk.
-##
-## Set it TRUE by hand (or delete the cache) after changing anything the embedding depends on: the
-## cluster exclusions, the assay, the parameter grid, or the upstream object. Nothing here detects
-## that for you -- a stale cache is the one way this script can silently disagree with its own
-## source.
-redo = !file.exists(data_out_obj_fname)
-cat(if (redo) "no cached embedding -- fitting\n" else
-    sprintf("reusing cached embedding: %s\n", data_out_obj_fname))
+## Three embeddings: the arcopallial and nidopallial halves fitted separately, as before, and `all`,
+## the two fitted jointly. The joint one puts both divisions in a single coordinate system, which the
+## per-half embeddings by construction cannot -- it is the one to use when a gene's pattern across the
+## arcopallium and nidopallium is the thing being read, as in the DEG notebook's gene UMAPs.
+region_names = c("arco", "nido", "all")
 
-if (redo) {
+## Cache, per region. The embeddings are the expensive half -- SCTransform, PCA and 27 UMAPs a
+## region -- while everything below is plotting. SCTransform, RunPCA and RunUMAP each set their own
+## seed, so a region's embedding does not depend on which regions were fitted before it or in what
+## order; only regions missing from the cache are fitted, and adding one leaves the others untouched.
+##
+## Delete the cache after changing anything an embedding depends on: the cluster exclusions, the
+## assay, the parameter grid, or the upstream object. Nothing here detects that for you -- a stale
+## cache is the one way this script can silently disagree with its own source.
+build_excitatory = function() {
   obj_int_filt = qs_read(data_fname, nthreads = 8)
   obj_int_filt$region = case_when(obj_int_filt$position %in% c("arco", "ra") ~ "arco",
                                   obj_int_filt$position %in% c("nc", "hvc", "nr", "lman") ~ "nido")
@@ -104,38 +104,50 @@ if (redo) {
               length(cells_arco) + length(cells_nido) == ncol(obj_int_filt))
   print(table(obj_int_filt@meta.data[[res_to_use]], if_else(is_arco, "arco", "nido")))
 
-  objs = list(arco = subset(obj_int_filt, cells=cells_arco),
-              nido = subset(obj_int_filt, cells=cells_nido))
+  list(obj = obj_int_filt,
+       cells = list(arco = cells_arco, nido = cells_nido, all = Cells(obj_int_filt)))
+}
 
-  objs = map(objs, function(obj_int_filt) {
-    ## celltype_hybrid is a factor over all 47 labels of the full object; dropping the levels that
-    ## are not in this half keeps the palette from being sized to labels no panel can show.
-    obj_int_filt@meta.data[[res_to_use]] = droplevels(factor(obj_int_filt@meta.data[[res_to_use]]))
+fit_region = function(obj_int_filt) {
+  ## celltype_hybrid is a factor over all 47 labels of the full object; dropping the levels that
+  ## are not in this half keeps the palette from being sized to labels no panel can show.
+  obj_int_filt@meta.data[[res_to_use]] = droplevels(factor(obj_int_filt@meta.data[[res_to_use]]))
 
-    obj_int_filt = obj_int_filt |>
-      SCTransform() |>
-      RunPCA()
+  obj_int_filt = obj_int_filt |>
+    SCTransform() |>
+    RunPCA()
 
-    for (i in 1:nrow(params)) {
-      dims = params$dims_list[i]
-      n.neighbors = params$n.neighbors_list[i]
-      min.dist = params$min.dist_list[i]
-      reduction.name = sprintf("dims%snn%smindist%s", dims, n.neighbors, min.dist)
+  for (i in 1:nrow(params)) {
+    dims = params$dims_list[i]
+    n.neighbors = params$n.neighbors_list[i]
+    min.dist = params$min.dist_list[i]
+    reduction.name = sprintf("dims%snn%smindist%s", dims, n.neighbors, min.dist)
 
-      print(reduction.name)
-      obj_int_filt = RunUMAP(obj_int_filt,
-                             dims = 1:dims,
-                             min.dist = min.dist,
-                             n.neighbors = n.neighbors,
-                             reduction.name=reduction.name
-      )
-    }
-    obj_int_filt
-  })
+    print(reduction.name)
+    obj_int_filt = RunUMAP(obj_int_filt,
+                           dims = 1:dims,
+                           min.dist = min.dist,
+                           n.neighbors = n.neighbors,
+                           reduction.name=reduction.name
+    )
+  }
+  obj_int_filt
+}
 
+objs = if (file.exists(data_out_obj_fname)) qs_read(data_out_obj_fname, nthreads = 8) else list()
+missing_regions = setdiff(region_names, names(objs))
+cat(sprintf("cached embeddings: %s; fitting: %s\n",
+            if (length(objs)) paste(names(objs), collapse = ", ") else "none",
+            if (length(missing_regions)) paste(missing_regions, collapse = ", ") else "none"))
+
+if (length(missing_regions)) {
+  excit = build_excitatory()
+  for (r in missing_regions) {
+    cat("fitting region:", r, "\n")
+    objs[[r]] = fit_region(subset(excit$obj, cells = excit$cells[[r]]))
+  }
+  objs = objs[region_names]
   qs_save(objs, data_out_obj_fname, nthreads = 8)
-} else {
-  objs = qs_read(data_out_obj_fname, nthreads = 8)
 }
 
 # Individual identity (souporcell) ----------------------------------------
@@ -201,7 +213,7 @@ iwalk(objs, function(obj_cur, region_cur) {
 ## their point size and so become twice as large relative to an arco panel -- which is the whole
 ## reason this is applied to one region and not to both, and why the output is checked rather than
 ## assumed. Nothing here carries a title, subtitle or caption to re-budget.
-panel_scale = c(arco = 0.5, nido = 1)
+panel_scale = c(arco = 0.5, nido = 1, all = 1)
 
 iwalk(objs, function(obj_int_filt, region_cur) {
   reductions = Reductions(obj_int_filt)
