@@ -2054,6 +2054,140 @@ draw_core_heatmap(core_nosh_gene_sets, "core-no-LMANsh", no_lmansh_cts,
                   file.path(out_dir, "core_no_lmansh_heatmap.pdf"))
 ```
 
+### Enrichment of the concordant set
+
+GO enrichment of the no-LMANsh concordant genes, up and down separately, against the same MSigDB C5
+v7.0 collection the per-pair GSEA uses (`GMT_C5_V7`, `data/gene_lists/c5.all.v7.0.symbols.gmt`).
+
+This is over-representation analysis, not GSEA. GSEA ranks every gene and asks where a set's members
+fall in that ranking, so it has no meaning for a fixed list; for a list the question is whether a
+GO set holds more of its genes than chance would put there. `fgsea::fora` is the hypergeometric test
+from the same package, so the method stays within what the notebook already uses.
+
+The universe is every gene tested in all four contrasts -- the genes that could have been called
+concordant at all -- not the whole genome, which would flatter any set of expressed neuronal genes.
+Genes are matched to the GMT's human symbols by name; aliased LOC models enter under their human
+alias, and unaliased LOC models and mitochondrial features, which have no symbol, are dropped from
+both the list and the universe. Sets of 15-500 genes. C5 is heavily nested, so significant sets are
+collapsed with `collapsePathwaysORA`, as the per-pair GSEA does with `collapsePathways`: a set is
+kept as a main pathway only if it is not explained by a more significant one.
+
+```{r}
+source(here::here("config/figure_theme.R"))
+suppressPackageStartupMessages(library(fgsea))
+gmt_pathway = gmtPathways(GMT_C5_V7)
+
+to_gmt_symbol = function(gene) {
+  sym = ifelse(gene %in% names(loc_alias), loc_alias[gene], gene)
+  sym[grepl("^LOC", sym) | grepl(mito_pattern, sym)] = NA
+  unname(sym)
+}
+
+## Enrichment for a gene list split by direction, against a stated universe. Shared by the
+## concordant and pooled analyses so both are tested and drawn identically.
+##
+## The CSV each call writes holds every set tested, not only the survivors: `main_pathway` marks the
+## sets that survive collapsing, and the figure shows only those. Filter on main_pathway for the
+## collapsed list.
+go_ora = function(genes_tbl, universe_genes, pathways, label,
+                  min_size = 15, max_size = 500, padj_max = 0.05) {
+  universe = universe_genes %>% to_gmt_symbol() %>% na.omit() %>% unique()
+
+  map_dfr(c("up", "down"), function(dir) {
+    genes = genes_tbl %>% filter(direction == dir) %>% pull(gene) %>%
+      to_gmt_symbol() %>% na.omit() %>% unique()
+    res = fora(pathways, genes, universe, minSize = min_size, maxSize = max_size) %>%
+      as_tibble() %>%
+      mutate(direction = dir, n_list = length(genes), n_universe = length(universe),
+             expected = size * n_list / n_universe, fold_enrichment = overlap / expected)
+    sig = res %>% filter(padj < padj_max)
+    main = if (nrow(sig) > 1) {
+      collapsePathwaysORA(sig, pathways, genes, universe, pval.threshold = padj_max)$mainPathways
+    } else sig$pathway
+    cat(sprintf("%s, %s: %s genes of %s in the universe; %s sets at padj < %s, %s after collapsing\n",
+                label, dir, length(genes), length(universe), nrow(sig), padj_max, length(main)))
+    res %>% mutate(main_pathway = pathway %in% main)
+  })
+}
+
+write_ora = function(res, fname) {
+  ## overlapGenes is a list column; flattened so the CSV is readable and each set's genes checkable.
+  res %>%
+    mutate(overlapGenes = map_chr(overlapGenes, ~ paste(.x, collapse = ";"))) %>%
+    arrange(direction, padj) %>%
+    write_csv(fname)
+}
+
+clean_go = function(x) {
+  x %>% str_remove("^GO_") %>% str_replace_all("_", " ") %>% tolower() %>% str_wrap(width = 42)
+}
+
+## The collapsed main pathways, up to ten a direction. Enrichment on x, set overlap as point size,
+## significance as a one-hue sequential scale. Direction is carried by the facet labels, not color.
+plot_ora = function(res, fname_noext, top_n = 10) {
+  df = res %>%
+    filter(main_pathway) %>%
+    group_by(direction) %>%
+    slice_min(padj, n = top_n, with_ties = FALSE) %>%
+    ungroup() %>%
+    mutate(direction = factor(direction, levels = c("down", "up"),
+                              labels = c("Lower in song", "Higher in song")),
+           term = clean_go(pathway),
+           term = fct_reorder(paste(direction, term, sep = "__"), fold_enrichment),
+           p_mlog10 = -log10(padj))
+  if (nrow(df) == 0) return(invisible(NULL))
+
+  gg = ggplot(df, aes(fold_enrichment, term)) +
+    geom_point(aes(size = overlap, colour = p_mlog10)) +
+    facet_grid(direction ~ ., scales = "free_y", space = "free_y") +
+    scale_y_discrete(labels = function(x) str_remove(x, "^.*__")) +
+    scale_x_continuous(expand = fig_expand(0.08)) +
+    scale_size_area(max_size = 3, name = "genes") +
+    scale_colour_gradient(low = "#cfe0f5", high = FIG_PAL[1], name = "-log10 padj") +
+    labs(x = "Fold enrichment", y = NULL) +
+    theme_fig()
+  fig_save(gg, fname_noext, width = 3.4, height = 0.6 + 0.16 * nrow(df))
+  print(gg)
+  invisible(gg)
+}
+
+## Concordant set. Universe: every gene tested in all four contrasts, the genes that could have
+## been called concordant at all.
+nosh_universe = de_long %>% filter(compare %in% no_lmansh_cts) %>% dplyr::count(gene) %>%
+  filter(n == length(no_lmansh_cts)) %>% pull(gene)
+core_nosh_ora = go_ora(core_nosh, nosh_universe, gmt_pathway, "concordant (no LMANsh)")
+write_ora(core_nosh_ora, file.path(out_dir, "core_no_lmansh_go_enrichment.csv"))
+plot_ora(core_nosh_ora, file.path(out_dir, "core_no_lmansh_go_enrichment"))
+```
+
+#### Pooled DEGs
+
+The same test on the pooled block model without LMANsh, restricted to genes significant at
+`padj < sig_thresh` with |log2FC| >= 1 on the apeglm-shrunken estimate. The fold-change floor keeps
+the list to genes with a substantial effect: at the full 3622, a third of the tested genes, almost any
+broad neuronal category over-represents. The universe is every gene the pooled fit tested.
+
+```{r}
+pooled_ora_genes = block_nosh_res %>%
+  filter(sig, abs(log2FoldChange) >= 1) %>%
+  transmute(gene, direction = if_else(log2FoldChange > 0, "up", "down"))
+cat(sprintf("pooled list: %s genes (%s up, %s down) of %s significant\n",
+            nrow(pooled_ora_genes), sum(pooled_ora_genes$direction == "up"),
+            sum(pooled_ora_genes$direction == "down"), sum(block_nosh_res$sig)))
+
+pooled_nosh_ora = go_ora(pooled_ora_genes, block_nosh_res$gene, gmt_pathway, "pooled (no LMANsh)")
+write_ora(pooled_nosh_ora, file.path(out_dir, "pooled_no_lmansh_go_enrichment.csv"))
+plot_ora(pooled_nosh_ora, file.path(out_dir, "pooled_no_lmansh_go_enrichment"))
+
+## How much the two answers share: collapsed main pathways in common, per direction.
+shared = inner_join(core_nosh_ora %>% filter(main_pathway) %>% select(direction, pathway),
+                    pooled_nosh_ora %>% filter(main_pathway) %>% select(direction, pathway),
+                    by = c("direction", "pathway"))
+cat("\nmain pathways in both analyses:\n")
+print(shared %>% dplyr::count(direction) %>% as.data.frame())
+print(shared %>% mutate(pathway = clean_go(pathway)) %>% arrange(direction) %>% as.data.frame())
+```
+
 ### UMAPs
 
 Gene expression on the joint excitatory embedding (`all` in `combined_all_umap_glut_hybrid.R`,
