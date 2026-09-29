@@ -1590,6 +1590,149 @@ save_plot(file.path(out_dir, "song_vs_nonsong_paired_full_vs_no_lmansh.pdf"), gg
           base_height = 2 + 1.2, base_width = 2 + 1.2)
 ```
 
+### Pooled by block: each type pseudobulked, then labeled
+
+The two pooled fits above sum every song-type cell in a bird into one song pseudobulk and every
+non-song cell into one non-song pseudobulk. That weights each type by its cell count: on the song
+side for birds 1-3, HVCra has 3017 cells against 342 for HVCx and 1218 for RA, so the pooled song
+profile is mostly HVCra.
+
+Here the pooling happens after pseudobulking instead. Each cell type is pseudobulked per bird, each
+column is labeled song or non-song, and the model blocks on the song/non-song pair within the bird:
+
+    ~ block + songness        block = pair x bird
+
+so every song pseudobulk is compared with its own matched surround from the same bird, and the
+`songness` coefficient is the average within-pair song effect, each pair counting equally
+regardless of cell count.
+
+Why block rather than `~ bird + songness`: the baselines of the surround types differ a great deal
+(`Glut-CACNA1H-1` against `Glut-DACH2-1`, say), and left out of the model those differences land in
+the residual and inflate the dispersion. `~ bird + pair + songness` would remove them but cannot be
+estimated here -- LMANco and LMANsh appear only in birds 4-6, which carry no other pair, so the
+pair and bird terms are collinear. Blocking on pair x bird removes both at once and stays full rank.
+
+A block is used only if both of its sides reach `min_cells_pb` cells; the fit reports any dropped.
+
+```{r}
+fit_block_songness = function(pair_names, fname) {
+  if (file.exists(fname)) {
+    cat(sprintf("reusing cached block fit: %s\n", fname))
+    return(readRDS(fname))
+  }
+  cat(sprintf("no cached block fit -- fitting: %s\n", fname))
+
+  ## Each pair's song type and its one matched non-song type. A cell type may belong to one pair
+  ## only, or a column would be counted in two blocks.
+  type_map = map_dfr(pair_names, ~ tibble(pair = .x, celltype = pairs[[.x]][1:2],
+                                          songness = c("song", "nonsong")))
+  stopifnot("a cell type is in more than one pair" = !anyDuplicated(type_map$celltype))
+
+  o = subset(obj, cells = Cells(obj)[as.character(obj@meta.data[[res_to_use]]) %in% type_map$celltype])
+  md = tibble(celltype = as.character(o@meta.data[[res_to_use]]),
+              bird = as.character(o$individual)) %>%
+    left_join(type_map, by = "celltype")
+
+  ## Raw counts, BPCells-backed on disk, pulled into memory as in the other fits.
+  cts = as(GetAssayData(o, assay = "RNA", layer = "counts"), "dgCMatrix")
+  stopifnot("RNA counts layer is not integer-valued" = all(abs(cts@x - round(cts@x)) < 1e-8))
+
+  g = factor(paste(md$pair, md$songness, md$bird, sep = "__"))
+  n_cells = as.integer(table(g))
+  pb = as.matrix(cts %*% Matrix::sparse.model.matrix(~ 0 + g))
+  colnames(pb) = levels(g)
+
+  cd = tibble(sample = colnames(pb), n_cells = n_cells) %>%
+    separate(sample, into = c("pair", "songness", "bird"), sep = "__", remove = FALSE) %>%
+    mutate(block = paste(pair, bird, sep = "__"))
+
+  ok_blocks = cd %>% filter(n_cells >= min_cells_pb) %>%
+    dplyr::count(block) %>% filter(n == 2) %>% pull(block)
+  dropped = setdiff(unique(cd$block), ok_blocks)
+  if (length(dropped)) cat(sprintf("dropping blocks under %s cells on a side: %s\n",
+                                   min_cells_pb, paste(dropped, collapse = ", ")))
+
+  cd = cd %>% filter(block %in% ok_blocks) %>%
+    mutate(songness = factor(songness, levels = c("nonsong", "song")), block = factor(block))
+  pb = pb[, cd$sample, drop = FALSE]
+  cat(sprintf("%s samples in %s blocks\n", nrow(cd), nlevels(cd$block)))
+  print(table(cd$pair, cd$bird) / 2)
+  cd = cd %>% column_to_rownames("sample")
+
+  dds = DESeqDataSetFromMatrix(round(pb), colData = cd, design = ~ block + songness)
+  keep = rowSums(counts(dds) >= 10) >= (ncol(dds) / 2)
+  cat(sprintf("prefilter keeps %s of %s genes\n", sum(keep), length(keep)))
+  dds = dds[keep, ]
+  dds = DESeq(dds, quiet = TRUE)
+
+  res_mle = results(dds, name = "songness_song_vs_nonsong")
+  res = lfcShrink(dds, coef = "songness_song_vs_nonsong", type = "apeglm",
+                  res = res_mle, quiet = TRUE) %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    as_tibble() %>%
+    mutate(log2FoldChange_mle = as.numeric(res_mle$log2FoldChange))
+  saveRDS(res, fname)
+  res
+}
+
+summarize_fit = function(res, label) {
+  res = res %>% mutate(sig = !is.na(padj) & padj < sig_thresh, displayable = is_displayable(gene))
+  cat(sprintf("%s: %s significant of %s tested (%s up, %s down); |log2FC| >= 1: %s\n", label,
+              sum(res$sig), nrow(res),
+              sum(res$sig & res$log2FoldChange > 0), sum(res$sig & res$log2FoldChange < 0),
+              sum(res$sig & abs(res$log2FoldChange) >= 1)))
+  res
+}
+
+block_res = fit_block_songness(
+  song_cts, file.path(out_dir, "song_vs_nonsong_block_deseq2.rds")) %>%
+  summarize_fit("block model, all five pairs")
+
+block_nosh_res = fit_block_songness(
+  setdiff(song_cts, "Glut-DACH2-LMANsh"),
+  file.path(out_dir, "song_vs_nonsong_block_no_lmansh_deseq2.rds")) %>%
+  summarize_fit("block model, without LMANsh")
+
+write_csv(block_res %>% arrange(padj), file.path(out_dir, "song_vs_nonsong_block_deg.csv"))
+write_csv(block_nosh_res %>% arrange(padj),
+          file.path(out_dir, "song_vs_nonsong_block_no_lmansh_deg.csv"))
+
+paired_volcano(block_res, file.path(out_dir, "song_vs_nonsong_block_volcano.pdf"),
+               "log2FoldChange, shrunken (song / non-song, block model)")
+paired_volcano(block_nosh_res, file.path(out_dir, "song_vs_nonsong_block_no_lmansh_volcano.pdf"),
+               "log2FoldChange, shrunken (song / non-song, block model, no LMANsh)")
+```
+
+```{r}
+## Block model against the summed model, gene by gene, for both versions. The two answer slightly
+## different questions -- average within-pair effect, each pair counting equally, against a
+## cell-count-weighted pooled profile -- so the genes that move between them are the ones whose
+## pooled signal was carried mostly by the large clusters.
+compare_fits = function(a, b, label_a, label_b) {
+  cmp = a %>% select(gene, lfc_a = log2FoldChange, sig_a = sig) %>%
+    inner_join(b %>% select(gene, lfc_b = log2FoldChange, sig_b = sig), by = "gene") %>%
+    mutate(status = case_when(sig_a & sig_b & sign(lfc_a) == sign(lfc_b) ~ "both, same sign",
+                              sig_a & sig_b ~ "both, sign flips",
+                              sig_a ~ paste(label_a, "only"),
+                              sig_b ~ paste(label_b, "only"),
+                              TRUE ~ "neither"))
+  cat(sprintf("\n%s vs %s: %s genes tested in both; log2FC Spearman %.3f\n", label_a, label_b,
+              nrow(cmp), cor(cmp$lfc_a, cmp$lfc_b, method = "spearman")))
+  print(cmp %>% count(status) %>% as.data.frame())
+  invisible(cmp)
+}
+
+cmp_full = compare_fits(paired_res, block_res, "summed", "block")
+cmp_nosh = compare_fits(paired_nosh_res, block_nosh_res, "summed", "block")
+invisible(compare_fits(block_res, block_nosh_res, "block, all five", "block, no LMANsh"))
+
+cat("\nlargest gains in significance under the block model, without LMANsh (displayable):\n")
+print(cmp_nosh %>% filter(status == "block only", is_displayable(gene)) %>%
+        left_join(block_nosh_res %>% select(gene, padj), by = "gene") %>%
+        arrange(padj) %>% head(15) %>% as.data.frame(), digits = 3)
+```
+
 ## Core and shared gene sets
 
 Which genes separate a song nucleus from its surround in the *same direction* everywhere, and which
