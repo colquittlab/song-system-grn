@@ -182,8 +182,25 @@ from the DE results, the correlation matrix or any of the heatmap matrices.
 ## "LOC" -- and the two unanchored ones also dropped BLOC1S2, BLOC1S4, BLOC1S5, BLOC1S6, NPLOC4,
 ## ELOC and CLOCK, none of which is an unnamed model. Anchoring to the start fixes that and makes
 ## the three sites agree.
-display_exclude = "^LOC|^AZ255|^nbis"
-is_displayable = function(gene) !grepl(display_exclude, gene)
+##
+## Unnamed LOC models are displayable when they carry an alias. data/orthologs/loc_human_aliases.csv
+## (built by scripts/build_loc_aliases.R) gives a human symbol for LOC models whose NCBI product
+## matches a human Swiss-Prot protein name -- LOC110480370, "multiple epidermal growth factor-like
+## domains protein 6", is MEGF6-like. Those are labelled "LOC110480370 (MEGF6-like)": the LOC ID stays
+## so the gene can be traced, and "-like" because the alias records a shared annotation, not an
+## orthology call. LOC models without an alias ("uncharacterized protein") and the mitochondrial
+## features stay excluded. Aliases change labels only; every analysis still keys on the LOC ID.
+loc_alias_tbl = read_csv(here::here("data/orthologs/loc_human_aliases.csv"), show_col_types = FALSE)
+loc_alias = setNames(loc_alias_tbl$human_symbol, loc_alias_tbl$gene)
+
+mito_pattern = "^AZ255|^nbis"
+is_displayable = function(gene) {
+  !grepl(mito_pattern, gene) & (!grepl("^LOC", gene) | gene %in% names(loc_alias))
+}
+display_name = function(gene) {
+  ifelse(!is.na(gene) & gene %in% names(loc_alias),
+         sprintf("%s (%s-like)", gene, loc_alias[gene]), gene)
+}
 
 ## Significance threshold, shared by the song/non-song contrast and the core-set logic below so the
 ## two cannot drift apart. Same 0.1 the rest of the notebook uses.
@@ -219,6 +236,31 @@ Heatmap = function(..., use_raster = TRUE, raster_quality = fig_raster_dpi / 72)
 
 volcano_points = function(..., dpi = fig_raster_dpi) {
   ggrastr::rasterise(ggplot2::geom_point(...), dpi = dpi)
+}
+
+## y-axis cap for the pooled volcanoes. One or two extreme genes (LOC110480370 at -log10 p of 73 in
+## the block no-LMANsh fit) otherwise set the axis and flatten everything else into the bottom
+## third. Genes above the cap are drawn at it as triangles, so they stay visible and are marked as
+## truncated rather than silently clipped, and the axis title says how many there are. The per-pair
+## faceted volcano is left uncapped: its facets already scale freely.
+volcano_y_cap = 50
+
+cap_volcano = function(df) {
+  df %>% mutate(capped = !is.na(p_mlog10) & p_mlog10 > volcano_y_cap,
+                p_plot = pmin(p_mlog10, volcano_y_cap))
+}
+
+volcano_cap_layers = function(df, x) {
+  n = sum(df$capped)
+  list(
+    ggplot2::geom_point(data = dplyr::filter(df, capped),
+                        ggplot2::aes(x = .data[[x]], y = p_plot, colour = sig),
+                        shape = 17, size = 1),
+    ggplot2::scale_y_continuous(limits = c(0, volcano_y_cap),
+                                expand = ggplot2::expansion(mult = c(0.02, 0.04))),
+    ggplot2::labs(y = if (n > 0) sprintf("-log10 adjusted p (capped at %s; %s above)", volcano_y_cap, n)
+                      else "-log10 adjusted p")
+  )
 }
 
 volcano_label_layers = function(df, size = 2.1, ring_size = 1.4) {
@@ -415,9 +457,11 @@ cat(sprintf("downstream figures use the %s fits: %s significant of %s rows\n",
 ## What the display-eligibility rule removes from whichever result set is in play.
 local({
   g = unique(markers_agg$gene)
-  cat(sprintf("display candidates: %s of %s genes; excluded %s LOC, %s AZ255, %s nbis\n",
+  cat(sprintf("display candidates: %s of %s genes; %s LOC aliased and kept, %s LOC excluded, %s AZ255, %s nbis\n",
               sum(is_displayable(g)), length(g),
-              sum(grepl("^LOC", g)), sum(grepl("^AZ255", g)), sum(grepl("^nbis", g))))
+              sum(grepl("^LOC", g) & g %in% names(loc_alias)),
+              sum(grepl("^LOC", g) & !g %in% names(loc_alias)),
+              sum(grepl("^AZ255", g)), sum(grepl("^nbis", g))))
 })
 ```
 
@@ -475,7 +519,7 @@ gg = ggplot(markers_agg_df_cur, aes(!!as.symbol(ct1), !!as.symbol(ct2))) +
   geom_vline(xintercept=0, linetype = 2) +
   geom_hline(yintercept=0, linetype = 2) +
   geom_point() +
-  ggrepel::geom_text_repel(aes(label=to_plot), na.rm = T, force_pull = 2) +
+  ggrepel::geom_text_repel(aes(label=display_name(to_plot)), na.rm = T, force_pull = 2) +
   theme_bw() +
   coord_equal()
 print(gg)
@@ -598,7 +642,7 @@ save_heatmap_horizontal = function(mat, hc, fname, col,
     keep = !is.na(idx)
     if (any(keep)) {
       ha = HeatmapAnnotation(
-        foo = anno_mark(at = idx[keep], labels = mark_genes[keep], side = "bottom",
+        foo = anno_mark(at = idx[keep], labels = display_name(mark_genes[keep]), side = "bottom",
                         labels_gp = gpar(fontsize = 5), lines_gp = gpar(lwd = .5)),
         which = "column"
       )
@@ -778,7 +822,7 @@ markers_agg_select_label_ind = na.omit(match(markers_agg_select_label$gene,
                                              rownames(markers_agg_mat)))
 
 ha = rowAnnotation(foo = anno_mark(at = markers_agg_select_label_ind,
-                                   labels = markers_agg_select_label$gene,
+                                   labels = display_name(markers_agg_select_label$gene),
                                    labels_gp = gpar(fontsize=5),
                                    lines_gp=gpar(lwd=.5)) )
 
@@ -826,7 +870,7 @@ markers_agg_select_label_ind = na.omit(match(markers_agg_select_label$gene,
                                              rownames(markers_agg_mat)))
 
 ha = rowAnnotation(foo = anno_mark(at = markers_agg_select_label_ind,
-                                   labels = markers_agg_select_label$gene,
+                                   labels = display_name(markers_agg_select_label$gene),
                                    labels_gp = gpar(fontsize=5),
                                    lines_gp=gpar(lwd=.5)) )
 
@@ -1086,7 +1130,8 @@ height = nrow(markers_agg_mat) * dot_row_height + dot_xlab_height
 hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
 markers_agg_select = hc$labels[hc$order]
-gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = res_to_use, flip_axes = T, dot.scale=2, dot.min = .1)
+gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = res_to_use, flip_axes = T, dot.scale=2, dot.min = .1) +
+  scale_x_discrete(labels = display_name)
 gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
         axis.text.y = element_text(size=6),
@@ -1115,7 +1160,8 @@ hc = hclust(dist(markers_agg_mat), method = "ward.D")
 
 markers_agg_select = hc$labels[hc$order]
 
-gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = res_to_use, flip_axes = T, dot.scale=2, dot.min = .1)
+gg = DotPlot_scCustom(obj_sub, features = markers_agg_select, group.by = res_to_use, flip_axes = T, dot.scale=2, dot.min = .1) +
+  scale_x_discrete(labels = display_name)
 gg = gg +
   theme(axis.text.x = element_text(size=6, angle = 90, hjust = 1, vjust = .5),
         axis.text.y = element_text(size=6),
@@ -1145,7 +1191,7 @@ markers_agg_to_plot = markers_agg %>%
   group_by(avg_log2FC_sign, compare) %>%
   filter(is_displayable(gene)) %>%
   top_n(5, p_val_adj_mlog10) %>%
-  mutate(gene_to_label = gene) %>% select(compare, gene_to_label, gene)
+  mutate(gene_to_label = display_name(gene)) %>% select(compare, gene_to_label, gene)
 
 markers_agg_tmp = markers_agg %>% left_join(markers_agg_to_plot)
 gg = ggplot(markers_agg_tmp, aes(avg_log2FC, p_val_adj_mlog10)) +
@@ -1272,17 +1318,19 @@ sn_lab = songness_markers %>%
   group_by(direction = sign(avg_log2FC)) %>%
   slice_min(p_val_adj, n = 12, with_ties = FALSE) %>%
   ungroup() %>%
-  transmute(gene, gene_to_label = gene)
+  transmute(gene, gene_to_label = display_name(gene))
 
 sn_plot = songness_markers %>%
   mutate(p_mlog10 = -log10(p_val_adj)) %>%
+  cap_volcano() %>%
   left_join(sn_lab, by = "gene")
 
-gg = ggplot(sn_plot, aes(avg_log2FC, p_mlog10)) +
-  volcano_points(aes(colour = sig), size = .3, stroke = 0) +
+gg = ggplot(sn_plot, aes(avg_log2FC, p_plot)) +
+  volcano_points(data = filter(sn_plot, !capped), aes(colour = sig), size = .3, stroke = 0) +
   scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
   volcano_label_layers(sn_plot) +
-  labs(x = "avg_log2FC (song / non-song)", y = "-log10 adjusted p") +
+  labs(x = "avg_log2FC (song / non-song)") +
+  volcano_cap_layers(sn_plot, "avg_log2FC") +
   theme_bw() +
   theme(panel.grid.minor = element_blank(),
         panel.grid.major = element_line(linewidth = .25),
@@ -1420,17 +1468,19 @@ paired_volcano = function(res, fname, xlab) {
     group_by(direction = sign(log2FoldChange)) %>%
     slice_min(padj, n = 12, with_ties = FALSE) %>%
     ungroup() %>%
-    transmute(gene, gene_to_label = gene)
+    transmute(gene, gene_to_label = display_name(gene))
 
   df = res %>%
     mutate(p_mlog10 = -log10(padj)) %>%
+    cap_volcano() %>%
     left_join(lab, by = "gene")
 
-  gg = ggplot(df, aes(log2FoldChange, p_mlog10)) +
-    volcano_points(aes(colour = sig), size = .3, stroke = 0) +
+  gg = ggplot(df, aes(log2FoldChange, p_plot)) +
+    volcano_points(data = filter(df, !capped), aes(colour = sig), size = .3, stroke = 0) +
     scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "grey75"), guide = "none") +
     volcano_label_layers(df) +
-    labs(x = xlab, y = "-log10 adjusted p") +
+    labs(x = xlab) +
+    volcano_cap_layers(df, "log2FoldChange") +
     theme_bw() +
     theme(panel.grid.minor = element_blank(),
           panel.grid.major = element_line(linewidth = .25),
@@ -1913,6 +1963,7 @@ draw_core_heatmap = function(gene_sets, set_name, cts, fname, top_n = core_top_n
   hm = Heatmap(core_mat, name = "avg_log2FC", col = cols_cur,
                cluster_rows = FALSE, cluster_columns = FALSE,
                show_row_names = TRUE,
+               row_labels = display_name(rownames(core_mat)),
                row_names_gp = gpar(fontsize = 5),
                column_names_gp = gpar(fontsize = 6),
                width = unit(width, "inch"),
@@ -2104,6 +2155,7 @@ walk(gene_umap_regions, function(region_cur) {
                                 reduction=reduction_to_use,
                                 raster = FALSE,
                                 pt.size = point_size) +
+        labs(title = display_name(gene_to_plot)) +
         coord_equal()  +
         theme_void()
       gg = ggrastr::rasterise(gg, layers = "Point", dpi = umap_raster_dpi)

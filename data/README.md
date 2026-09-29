@@ -14,6 +14,8 @@ obtained separately and configured in `config/paths.R` (R scripts) and
 | `gene_lists/c5.all.v7.0.symbols.gmt` | MSigDB C5 GO gene sets v7.0 | [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp) |
 | `lambert_tfs/tfs.csv` | Human TF catalog (Lambert et al. 2018, *Cell*) | [Lambert et al. 2018](https://doi.org/10.1016/j.cell.2018.01.029) |
 | `orthologs/oma_orthologs_zf-ck.txt` | OMA 1:1 orthologs zebra finch ↔ chicken (used by `snrna/integration/`) | OMA browser export |
+| `orthologs/loc_human_aliases.csv` | Human symbol for informative lonStrDom2 `LOC` models, matched on product name; display labels only, not orthology calls (used by `snrna/deg/song-surround_deg_glut_hybrid.qmd`) | Built by `scripts/build_loc_aliases.R` |
+| `orthologs/uniprot_human_reviewed.tsv` | UniProt human Swiss-Prot gene ↔ protein name snapshot, 2026-09-29, input to the alias build | [UniProt REST](https://rest.uniprot.org/) |
 
 ---
 
