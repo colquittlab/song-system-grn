@@ -1919,8 +1919,11 @@ print(core_gene_sets %>% count(set, direction))
 ## dropped: the largest pooled effects are mostly nucleus-restricted, low-count genes, so only 2 of
 ## 40 were core members and about half the cells were untested in their pair.)
 ##
-## Displayable genes only, filtered before ranking, so an unnamed model cannot take one of the rows.
-## A core gene has a value in every contrast used, so there are no untested cells to draw.
+## Named genes only, filtered before ranking. That excludes the mitochondrial features and every LOC
+## model -- including the aliased ones, whose "LOC110480370 (MEGF6-like)" labels are too long for
+## 5 pt heatmap rows. Aliased LOC genes are still labeled everywhere else (volcanoes, dotplots).
+## Set `core_exclude_loc = FALSE` to admit them here too. A core gene has a value in every contrast
+## used, so there are no untested cells to draw.
 core_top_n = 20
 
 ## Row names drawn directly rather than through anno_mark, so the panel height follows the row
@@ -1929,9 +1932,12 @@ core_row_h = 0.085
 core_col_w = 0.12
 
 ## The top-N selection, separate from the drawing so the gene UMAPs below use exactly these genes.
-core_top_genes = function(gene_sets, set_name, cts, top_n = core_top_n) {
+core_exclude_loc = TRUE
+
+core_top_genes = function(gene_sets, set_name, cts, top_n = core_top_n,
+                          exclude_loc = core_exclude_loc) {
   core_mat = gene_sets %>%
-    filter(set == set_name, displayable) %>%
+    filter(set == set_name, displayable, !(exclude_loc & grepl("^LOC", gene))) %>%
     distinct(gene, .keep_all = TRUE) %>%
     select(gene, all_of(paste0("log2FC_", cts))) %>%
     column_to_rownames("gene") %>%
@@ -1943,8 +1949,9 @@ core_top_genes = function(gene_sets, set_name, cts, top_n = core_top_n) {
   if (n_all > 2 * top_n) {
     core_mat = core_mat[c(seq_len(top_n), seq(n_all - top_n + 1, n_all)), , drop = FALSE]
   }
-  cat(sprintf("%s heatmap: %s of %s displayable genes (top %s each direction)\n",
-              set_name, nrow(core_mat), n_all, top_n))
+  cat(sprintf("%s heatmap: %s of %s eligible genes (top %s each direction%s)\n",
+              set_name, nrow(core_mat), n_all, top_n,
+              if (exclude_loc) "; LOC models excluded" else ""))
   stopifnot("core gene with an untested contrast" = !anyNA(core_mat))
   core_mat
 }
