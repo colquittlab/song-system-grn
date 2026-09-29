@@ -37,6 +37,8 @@ suppressPackageStartupMessages(library(DESeq2))
 select = dplyr::select
 count  = dplyr::count
 filter = dplyr::filter
+first  = dplyr::first   # S4Vectors::first otherwise, which has no method for plain vectors
+last   = dplyr::last
 
 ## Per-chunk timing, summarised at the end of the document.
 ##
@@ -2389,126 +2391,211 @@ if (redo_go_terms) {
 
 ## GSEA
 
-```{r}
-library(fgsea)
-gmt_files = GMT_C5_V7  # bundled in data/gene_lists/
+Per-pair GSEA, and a test of whether the song types share pathways more than they share genes.
 
-gmt_pathway = gmtPathways(gmt_files)
+The question is whether this is defensible: although most specialization genes differ between song
+types, each engages a similar set of biological pathways -- the same GO terms, built from different
+genes. It has two halves, and each needs its own test.
+
+1. **Pathways are shared.** Pathway-level agreement between two pairs should exceed their gene-level
+   agreement. Spearman rho of NES between pairs, set against rho of the fold changes, on matched
+   footing: across every feature, and across features significant in at least one of the two.
+2. **The genes behind a shared pathway differ.** For a pathway enriched in the same direction in two
+   pairs, the overlap of their leading edges is compared with what random draws of the same sizes
+   from that pathway's genes would give. Leading edges are small subsets, so low overlap alone could
+   be chance; "the genes differ" needs overlap near that expectation, not merely a low Jaccard.
+
+Method. C5 v7.0 (`GMT_C5_V7`), sets of 15-500 genes, genes matched to human symbols as in the
+enrichment above. Genes are ranked by signed -log10 p from the paired per-pair fits, and the score
+is **rank-based** (`gseaParam = 0`, the original Kolmogorov-Smirnov form). The weighted score
+(`gseaParam = 1`, the default) fails here: -log10 p runs to 236 against a median of 0.9, weighting
+the running sum by it lets a handful of top genes decide every set, and it finds 0-4 significant sets
+per pair. That is what the version of this section before the paired fits was doing, and why its
+figure was close to empty. Ranking by shrunken fold change instead is run alongside as a
+sensitivity check: a conclusion that holds under one ranking only is not worth stating.
+
+```{r}
+gsea_fname = file.path(out_dir, "gsea_rankbased_by_pair.rds")
+pair_short = c("Glut-DACH2-HVCra" = "HVCra", "Glut-DACH2-HVCx" = "HVCx",
+               "Glut-DACH2-LMANco" = "LMANco", "Glut-DACH2-LMANsh" = "LMANsh",
+               "Glut-CACNA1H-RA" = "RA")
+
+## One GSEA per pair. The ranked symbol lists are kept apart from the results table, since the
+## leading-edge null below needs to know which genes each pair ranked.
+run_pair_gsea = function(rank_by) {
+  per = imap(split(markers_agg, markers_agg$compare), function(x, cmp) {
+    x = x %>% mutate(sym = to_gmt_symbol(gene)) %>%
+      filter(!is.na(sym), !is.na(p_val), !is.na(avg_log2FC)) %>%
+      distinct(sym, .keep_all = TRUE)
+    stat = if (rank_by == "lfc") x$avg_log2FC else
+      sign(x$avg_log2FC) * -log10(pmax(x$p_val, .Machine$double.xmin))
+    names(stat) = x$sym
+    set.seed(42)
+    res = suppressWarnings(fgseaMultilevel(gmt_pathway, stat, minSize = 15, maxSize = 500,
+                                           eps = 0, gseaParam = 0)) %>%
+      as_tibble() %>% mutate(pair = pair_short[cmp])
+    list(res = res, ranked = names(stat))
+  })
+  list(res = map_dfr(per, "res"), ranked = set_names(map(per, "ranked"), pair_short[names(per)]))
+}
+
+gsea_cached = if (file.exists(gsea_fname)) readRDS(gsea_fname) else NULL
+if (is.null(gsea_cached)) {
+  cat("no cached per-pair GSEA -- fitting both rankings\n")
+  gsea_cached = list(mlog10p = run_pair_gsea("mlog10p"), lfc = run_pair_gsea("lfc"))
+  saveRDS(gsea_cached, gsea_fname)
+} else cat(sprintf("reusing cached per-pair GSEA: %s\n", gsea_fname))
+
+gsea_pairs = gsea_cached$mlog10p$res
+gsea_pairs %>%
+  mutate(leadingEdge = map_chr(leadingEdge, ~ paste(.x, collapse = ";"))) %>%
+  arrange(pair, padj) %>%
+  write_csv(file.path(out_dir, "gsea_by_pair.csv"))
+
+gsea_pairs %>% group_by(pair) %>%
+  summarise(tested = n(), sig = sum(padj < 0.05), up = sum(padj < 0.05 & NES > 0),
+            down = sum(padj < 0.05 & NES < 0), .groups = "drop") %>%
+  as.data.frame() %>% print()
+```
+
+### Half 1: are pathways shared more than genes?
+
+```{r}
+pair_names = unname(pair_short)
+
+similarity = function(g, ranked) {
+  res = g
+  map_dfr(combn(pair_names, 2, simplify = FALSE), function(pp) {
+    a = pp[1]; b = pp[2]
+    ## Gene level, from the paired per-pair fits.
+    gg = inner_join(markers_agg %>% filter(pair_short[compare] == a) %>%
+                      select(gene, x = avg_log2FC, pa = p_val_adj),
+                    markers_agg %>% filter(pair_short[compare] == b) %>%
+                      select(gene, y = avg_log2FC, pb = p_val_adj), by = "gene")
+    gs = gg %>% filter((!is.na(pa) & pa < sig_thresh) | (!is.na(pb) & pb < sig_thresh))
+    ## Pathway level.
+    both = inner_join(res %>% filter(pair == a) %>% select(pathway, x = NES, pa = padj, le_a = leadingEdge),
+                      res %>% filter(pair == b) %>% select(pathway, y = NES, pb = padj, le_b = leadingEdge),
+                      by = "pathway")
+    ps = both %>% filter(pa < 0.05 | pb < 0.05)
+    shared = both %>% filter(pa < 0.05, pb < 0.05, sign(x) == sign(y))
+
+    ## Half 2, per shared pathway: leading-edge overlap against random draws of the same sizes from
+    ## the pathway members that both pairs ranked.
+    le = pmap_dfr(shared, function(pathway, le_a, le_b, ...) {
+      members = intersect(intersect(gmt_pathway[[pathway]], ranked[[a]]), ranked[[b]])
+      la = intersect(le_a, members); lb = intersect(le_b, members)
+      n = length(members); ka = length(la); kb = length(lb); obs = length(intersect(la, lb))
+      tibble(obs, expct = ka * kb / n, jac = obs / (ka + kb - obs),
+             p = phyper(obs - 1, ka, n - ka, kb, lower.tail = FALSE))
+    })
+    tibble(a, b,
+           gene_rho_all = cor(gg$x, gg$y, method = "spearman"),
+           path_rho_all = cor(both$x, both$y, method = "spearman"),
+           gene_rho_sig = cor(gs$x, gs$y, method = "spearman"),
+           path_rho_sig = cor(ps$x, ps$y, method = "spearman"),
+           shared_pathways = nrow(shared),
+           le_jaccard = if (nrow(le)) median(le$jac) else NA_real_,
+           le_obs_over_expected = if (nrow(le)) median(le$obs / le$expct) else NA_real_,
+           le_frac_above_chance = if (nrow(le)) mean(le$p < 0.05) else NA_real_)
+  })
+}
+
+sim = imap_dfr(gsea_cached, ~ similarity(.x$res, .x$ranked) %>% mutate(ranking = .y))
+write_csv(sim, file.path(out_dir, "gsea_pathway_vs_gene_similarity.csv"))
+print(sim %>% filter(ranking == "mlog10p") %>% select(-ranking) %>%
+        mutate(across(where(is.double), ~ round(.x, 2))) %>% as.data.frame())
+
+sim %>% group_by(ranking) %>%
+  summarise(gene_all = median(gene_rho_all), path_all = median(path_rho_all),
+            path_gt_gene_all = sum(path_rho_all > gene_rho_all),
+            gene_sig = median(gene_rho_sig), path_sig = median(path_rho_sig),
+            path_gt_gene_sig = sum(path_rho_sig > gene_rho_sig),
+            le_obs_over_expected = median(le_obs_over_expected, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(across(where(is.double), ~ round(.x, 2))) %>% as.data.frame() %>% print()
 ```
 
 ```{r}
-## Cached, on the same principle as the DESeq2 fits above. fgseaMultilevel plus collapsePathways
-## across the five contrasts is the second most expensive step in the document -- about 3.5 minutes,
-## roughly a third of a full render -- and like the fits it is an input to the plotting rather than
-## part of it. Set TRUE by hand, or delete the rds, after anything that changes the ranked gene
-## lists: the result set behind markers_agg, the pairs, or the gene universe.
-gsea_fname = file.path(out_dir, "gsea_res.rds")
+## Pathways significant in the same direction in k of the five pairs. C5 is nested, so these counts
+## include near-duplicate terms; they say how widely an enrichment is shared, not how many
+## independent pathways there are.
+shared_k = gsea_pairs %>% filter(padj < 0.05) %>%
+  group_by(pathway, direction = if_else(NES > 0, "higher in song", "lower in song")) %>%
+  summarise(n_pairs = n_distinct(pair), pairs = paste(sort(pair), collapse = ","), .groups = "drop")
+print(shared_k %>% dplyr::count(direction, n_pairs) %>% as.data.frame())
 
-redo_gsea = !file.exists(gsea_fname)
-cat(if (redo_gsea) "no cached GSEA -- fitting\n" else
-    sprintf("reusing cached GSEA: %s\n", gsea_fname))
+## Shared by at least four pairs: NES in every pair, significant cells outlined.
+shared4 = shared_k %>% filter(n_pairs >= 4)
+fig_df = gsea_pairs %>%
+  semi_join(shared4, by = "pathway") %>%
+  left_join(shared4 %>% select(pathway, n_pairs), by = "pathway") %>%
+  mutate(pair = factor(pair, levels = pair_names),
+         term = clean_go(pathway) %>% str_replace_all("\n", " ") %>% str_trunc(55),
+         sig = padj < 0.05,
+         p_mlog10 = pmin(-log10(padj), 10))
+term_order = fig_df %>% group_by(term) %>%
+  summarise(n = first(n_pairs), nes = mean(NES), .groups = "drop") %>% arrange(n, -nes) %>% pull(term)
+fig_df = fig_df %>% mutate(term = factor(term, levels = term_order))
 
-if (redo_gsea) {
-  gse_res_list = map(markers_agg_split, function(compare) {
-    compare = compare %>%
-      arrange(-avg_log2FC)
-    gene_set = compare %>% select(avg_log2FC) %>% unlist()
-    names(gene_set) = compare$gene
-    gene_set = gene_set[!is.na(gene_set)]
-    gene_set = gene_set[!is.na(names(gene_set))]
-    gsea_res = fgseaMultilevel(pathways = gmt_pathway,
-                               stats = gene_set,
-                               minSize=20,
-                               maxSize=200)
-
-    gsea_res_filt = gsea_res %>% filter(padj<.2) %>% arrange(pval)
-    collapsedPathways = collapsePathways(gsea_res_filt, pathways = gmt_pathway, stats = gene_set, pval.threshold = .05)
-    gsea_res_ind = gsea_res %>% filter(pathway %in% collapsedPathways$mainPathways) %>%
-      arrange(-NES)
-    return(list(gsea_res, gsea_res_ind))
-  })
-  gse_res = map(gse_res_list, 1) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
-  gse_res_ind = map(gse_res_list, 2) %>% set_names(names(markers_agg_split)) %>% bind_rows(.id="compare")
-  saveRDS(list(gse_res = gse_res, gse_res_ind = gse_res_ind), gsea_fname)
-} else {
-  gsea_cached = readRDS(gsea_fname)
-  gse_res = gsea_cached$gse_res
-  gse_res_ind = gsea_cached$gse_res_ind
+if (nrow(fig_df) > 0) {
+  ## Every tested cell is drawn; significant ones are outlined and opaque, the rest faded and
+  ## unoutlined. The outline for "not significant" must be "transparent", not NA: ggplot treats an NA
+  ## aesthetic as missing data and drops the whole point, which silently removed 19 cells here --
+  ## including two RA cells pointing the opposite way.
+  gg = ggplot(fig_df, aes(pair, term)) +
+    geom_point(aes(fill = NES, size = p_mlog10, colour = sig, alpha = sig), shape = 21, stroke = 0.35) +
+    scale_fill_gradient2(low = FIG_DIV_LOW, mid = FIG_DIV_MID, high = FIG_DIV_HIGH, midpoint = 0) +
+    scale_colour_manual(values = c(`TRUE` = "black", `FALSE` = "transparent"), guide = "none") +
+    scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.4), guide = "none") +
+    scale_size_area(max_size = 3, name = "-log10 padj\n(capped at 10)") +
+    labs(x = NULL, y = NULL) +
+    theme_fig() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  fig_save(gg, file.path(out_dir, "gsea_shared_pathways"),
+           width = 4.2, height = 0.8 + 0.1 * n_distinct(fig_df$term))
+  print(gg)
 }
 ```
 
+### Half 2: are the genes behind a shared pathway the same?
+
 ```{r}
-set_order = song_cts
-  gse_res_ind_select = gse_res_ind %>%
-    mutate(p.adjust_sign = -1 * log10(padj)) %>%
-    mutate(NES_sign = sign(NES)) %>%
-    filter(padj<.05) %>%
-    select(pathway, compare) %>%
-    mutate(is_sig = TRUE)
+## For pathways significant in all five pairs: every leading-edge gene, and in how many pairs it is
+## in the leading edge. A pathway whose leading edges were one shared gene set would sit entirely in
+## the k = 5 column; one built from different genes in each pair would sit in k = 1.
+shared5 = shared_k %>% filter(n_pairs == 5)
+le_share = gsea_pairs %>%
+  semi_join(shared5, by = "pathway") %>%
+  select(pathway, pair, leadingEdge) %>%
+  unnest(leadingEdge) %>%
+  group_by(pathway, gene = leadingEdge) %>%
+  summarise(k = n_distinct(pair), pairs = paste(sort(pair), collapse = ","), .groups = "drop")
+write_csv(le_share, file.path(out_dir, "gsea_shared_pathway_leading_edges.csv"))
 
-  gse_res_ind_filt = gse_res %>%
-    filter(pathway %in% gse_res_ind_select$pathway) %>%
-    distinct(compare, pathway, .keep_all=T) %>%
-    left_join(gse_res_ind_select) %>%
-    mutate(is_sig = if_else(is.na(is_sig), FALSE, is_sig)) %>%
-    mutate(pathway = sub("^GO", "", pathway ),
-           pathway = gsub("_", " ", pathway),
-           pathway = tolower(pathway)) %>%
-    mutate(pathway = case_when(
-      grepl("establishment of protein", pathway) ~ "protein localization to ER",
-      grepl("anaphase promoting complex", pathway) ~ "APC-dependent catabolic process",
-       ## GO_CELL_CELL_ADHESION_VIA_PLASMA_MEMBRANE_ADHESION_MOLECULES and its homophilic child
-       ## GO_HOMOPHILIC_CELL_ADHESION_VIA_PLASMA_MEMBRANE_ADHESION_MOLECULES both match the second
-       ## pattern. Both are significant here, so collapsing them to one label put two rows on the
-       ## same (compare, pathway) cell and pivot_wider turned NES into a list column. Matched most
-       ## specific first, and kept as two rows -- they are two terms.
-       grepl("homophilic cell adhesion via plasma", pathway) ~ "homophilic cell adhesion",
-       grepl("cell adhesion via plasma", pathway) ~ "cell-cell adhesion",
-       grepl("nuclear transcribed", pathway) ~ "nonsense mediated decay",
+le_frac = le_share %>% dplyr::count(pathway, k) %>%
+  group_by(pathway) %>% mutate(frac = n / sum(n), total = sum(n)) %>% ungroup()
+cat("leading-edge genes of pathways shared by all five pairs, by number of pairs they lead in:\n")
+print(le_share %>% dplyr::count(k) %>% mutate(frac = round(n / sum(n), 3)) %>% as.data.frame())
 
-       grepl("cellular component assembly involved in morphogenesis", pathway) ~ "cellular component assembly in morphogenesis",
-                               TRUE ~ pathway))
-
-  go_res_mat = gse_res_ind_filt %>%
-    select(compare, pathway, NES) %>%
-    pivot_wider(names_from = "compare", values_from = "NES", values_fill = 0) %>%
-    column_to_rownames("pathway") %>% as.matrix()
-
-  hc_row = hclust(dist(go_res_mat), method="ward.D")
-  hc_row_order = hc_row$labels[hc_row$order]
-
-
-  gse_res_ind_filt = gse_res_ind_filt %>%
-    mutate(leadingEdge_len = map_int(leadingEdge, length))
-
-  gse_res_ind_filt = gse_res_ind_filt %>%
-    mutate(pathway = factor(pathway, levels=hc_row_order)) %>%
-    mutate(compare = factor(compare, levels=set_order)) %>%
-    complete(pathway, compare, fill=list(NES=NA, size=NA, leadingEdge_len = NA))
-
-  size_limits = seq(round(min(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), round(max(gse_res_ind_filt$leadingEdge_len, na.rm=T), -1), by=20)
-  gg = ggplot(gse_res_ind_filt, aes(compare, pathway)) +
-    geom_point(shape=21, aes(size=leadingEdge_len, fill=NES, color=is_sig)) +
-    scale_color_manual(values=c(`TRUE`="black", `FALSE`=NA)) +
-    scale_fill_gradient2(low=scales::muted("blue"), high=scales::muted("red")) +
-    scale_size_continuous(range=c(.5, 3), breaks=size_limits) +
-    labs(x = "", y ="") +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle=90, vjust=.5, hjust=1, size=6),
-          axis.text.y = element_text(hjust=1, size=6),
-          axis.ticks = element_line(size=.25),
-          panel.border = element_blank()) +
-    coord_fixed()
-
-  ncols = ncol(go_res_mat)
-  nrows = nrow(go_res_mat)
-
-  scale_factor = .1
-  width = ncols * scale_factor
-  height = nrows * scale_factor
-  gg = egg::set_panel_size(gg, width = unit(width, "in"), height = unit(height, "in"))
-  plot(gg)
-  save_plot(file.path(out_dir, sprintf("gse_terms_by_compare.pdf")), gg, base_height = height + 4, base_width = width + 4)
+if (nrow(le_frac) > 0) {
+  le_frac = le_frac %>%
+    mutate(term = clean_go(pathway) %>% str_replace_all("\n", " ") %>% str_trunc(55),
+           term = fct_reorder(term, total),
+           k = factor(k, levels = 5:1))
+  ## Sequential, one hue: darker is shared by more pairs.
+  k_cols = setNames(colorRampPalette(c("#dde9f8", FIG_PAL[1]))(5), 1:5)
+  gg = ggplot(le_frac, aes(n, term, fill = k)) +
+    geom_col(width = 0.75) +
+    scale_fill_manual(values = k_cols, name = "pairs with gene\nin leading edge",
+                      breaks = as.character(1:5)) +
+    scale_x_continuous(expand = fig_expand(0.02)) +
+    labs(x = "Leading-edge genes (union across the five pairs)", y = NULL) +
+    theme_fig()
+  fig_save(gg, file.path(out_dir, "gsea_leading_edge_sharing"),
+           width = 4.2, height = 0.8 + 0.14 * n_distinct(le_frac$term))
+  print(gg)
+}
 ```
 
 ## Render profile
