@@ -160,14 +160,16 @@ SBATCH = """#!/bin/bash
 #SBATCH --output=logs/scenicplus_config{n}_%j.out
 #SBATCH --error=logs/scenicplus_config{n}_%j.err
 # EDIT for prism before submitting: --partition / --account, --mem and --time (unmeasured guesses;
-# tf_to_gene and region_to_gene, the GBM steps, dominate wall time), and the env activation below.
+# tf_to_gene and region_to_gene, the GBM steps, dominate wall time).
 # The whole workflow runs inside this one allocation (--cores {cpus}); it is not a per-rule submit.
 #
 # Submit from configN/Snakemake (so relative config/ and workflow/ resolve), after `mkdir -p logs`:
 #   cd {prism_cfg}/Snakemake && mkdir -p logs && sbatch ../run_snakemake.sbatch
 set -euo pipefail
-source ~/.bashrc
-micromamba activate scenicplus   # CHANGE if the prism env has another name
+set +u   # conda's activate scripts read unset variables
+source /private/home/${{USER}}/miniforge3/etc/profile.d/conda.sh
+conda activate scenicplus
+set -u
 mkdir -p {prism_cfg}/outs {prism_cfg}/tmp
 snakemake --cores {cpus} --rerun-incomplete --printshellcmds
 """
