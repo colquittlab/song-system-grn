@@ -1,11 +1,11 @@
 ## Export the hybrid-labeled multiome object to the h5ad that anndata.ipynb reads.
 ##
-## Same contract as the older convert_to_h5ad_adult-multiome.R (X = SCT `data`, cells x genes,
-## the six obs columns downstream code expects), except that `cluster` is now `cluster_hybrid`
-## from multiome/seurat/reduction_viz/combined_all_umap_hybrid.R. The object is read-only here;
-## the h5ad is a separate copy.
+## Same obs contract as the older convert_to_h5ad_adult-multiome.R (cells x genes, the six obs columns
+## downstream code expects), except that `cluster` is now `cluster_hybrid` from
+## multiome/seurat/reduction_viz/combined_all_umap_hybrid.R, and X is raw counts rather than SCT data
+## (see below). The object is read-only here; the h5ad is a separate copy.
 ##
-## Usage: Rscript export_h5ad_hybrid.R [in_qs2] [out_h5ad]
+## Usage: Rscript export_h5ad_hybrid.R [in_qs2] [out_h5ad] [count_assay = RNA | CB | RAW]
 
 suppressMessages({
   library(qs2)
@@ -18,6 +18,9 @@ in_fname = if (length(args) >= 1) args[1] else
   "/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2"
 out_fname = if (length(args) >= 2) args[2] else
   "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/data/adata.h5ad"
+## RNA and CB are the same CellBender-corrected counts (SCT was fit on these); RAW is the uncorrected
+## CellRanger count.
+count_assay = if (length(args) >= 3) args[3] else "RNA"
 dir.create(dirname(out_fname), recursive = TRUE, showWarnings = FALSE)
 
 use_python("/home/brad/micromamba/envs/scenicplus/bin/python", required = TRUE)
@@ -43,8 +46,15 @@ obs = data.frame(
   stringsAsFactors = FALSE
 )
 
-X = t(LayerData(obj, assay = "SCT", layer = "data"))  # cells x genes, sparse
-stopifnot(identical(rownames(X), rownames(obs)))
+## Raw integer counts, not SCT output. anndata.ipynb does `adata.raw = adata` *before* normalizing, and
+## SCENIC+ reads `.raw` (prepare_GEX_ACC, use_raw_for_GEX_anndata=True) and normalizes internally, so X
+## must be counts. Feeding it SCT data got log-normalized a second time (an earlier export did exactly that).
+## Genes are restricted to the SCT feature set so the gene universe matches the earlier run.
+stopifnot(count_assay %in% c("RNA", "CB", "RAW"))
+genes = rownames(obj[["SCT"]])
+counts = LayerData(obj, assay = count_assay, layer = "counts")[genes, rownames(obs)]
+X = t(as(counts, "dgCMatrix"))  # cells x genes, sparse
+stopifnot(identical(rownames(X), rownames(obs)), all(X@x == round(X@x)))
 
 ## Both the hybrid-script UMAP (dims30...) and umap_rna_int are kept: anndata.ipynb aliases one of
 ## them to `archr_umap` for display only.
