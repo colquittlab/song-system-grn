@@ -154,13 +154,14 @@ params_inference:
 
 SBATCH = """#!/bin/bash
 #SBATCH --job-name=scenicplus_hybrid_config{n}
+#SBATCH --partition=medium
 #SBATCH --cpus-per-task={cpus}
-#SBATCH --mem=400G
-#SBATCH --time=72:00:00
+#SBATCH --mem=600G
+#SBATCH --time=12:00:00
 #SBATCH --output=logs/scenicplus_config{n}_%j.out
 #SBATCH --error=logs/scenicplus_config{n}_%j.err
-# EDIT for prism before submitting: --partition / --account, --mem and --time (unmeasured guesses;
-# tf_to_gene and region_to_gene, the GBM steps, dominate wall time).
+# No --account: prism doesn't need one here. --mem/--time are set by hand, not measured; tf_to_gene and
+# region_to_gene (the GBM steps) dominate wall time, so check `sacct` after the first run.
 # The whole workflow runs inside this one allocation (--cores {cpus}); it is not a per-rule submit.
 #
 # Submit from configN/Snakemake (so relative config/ and workflow/ resolve), after `mkdir -p logs`:

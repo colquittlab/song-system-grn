@@ -5,15 +5,15 @@
 #   ./submit_all.sh 1 3        # only config1 and config3
 #   DRY_RUN=1 ./submit_all.sh  # print what would be submitted
 #
-# Each job runs the whole workflow inside its own allocation (see configN/run_snakemake.sbatch, where
-# the partition/account/memory/time still need setting for prism). Two configs at once means two
-# full allocations -- e.g. 2 x 40 cpus / 400G with the defaults -- running concurrently.
+# Each job runs the whole workflow inside its own allocation (see configN/run_snakemake.sbatch for the
+# partition/memory/time). Two configs at once means two full allocations -- 2 x 40 cpus / 600G on the
+# medium partition with the current settings -- running concurrently.
 #
 # Run from anywhere on prism; paths resolve from this script's own location. SLURM opens the
 # #SBATCH --output file before the job body runs, so logs/ is created here, at submit time.
 set -euo pipefail
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"  # -P: resolve a symlinked scenicplus/ dir, or find() sees nothing
 
 if [ "$#" -gt 0 ]; then
     cfgs=()
