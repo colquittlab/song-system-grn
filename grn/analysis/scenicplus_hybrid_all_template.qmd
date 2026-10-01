@@ -38,6 +38,8 @@ scenicplus_path = file.path(scplus_dir, working_dir, "scenicplus")
 config_dirs = list.dirs(scenicplus_path, recursive = FALSE, full.names = FALSE)
 config_dirs = config_dirs[grepl("^config[0-9]+$", config_dirs)]
 config_dirs = config_dirs[order(as.numeric(sub("config", "", config_dirs)))]
+## Optional: restrict to some configs (params$configs, e.g. ["config2"]); default is every config found.
+if (!is.null(params$configs)) config_dirs = intersect(config_dirs, unlist(params$configs))
 print(paste("Found configs:", paste(config_dirs, collapse = ", ")))
 
 ## Seurat object
