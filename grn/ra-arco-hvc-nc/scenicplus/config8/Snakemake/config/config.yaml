@@ -1,0 +1,78 @@
+input_data:
+  cisTopic_obj_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/pycisTopic/cistopic_obj_glut.pkl"
+  GEX_anndata_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/anndata_rna/adata.h5ad"
+  region_set_folder: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/pycisTopic/region_sets"
+  ctx_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering/ra-arco-hvc-nc_seurat-clustering.regions_vs_motifs.rankings.feather"
+  dem_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering/ra-arco-hvc-nc_seurat-clustering.regions_vs_motifs.scores.feather"
+  path_to_motif_annotations: "/private/groups/colquittlab/scenicplus/v10nr_clust_public/snapshots/motifs-v10-nr.hgnc-m0.00001-o0.0.tbl"
+
+output_data:
+  combined_GEX_ACC_mudata: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/ACC_GEX.h5mu"
+  dem_result_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/dem_results.hdf5"
+  ctx_result_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/ctx_results.hdf5"
+  output_fname_dem_html: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/dem_results.html"
+  output_fname_ctx_html: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/ctx_results.html"
+  cistromes_direct: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/cistromes_direct.h5ad"
+  cistromes_extended: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/cistromes_extended.h5ad"
+  tf_names: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/tfs.txt"
+  genome_annotation: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/genome_annotation.tsv"
+  chromsizes: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/chromsizes.tsv"
+  search_space: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/search_space.tsv"
+  tf_to_gene_adjacencies: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/tf_to_gene_adj.tsv"
+  region_to_gene_adjacencies: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/region_to_gene_adj.tsv"
+  eRegulons_direct: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/eRegulon_direct.tsv"
+  eRegulons_extended: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/eRegulons_extended.tsv"
+  AUCell_direct: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/AUCell_direct.h5mu"
+  AUCell_extended: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/AUCell_extended.h5mu"
+  scplus_mdata: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/outs/scplusmdata.h5mu"
+
+params_general:
+  temp_dir: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/scenicplus/config8/tmp"
+  n_cpu: 40
+  seed: 666
+
+params_data_preparation:
+  bc_transform_func: "\"lambda x: f'{x}'\""
+  is_multiome: True
+  key_to_group_by: ""
+  nr_cells_per_metacells: 10
+  direct_annotation: "Direct_annot"
+  extended_annotation: "Orthology_annot"
+  species: "hsapiens"
+  biomart_host: "http://www.ensembl.org"
+  search_space_upstream: "1000 150000"
+  search_space_downstream: "1000 150000"
+  search_space_extend_tss: "10 10"
+
+params_motif_enrichment:
+  species: "homo_sapiens"
+  annotation_version: "v10nr_clust"
+  motif_similarity_fdr: 0.01
+  orthologous_identity_threshold: 0.0
+  annotations_to_use: "Direct_annot Orthology_annot Motif_similarity_annot"
+  fraction_overlap_w_dem_database: 0.4
+  dem_max_bg_regions: 500
+  dem_balance_number_of_promoters: True
+  dem_promoter_space: 1_000
+  dem_adj_pval_thr: 0.1
+  dem_log2fc_thr: 0.5
+  dem_mean_fg_thr: 0.0
+  dem_motif_hit_thr: 3.0
+  fraction_overlap_w_ctx_database: 0.4
+  ctx_auc_threshold: 0.005
+  ctx_nes_threshold: 3.0
+  ctx_rank_threshold: 0.2
+
+params_inference:
+  tf_to_gene_importance_method: "GBM"
+  region_to_gene_importance_method: "GBM"
+  region_to_gene_correlation_method: "SR"
+  order_regions_to_genes_by: "importance"
+  order_TFs_to_genes_by: "importance"
+  gsea_n_perm: 1000
+  quantile_thresholds_region_to_gene: "0.85 0.90 0.95"
+  top_n_regionTogenes_per_gene: "5 10 15"
+  top_n_regionTogenes_per_region: ""
+  min_regions_per_gene: 0
+  rho_threshold: 0.05
+  min_target_genes: 10

@@ -50,6 +50,24 @@ CONFIGS = {
     1: {},
     # config2: SCENIC+ defaults for the motif-similarity FDR and cisTarget rank threshold
     2: {"params_motif_enrichment": {"motif_similarity_fdr": 0.001, "ctx_rank_threshold": 0.05}},
+
+    # config3-11 sweep around config1. The two sets run so far fix the motif-similarity FDR and the cisTarget
+    # rank threshold together, so 3-5 separate them; 6-9 vary one other parameter each; 10 changes the search
+    # space; 11 stacks the relaxed values. Every value below appeared in an earlier config or as a commented
+    # alternative in one (the previous sweep's own record was not kept), none is new.
+    3: {"params_motif_enrichment": {"ctx_rank_threshold": 0.1}},
+    4: {"params_motif_enrichment": {"ctx_rank_threshold": 0.05}},
+    5: {"params_motif_enrichment": {"motif_similarity_fdr": 0.001}},
+    6: {"params_motif_enrichment": {"ctx_nes_threshold": 2.0}},
+    7: {"params_motif_enrichment": {"ctx_auc_threshold": 0.0025}},
+    8: {"params_motif_enrichment": {"dem_adj_pval_thr": 0.1, "dem_log2fc_thr": 0.5}},
+    9: {"params_data_preparation": {"extended_annotation": "Orthology_annot Motif_similarity_annot"}},
+    # region_to_gene is rerun on a different search space, so this one is slower than the rest
+    10: {"params_data_preparation": {"search_space_upstream": "1000 100000",
+                                     "search_space_downstream": "1000 100000"}},
+    11: {"params_motif_enrichment": {"motif_similarity_fdr": 0.001, "ctx_rank_threshold": 0.1,
+                                     "ctx_nes_threshold": 2.0, "ctx_auc_threshold": 0.0025,
+                                     "dem_adj_pval_thr": 0.1, "dem_log2fc_thr": 0.5}},
 }
 
 
@@ -176,7 +194,27 @@ snakemake --cores {cpus} --rerun-incomplete --printshellcmds
 """
 
 
+def write_parameter_table():
+    """config_parameters.tsv: one row per config, every swept parameter, so analyses can label configs."""
+    rows = []
+    for n, overrides in CONFIGS.items():
+        p = merged(overrides)
+        row = {"config": f"config{n}"}
+        for section in BASE_PARAMS:
+            row.update(p[section])
+        row["changed_from_config1"] = ",".join(
+            k for section in BASE_PARAMS for k, v in p[section].items()
+            if v != merged(CONFIGS[1])[section][k]) or "-"
+        rows.append(row)
+    cols = list(rows[0])
+    with open(HERE / "config_parameters.tsv", "w") as fh:
+        fh.write("\t".join(cols) + "\n")
+        for r in rows:
+            fh.write("\t".join(str(r[c]) for c in cols) + "\n")
+
+
 def main():
+    write_parameter_table()
     src_snakefile = HERE / "workflow" / "Snakefile"
     for n, overrides in CONFIGS.items():
         d = HERE / f"config{n}"
