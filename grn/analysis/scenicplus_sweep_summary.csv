@@ -1,0 +1,12 @@
+config,eRegulons,pos_eRegulons,neg_eRegulons,pos_TFs,median_targets_per_pos_eRegulon,pos_TF_gene_edges,TF_jaccard_vs_config1,edge_jaccard_vs_config1,MAFB,EMX2,changed_from_config1
+config1,199,180,19,121,143.5,52609,1.0,1.0,"direct +/+ (309), extended +/+ (316)",-,-
+config2,212,190,22,134,96.0,42285,0.624,0.482,"direct -/- (10), extended +/+ (264)",direct +/+ (38),"motif_similarity_fdr,ctx_rank_threshold"
+config3,203,181,22,128,113.0,48927,0.66,0.567,extended +/+ (287),-,ctx_rank_threshold
+config4,185,172,13,118,98.0,38979,0.615,0.483,extended +/+ (311),-,ctx_rank_threshold
+config5,209,183,26,128,144.0,54107,0.741,0.633,"direct +/+ (373), extended +/+ (382)",-,motif_similarity_fdr
+config6,218,192,26,136,196.0,65550,0.539,0.366,"direct +/+ (370), extended +/+ (366), extended -/- (13)",-,ctx_nes_threshold
+config7,223,198,25,132,136.0,60465,0.601,0.426,-,-,ctx_auc_threshold
+config8,266,240,26,176,142.5,71363,0.449,0.365,"direct +/+ (355), extended +/+ (407)",-,"dem_adj_pval_thr,dem_log2fc_thr"
+config9,261,220,41,152,140.0,74647,0.542,0.366,direct +/+ (354),-,extended_annotation
+config10,192,166,26,113,128.0,47791,0.708,0.554,extended +/+ (341),-,"search_space_upstream,search_space_downstream"
+config11,241,214,27,151,125.0,61553,0.439,0.316,extended +/+ (301),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
