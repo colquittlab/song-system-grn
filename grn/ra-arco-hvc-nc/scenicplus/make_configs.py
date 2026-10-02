@@ -68,7 +68,18 @@ CONFIGS = {
     11: {"params_motif_enrichment": {"motif_similarity_fdr": 0.001, "ctx_rank_threshold": 0.1,
                                      "ctx_nes_threshold": 2.0, "ctx_auc_threshold": 0.0025,
                                      "dem_adj_pval_thr": 0.1, "dem_log2fc_thr": 0.5}},
+
+    # config12/13: CONTROLS, not part of the sweep. Same parameters as config1 / config2 but the expression input
+    # is the legacy double-transformed matrix the earlier run used (see GEX_ANNDATA), with the new labels, cells and
+    # region sets unchanged. Comparing 12 vs 1 and 13 vs 2 isolates the effect of the old .raw bug.
+    12: {},
+    13: {"params_motif_enrichment": {"motif_similarity_fdr": 0.001, "ctx_rank_threshold": 0.05}},
 }
+
+# Expression input per config (file under anndata_rna/ on prism). Default is raw counts in .raw, which is what SCENIC+
+# expects. adata_doublenorm.h5ad has .raw = log1p(normalize_total(SCT data)), made by anndata_rna/make_adata_doublenorm.py.
+GEX_DEFAULT = "adata.h5ad"
+GEX_ANNDATA = {12: "adata_doublenorm.h5ad", 13: "adata_doublenorm.h5ad"}
 
 
 def merged(overrides):
@@ -90,7 +101,7 @@ def render(n, overrides):
     me, dp = p["params_motif_enrichment"], p["params_data_preparation"]
     lines = f"""input_data:
   cisTopic_obj_fname: "{py}/cistopic_obj_glut.pkl"
-  GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/adata.h5ad"
+  GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/{GEX_ANNDATA.get(n, GEX_DEFAULT)}"
   region_set_folder: "{py}/region_sets"
   ctx_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.rankings.feather"
   dem_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.scores.feather"
@@ -202,9 +213,12 @@ def write_parameter_table():
         row = {"config": f"config{n}"}
         for section in BASE_PARAMS:
             row.update(p[section])
-        row["changed_from_config1"] = ",".join(
-            k for section in BASE_PARAMS for k, v in p[section].items()
-            if v != merged(CONFIGS[1])[section][k]) or "-"
+        row["gex_anndata"] = GEX_ANNDATA.get(n, GEX_DEFAULT)
+        changed = [k for section in BASE_PARAMS for k, v in p[section].items()
+                   if v != merged(CONFIGS[1])[section][k]]
+        if row["gex_anndata"] != GEX_DEFAULT:
+            changed.append("gex_anndata")
+        row["changed_from_config1"] = ",".join(changed) or "-"
         rows.append(row)
     cols = list(rows[0])
     with open(HERE / "config_parameters.tsv", "w") as fh:

@@ -5,7 +5,7 @@
 ## multiome/seurat/reduction_viz/combined_all_umap_hybrid.R, and X is raw counts rather than SCT data
 ## (see below). The object is read-only here; the h5ad is a separate copy.
 ##
-## Usage: Rscript export_h5ad_hybrid.R [in_qs2] [out_h5ad] [count_assay = RNA | CB | RAW]
+## Usage: Rscript export_h5ad_hybrid.R [in_qs2] [out_h5ad] [count_assay = RNA | CB | RAW] [x_layer = counts | sct_data]
 
 suppressMessages({
   library(qs2)
@@ -21,6 +21,8 @@ out_fname = if (length(args) >= 2) args[2] else
 ## RNA and CB are the same CellBender-corrected counts (SCT was fit on these); RAW is the uncorrected
 ## CellRanger count.
 count_assay = if (length(args) >= 3) args[3] else "RNA"
+## "counts" (default, what SCENIC+ needs) or "sct_data" (legacy: SCT log data, only to rebuild the earlier input)
+x_layer = if (length(args) >= 4) args[4] else "counts"
 dir.create(dirname(out_fname), recursive = TRUE, showWarnings = FALSE)
 
 use_python("/home/brad/micromamba/envs/scenicplus/bin/python", required = TRUE)
@@ -50,11 +52,18 @@ obs = data.frame(
 ## SCENIC+ reads `.raw` (prepare_GEX_ACC, use_raw_for_GEX_anndata=True) and normalizes internally, so X
 ## must be counts. Feeding it SCT data got log-normalized a second time (an earlier export did exactly that).
 ## Genes are restricted to the SCT feature set so the gene universe matches the earlier run.
-stopifnot(count_assay %in% c("RNA", "CB", "RAW"))
+stopifnot(count_assay %in% c("RNA", "CB", "RAW"), x_layer %in% c("counts", "sct_data"))
 genes = rownames(obj[["SCT"]])
-counts = LayerData(obj, assay = count_assay, layer = "counts")[genes, rownames(obs)]
-X = t(as(counts, "dgCMatrix"))  # cells x genes, sparse
-stopifnot(identical(rownames(X), rownames(obs)), all(X@x == round(X@x)))
+if (x_layer == "counts") {
+  counts = LayerData(obj, assay = count_assay, layer = "counts")[genes, rownames(obs)]
+  X = t(as(counts, "dgCMatrix"))  # cells x genes, sparse
+  stopifnot(identical(rownames(X), rownames(obs)), all(X@x == round(X@x)))
+} else {
+  ## LEGACY, for reproducing the earlier run's input only (make_adata_doublenorm.py): SCT `data`, which is
+  ## already log-normalized. Never use this for SCENIC+; see above.
+  X = t(as(LayerData(obj, assay = "SCT", layer = "data")[genes, rownames(obs)], "dgCMatrix"))
+  stopifnot(identical(rownames(X), rownames(obs)))
+}
 
 ## Both the hybrid-script UMAP (dims30...) and umap_rna_int are kept: anndata.ipynb aliases one of
 ## them to `archr_umap` for display only.

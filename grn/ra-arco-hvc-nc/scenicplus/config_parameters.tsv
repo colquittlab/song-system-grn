@@ -1,12 +1,14 @@
-config	direct_annotation	extended_annotation	search_space_upstream	search_space_downstream	search_space_extend_tss	motif_similarity_fdr	annotations_to_use	dem_adj_pval_thr	dem_log2fc_thr	ctx_auc_threshold	ctx_nes_threshold	ctx_rank_threshold	changed_from_config1
-config1	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	-
-config2	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.05	motif_similarity_fdr,ctx_rank_threshold
-config3	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.1	ctx_rank_threshold
-config4	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.05	ctx_rank_threshold
-config5	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	motif_similarity_fdr
-config6	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	2.0	0.2	ctx_nes_threshold
-config7	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.0025	3.0	0.2	ctx_auc_threshold
-config8	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.1	0.5	0.005	3.0	0.2	dem_adj_pval_thr,dem_log2fc_thr
-config9	Direct_annot	Orthology_annot Motif_similarity_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	extended_annotation
-config10	Direct_annot	Orthology_annot	1000 100000	1000 100000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	search_space_upstream,search_space_downstream
-config11	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.1	0.5	0.0025	2.0	0.1	motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold
+config	direct_annotation	extended_annotation	search_space_upstream	search_space_downstream	search_space_extend_tss	motif_similarity_fdr	annotations_to_use	dem_adj_pval_thr	dem_log2fc_thr	ctx_auc_threshold	ctx_nes_threshold	ctx_rank_threshold	gex_anndata	changed_from_config1
+config1	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata.h5ad	-
+config2	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.05	adata.h5ad	motif_similarity_fdr,ctx_rank_threshold
+config3	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.1	adata.h5ad	ctx_rank_threshold
+config4	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.05	adata.h5ad	ctx_rank_threshold
+config5	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata.h5ad	motif_similarity_fdr
+config6	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	2.0	0.2	adata.h5ad	ctx_nes_threshold
+config7	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.0025	3.0	0.2	adata.h5ad	ctx_auc_threshold
+config8	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.1	0.5	0.005	3.0	0.2	adata.h5ad	dem_adj_pval_thr,dem_log2fc_thr
+config9	Direct_annot	Orthology_annot Motif_similarity_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata.h5ad	extended_annotation
+config10	Direct_annot	Orthology_annot	1000 100000	1000 100000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata.h5ad	search_space_upstream,search_space_downstream
+config11	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.1	0.5	0.0025	2.0	0.1	adata.h5ad	motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold
+config12	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata_doublenorm.h5ad	gex_anndata
+config13	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.05	adata_doublenorm.h5ad	motif_similarity_fdr,ctx_rank_threshold,gex_anndata
