@@ -1,4 +1,4 @@
-TF,class,n_configs_present,n_configs_tier1,n_configs_with_direct,median_rho_gene_vs_region,median_rho_TF_expr_vs_gene,TF_expr_peak,gene_AUC_peak,region_AUC_peak
+TF,stability_concordance_class,n_configs_present,n_configs_tier1,n_configs_with_direct,median_rho_gene_vs_region,median_rho_TF_expr_vs_gene,TF_expr_peak,gene_AUC_peak,region_AUC_peak
 ARNT2,A,11,11,11,0.792,0.729,Glut-DACH2-HVCx,Glut-DACH2-HVCx,Glut-DACH2-2
 ARX,A,11,11,11,0.864,0.72,Glut-NSC,GABA-MGE-PVALB-1,GABA-MGE-PVALB-1
 BACH2,A,11,11,11,0.815,0.754,Glut-DACH2-HVCx,Glut-DACH2-HVCx,Glut-DACH2-HVCx

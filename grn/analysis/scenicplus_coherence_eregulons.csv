@@ -1,4 +1,4 @@
-config,TF,type,sign,n_target_genes,n_target_regions,rho_gene_vs_region,rho_TF_expr_vs_gene,tier,gene_AUC_peak,region_AUC_peak,TF_expr_peak
+config,TF,type,sign,n_target_genes,n_target_regions,rho_gene_vs_region,rho_TF_expr_vs_gene,concordance_tier,gene_AUC_peak,region_AUC_peak,TF_expr_peak
 config1,AHR,direct,+/+,14,19,0.559,0.604,1.0,Oligo,Oligo,Oligo
 config1,ALX4,direct,+/-,32,39,-0.17,0.19,,Glut-DACH2-HVCx,GABA-LGE-1,Glut-DACH2-HVCx
 config1,ARNT2,direct,+/+,673,859,0.694,0.728,1.0,Glut-DACH2-HVCx,Glut-DACH2-2,Glut-DACH2-HVCx

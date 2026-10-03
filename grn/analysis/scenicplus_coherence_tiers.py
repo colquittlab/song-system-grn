@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Coherence tiers for every SCENIC+ eRegulon in every config.
+"""Concordance tiers for every SCENIC+ eRegulon in every config. DESCRIPTIVE, not a quality grade.
+
+Do not use these to discard regulators. Discordance can be real biology: a TF may act through cofactors, on poised
+or primed chromatin, or with different roles in different lineages, so its expression, its regions' accessibility and
+its targets' expression need not line up across cell types. A discordant eRegulon is one to look at more closely
+(which cell types, and why), not a worse one. Stable AND concordant is simply the easiest kind to interpret.
 
 An eRegulon's regions come from motif enrichment (+ region-to-gene links) and its target genes from TF-to-gene
 expression links; nothing forces the two to be active in the same cells, so a regulon can be "region-active" in one
@@ -21,10 +26,10 @@ Negative (-/-) eRegulons get the metrics but no tier (the expected sign of the T
 Per TF, across the correct-input sweep (configs 1-11; 12/13 are the legacy-input controls and 14/15 topic controls,
 kept in the eRegulon table but not in the TF tiers), stability x coherence:
 
-    A  present in >= 9 of 11 configs and Tier 1 in >= half of the configs where present   robust, coherent
-    B  present in >= 9 of 11 but Tier 1 in < half                                          robust, incoherent
-    C  present in < 9 and Tier 1 in >= half                                                variable, coherent
-    D  everything else                                                                     variable, incoherent
+    A  present in >= 9 of 11 configs and Tier 1 in >= half of the configs where present   stable, concordant
+    B  present in >= 9 of 11 but Tier 1 in < half                                          stable, discordant
+    C  present in < 9 and Tier 1 in >= half                                                variable, concordant
+    D  everything else                                                                     variable, discordant
 
     python scenicplus_coherence_tiers.py
 """
@@ -106,7 +111,7 @@ for cfg in CONFIGS:
             rows.append({
                 "config": cfg, "TF": tf, "type": kind, "sign": sign,
                 "n_target_genes": int(re.search(r"\((\d+)g\)", n).group(1)), "n_target_regions": int(re.search(r"\((\d+)r\)", rkey[k]).group(1)),
-                "rho_gene_vs_region": round(rho_rg, 3), "rho_TF_expr_vs_gene": round(rho_tf, 3), "tier": tier,
+                "rho_gene_vs_region": round(rho_rg, 3), "rho_TF_expr_vs_gene": round(rho_tf, 3), "concordance_tier": tier,
                 "gene_AUC_peak": clusters[int(np.argmax(gp))], "region_AUC_peak": clusters[int(np.argmax(rp))],
                 "TF_expr_peak": clusters[int(np.argmax(expr[tf].reindex(clusters).values))] if tf in expr.columns else None,
             })
@@ -120,26 +125,26 @@ E.to_csv(HERE / "scenicplus_coherence_eregulons.csv", index=False)
 P = E[(E.sign == "+/+") & E.config.isin(SWEEP)]
 out = []
 for tf, g in P.groupby("TF"):
-    per_cfg = g.groupby("config").tier.min()                     # best tier of any +/+ eRegulon of this TF in a config
+    per_cfg = g.groupby("config").concordance_tier.min()                     # best tier of any +/+ eRegulon of this TF in a config
     present = per_cfg.size
     tier1_cfg = int((per_cfg == 1).sum())
     direct_cfg = int(g[g.type == "direct"].config.nunique())
     cls = ("A" if present >= PRESENT_MIN and tier1_cfg >= present / 2 else
            "B" if present >= PRESENT_MIN else
            "C" if tier1_cfg >= present / 2 else "D")
-    out.append({"TF": tf, "class": cls, "n_configs_present": present, "n_configs_tier1": tier1_cfg,
+    out.append({"TF": tf, "stability_concordance_class": cls, "n_configs_present": present, "n_configs_tier1": tier1_cfg,
                 "n_configs_with_direct": direct_cfg, "median_rho_gene_vs_region": round(g.rho_gene_vs_region.median(), 3),
                 "median_rho_TF_expr_vs_gene": round(g.rho_TF_expr_vs_gene.median(), 3),
                 "TF_expr_peak": g.TF_expr_peak.mode().iat[0] if g.TF_expr_peak.notna().any() else None,
                 "gene_AUC_peak": g.gene_AUC_peak.mode().iat[0], "region_AUC_peak": g.region_AUC_peak.mode().iat[0]})
-T = pd.DataFrame(out).sort_values(["class", "n_configs_tier1"], ascending=[True, False])
+T = pd.DataFrame(out).sort_values(["stability_concordance_class", "n_configs_tier1"], ascending=[True, False])
 T.to_csv(HERE / "scenicplus_coherence_tf_tiers.csv", index=False)
 
-print("\neRegulon tiers (+/+, sweep configs 1-11):", P.tier.value_counts().sort_index().to_dict())
-print("TF classes:", T["class"].value_counts().sort_index().to_dict())
+print("\neRegulon tiers (+/+, sweep configs 1-11):", P.concordance_tier.value_counts().sort_index().to_dict())
+print("TF classes:", T["stability_concordance_class"].value_counts().sort_index().to_dict())
 for k in "ABCD":
-    sub = T[T["class"] == k]
+    sub = T[T["stability_concordance_class"] == k]
     print(f"  {k}: {len(sub)} TFs", ("; " + ", ".join(sub.TF.head(30))) if k == "A" else "")
 for tf in ("EMX2", "LHX2", "MAFB"):
     r = T[T.TF == tf]
-    print(tf, r[["class", "n_configs_present", "n_configs_tier1", "median_rho_gene_vs_region", "median_rho_TF_expr_vs_gene"]].to_dict("records") or "no +/+ eRegulon in the sweep")
+    print(tf, r[["stability_concordance_class", "n_configs_present", "n_configs_tier1", "median_rho_gene_vs_region", "median_rho_TF_expr_vs_gene"]].to_dict("records") or "no +/+ eRegulon in the sweep")
