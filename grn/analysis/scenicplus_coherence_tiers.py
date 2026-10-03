@@ -78,7 +78,8 @@ def spear(x, y):
 
 rows = []
 for cfg in CONFIGS:
-    f = h5py.File(f"{RES}{cfg}/outs/scplusmdata.h5mu", "r")
+    full = f"{RES}{cfg}/outs/scplusmdata.h5mu"
+    f = h5py.File(full if Path(full).exists() else full.replace("scplusmdata.h5mu", "scplusmdata_slim.h5mu"), "r")  # slim: same layout
     obs = f["mod"]["scRNA_counts"]["obs"]
     cell2cl = dict(zip((s(x) for x in obs["_index"][:]), np.array([s(c) for c in obs["cluster"]["categories"][:]])[obs["cluster"]["codes"][:]]))
     for kind in ("direct", "extended"):

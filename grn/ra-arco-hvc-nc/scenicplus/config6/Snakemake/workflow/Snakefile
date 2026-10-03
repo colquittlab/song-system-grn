@@ -2,9 +2,20 @@
 
 configfile: "config/config.yaml"
 
+# Final target. Default: the merged scplusmdata.h5mu (~35 GB: it embeds the accessibility + expression object).
+# With `params_general: build_scplus_mudata: false` the workflow stops at the small per-config outputs (eRegulons,
+# AUCell, cistromes); the merged file is then assembled slim (no ACC/GEX matrices) locally by
+# analysis/assemble_slim_scplusmdata.py, so it never has to be written or transferred in full.
+if config["params_general"].get("build_scplus_mudata", True):
+    final_targets = [config["output_data"]["scplus_mdata"]]
+else:
+    final_targets = [config["output_data"][k] for k in (
+        "eRegulons_direct", "eRegulons_extended", "AUCell_direct", "AUCell_extended",
+        "cistromes_direct", "cistromes_extended")]
+
 rule all:
     input:
-        scplus_mudata_out_fname=config["output_data"]["scplus_mdata"]
+        final_targets
 
 # Prepare data
 if config["params_data_preparation"]["is_multiome"]:

@@ -6,3 +6,4 @@ config*/Snakemake/.snakemake/
 .pybiomart.sqlite
 *.sqlite
 *~
+__pycache__/
