@@ -99,6 +99,8 @@ def cistopic_obj_name(n):
 
 
 def region_sets_name(n):
+    if n in REGION_SET_VARIANT:
+        return REGION_SET_VARIANT[n]
     k = N_TOPICS.get(n)
     return f"region_sets_k{k}" if k else "region_sets"
 
@@ -151,7 +153,22 @@ CONFIGS[SWEEP_FIRST + SWEEP_N] = {"params_motif_enrichment": dict(SWEEP_CORNER)}
 
 # The sweep configs share config1's accessibility+expression object, search space and region-to-gene fit (the only slow,
 # motif-independent steps; see shared/ on prism, made by prepare_shared_upstream.sh) and skip the 35 GB merged file.
-SHARED_UPSTREAM = set(range(SWEEP_FIRST, SWEEP_FIRST + SWEEP_N + 1))
+# config29-33: does removing interneuron region sets from motif enrichment change the homeodomain eRegulons?
+# For homeodomain TFs (ALX4, EMX2, LHX2, ...) the cistrome regions peak in GABA-LGE although the target genes peak where the
+# TF is expressed, because the shared homeodomain motif is enriched in the GABA region sets. These remove those sets (folders
+# from pycisTopic/make_region_set_variants.py). Each arm runs at config1's strict thresholds and at config11's loose ones
+# (where AR, ALX4 and others appear); everything else, including the cisTopic object and expression, is config1's.
+#   noGABA  all 9 GABA DAR sets + topics 1, 15, 20          noLGE  GABA-LGE-1 and -2 DAR sets + Topic20
+#   ctrl    size-matched random removal of non-GABA, non-focal sets (at config1's thresholds only)
+REGION_SET_VARIANT = {29: "region_sets_noGABA", 30: "region_sets_noGABA", 31: "region_sets_noLGE", 32: "region_sets_noLGE",
+                      33: "region_sets_ctrl"}
+CONFIGS[29] = {}
+CONFIGS[30] = {k: dict(v) for k, v in CONFIGS[11].items()}
+CONFIGS[31] = {}
+CONFIGS[32] = {k: dict(v) for k, v in CONFIGS[11].items()}
+CONFIGS[33] = {}
+
+SHARED_UPSTREAM = set(range(SWEEP_FIRST, SWEEP_FIRST + SWEEP_N + 1)) | set(REGION_SET_VARIANT)
 
 
 def merged(overrides):
@@ -297,12 +314,15 @@ def write_parameter_table():
         row["gex_anndata"] = GEX_ANNDATA.get(n, GEX_DEFAULT)
         row["n_topics"] = N_TOPICS.get(n, N_TOPICS_DEFAULT)
         row["shared_upstream"] = "yes" if n in SHARED_UPSTREAM else "no"
+        row["region_sets"] = region_sets_name(n)
         changed = [k for section in BASE_PARAMS for k, v in p[section].items()
                    if v != merged(CONFIGS[1])[section][k]]
         if row["gex_anndata"] != GEX_DEFAULT:
             changed.append("gex_anndata")
         if row["n_topics"] != N_TOPICS_DEFAULT:
             changed.append("n_topics")
+        if n in REGION_SET_VARIANT:
+            changed.append("region_sets")
         row["changed_from_config1"] = ",".join(changed) or "-"
         rows.append(row)
     cols = list(rows[0])
