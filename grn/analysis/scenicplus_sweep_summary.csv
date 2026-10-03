@@ -10,3 +10,5 @@ config8,266,240,26,176,142.5,71363,0.449,0.365,"direct +/+ (355), extended +/+ (
 config9,261,220,41,152,140.0,74647,0.542,0.366,direct +/+ (354),-,extended_annotation
 config10,192,166,26,113,128.0,47791,0.708,0.554,extended +/+ (341),-,"search_space_upstream,search_space_downstream"
 config11,241,214,27,151,125.0,61553,0.439,0.316,extended +/+ (301),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config12,333,234,99,164,96.5,26006,0.432,0.125,"direct +/+ (259), direct -/- (71), extended +/+ (203), extended -/- (80)",direct +/+ (64),gex_anndata
+config13,312,219,93,149,75.0,18928,0.475,0.103,"direct +/+ (215), direct -/- (84), extended +/+ (172), extended -/- (69)",direct +/+ (43),"motif_similarity_fdr,ctx_rank_threshold,gex_anndata"
