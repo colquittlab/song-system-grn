@@ -81,6 +81,25 @@ CONFIGS = {
 GEX_DEFAULT = "adata.h5ad"
 GEX_ANNDATA = {12: "adata_doublenorm.h5ad", 13: "adata_doublenorm.h5ad"}
 
+# config14/15: number of LDA topics (the hand-picked step in pycisTopic.ipynb; 20 everywhere else). Same parameters and
+# raw-count input as config1. Each topic count has its own cisTopic object (the selected model drives the imputed
+# accessibility SCENIC+ builds from it) and its own region sets (topic sets and the DARs, which are computed from that
+# model's imputed accessibility). Both made from the already-trained models by pycisTopic/pycistopic_topic_k.py.
+CONFIGS[14] = {}
+CONFIGS[15] = {}
+N_TOPICS = {14: 15, 15: 30}
+N_TOPICS_DEFAULT = 20
+
+
+def cistopic_obj_name(n):
+    k = N_TOPICS.get(n)
+    return f"cistopic_obj_glut_k{k}.pkl" if k else "cistopic_obj_glut.pkl"
+
+
+def region_sets_name(n):
+    k = N_TOPICS.get(n)
+    return f"region_sets_k{k}" if k else "region_sets"
+
 
 def merged(overrides):
     out = {k: dict(v) for k, v in BASE_PARAMS.items()}
@@ -100,9 +119,9 @@ def render(n, overrides):
     py = f"{PRISM_ROOT}/pycisTopic"
     me, dp = p["params_motif_enrichment"], p["params_data_preparation"]
     lines = f"""input_data:
-  cisTopic_obj_fname: "{py}/cistopic_obj_glut.pkl"
+  cisTopic_obj_fname: "{py}/{cistopic_obj_name(n)}"
   GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/{GEX_ANNDATA.get(n, GEX_DEFAULT)}"
-  region_set_folder: "{py}/region_sets"
+  region_set_folder: "{py}/{region_sets_name(n)}"
   ctx_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.rankings.feather"
   dem_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.scores.feather"
   path_to_motif_annotations: "{MOTIF_ANNOT}"
@@ -214,10 +233,13 @@ def write_parameter_table():
         for section in BASE_PARAMS:
             row.update(p[section])
         row["gex_anndata"] = GEX_ANNDATA.get(n, GEX_DEFAULT)
+        row["n_topics"] = N_TOPICS.get(n, N_TOPICS_DEFAULT)
         changed = [k for section in BASE_PARAMS for k, v in p[section].items()
                    if v != merged(CONFIGS[1])[section][k]]
         if row["gex_anndata"] != GEX_DEFAULT:
             changed.append("gex_anndata")
+        if row["n_topics"] != N_TOPICS_DEFAULT:
+            changed.append("n_topics")
         row["changed_from_config1"] = ",".join(changed) or "-"
         rows.append(row)
     cols = list(rows[0])
