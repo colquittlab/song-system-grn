@@ -40,7 +40,10 @@ FS_GENES = {
     "fast AMPA/NMDA": ["GRIA1", "GRIA4", "GRIN2A"],
     "interneuron identity": ["ERBB4", "LHX6", "SOX6", "NKX2-1", "GAD1", "GAD2"],
 }
-FS_FLAT = [g for v in FS_GENES.values() for g in v]
+# Several classic FS genes carry no symbol in lonStrDom2 (NCBI names them LOCxxxx); see fs_gene_aliases_lonStrDom2.tsv
+# (mapped by sequence similarity and synteny against the newer ASM5065582v1 assembly).
+ALIASES = dict(pd.read_csv(HERE / "fs_gene_aliases_lonStrDom2.tsv", sep="\t")[["symbol", "lonStrDom2_gene"]].values)
+FS_FLAT = [g for v in FS_GENES.values() for g in v] + list(ALIASES.values())
 PARAMS = ["ctx_nes_threshold", "ctx_auc_threshold", "ctx_rank_threshold", "dem_adj_pval_thr", "dem_log2fc_thr", "motif_similarity_fdr"]
 
 P = pd.read_csv(HERE.parent / "ra-arco-hvc-nc/scenicplus/config_parameters.tsv", sep="\t").set_index("config")
@@ -105,13 +108,16 @@ print(f"\nMAFB target membership across {N} correct-input configs (and the 2 leg
 print(f"{'gene':8s} {'any':>4s} {'+/+':>4s} {'+/-':>4s} {'direct':>6s} {'legacy':>6s}   {'z RA':>5s} {'z PV':>5s}  group")
 for grp, gl in FS_GENES.items():
     for gene in gl:
+        label = gene
+        if gene not in EX.columns and gene in ALIASES:
+            gene = ALIASES[gene]                      # symbol absent in lonStrDom2: use its LOC id
         r = genes[genes.Gene == gene]
         if gene not in EX.columns:
-            print(f"{gene:8s}  (not in the finch gene set / expression matrix)  {grp}")
+            print(f"{label:8s}  (not in the finch gene set / expression matrix)  {grp}")
             continue
         r = r.iloc[0] if len(r) else None
         n = (int(r.n_configs), int(r.n_pp), int(r.n_pm), int(r.n_direct), int(r.in_legacy)) if r is not None else (0, 0, 0, 0, 0)
-        print(f"{gene:8s} {n[0]:4d} {n[1]:4d} {n[2]:4d} {n[3]:6d} {n[4]:6d}   {Zx.loc[RA, gene]:5.1f} {Zx.loc[PV, gene].mean():5.1f}  {grp}")
+        print(f"{label:8s} {n[0]:4d} {n[1]:4d} {n[2]:4d} {n[3]:6d} {n[4]:6d}   {Zx.loc[RA, gene]:5.1f} {Zx.loc[PV, gene].mean():5.1f}  {grp}" + (f"  [= {gene}]" if gene != label else ""))
 
 # 4. what explains inclusion across configs? parameters and MAFB regulon size
 X = P.loc[assoc, PARAMS].astype(float)
@@ -176,17 +182,18 @@ for n in (1, 2, 16, 17, 18, 19, 21, 23, 24, 25, 26):
 # (tfs.txt, 482-669 TFs), so the importance rank moves; inclusion is a rank cutoff inside that ranking.
 print("\nInclusion vs TF-to-gene importance percentile (lower = more strongly predicted by MAFB), configs with the table:")
 rows7 = []
-for n in (1, 2, 16, 17, 18, 19, 21, 23, 24, 25, 26):
+for n in (1, 2) + tuple(range(16, 29)):
     cfg = f"config{n}"
     adj = pd.read_csv(RES / cfg / "outs" / "tf_to_gene_adj.tsv", sep="\t")
     adj = adj[adj.TF == "MAFB"].sort_values("importance", ascending=False).reset_index(drop=True)
     inc = set(mem[mem.config == cfg].Gene)
     r = {"config": cfg, "candidate_TFs": sum(1 for line in open(RES / cfg / "outs" / "tfs.txt") if line.strip())}
     for gene in ("PVALB", "KCNC1"):
-        r[f"{gene}_pct"] = round(100 * (adj.index[adj.target == gene][0] + 1) / len(adj), 1)
+        hit = adj.index[adj.target == gene]
+        r[f"{gene}_pct"] = round(100 * (hit[0] + 1) / len(adj), 1) if len(hit) else np.nan   # nan: gene not scored for MAFB
         r[f"{gene}_included"] = gene in inc
     rows7.append(r)
-d7 = pd.DataFrame(rows7).sort_values("KCNC1_pct")
+d7 = pd.DataFrame(rows7).dropna(subset=["PVALB_pct", "KCNC1_pct"]).sort_values("KCNC1_pct")
 print(d7.to_string(index=False))
 for gene in ("PVALB", "KCNC1"):
     i, o = d7[d7[f"{gene}_included"]][f"{gene}_pct"], d7[~d7[f"{gene}_included"]][f"{gene}_pct"]
