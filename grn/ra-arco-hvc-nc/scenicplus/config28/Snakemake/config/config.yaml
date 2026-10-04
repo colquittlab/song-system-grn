@@ -31,6 +31,7 @@ params_general:
   n_cpu: 40
   seed: 666
   build_scplus_mudata: False
+  n_cpu_motif: 12
 
 params_data_preparation:
   bc_transform_func: "\"lambda x: f'{x}'\""

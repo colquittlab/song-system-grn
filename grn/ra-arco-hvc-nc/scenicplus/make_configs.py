@@ -170,6 +170,10 @@ CONFIGS[33] = {}
 
 SHARED_UPSTREAM = set(range(SWEEP_FIRST, SWEEP_FIRST + SWEEP_N + 1)) | set(REGION_SET_VARIANT)
 
+# Workers for the motif-enrichment steps only. The sweep configs with ctx_rank_threshold >= 0.35 (20, 22, 27, 28) were
+# OOM-killed at 40 workers / 600G (all 9 with rank <= 0.34 finished), so they run these steps with fewer.
+N_CPU_MOTIF = {n: 12 for n, o in CONFIGS.items() if o.get("params_motif_enrichment", {}).get("ctx_rank_threshold", 0) >= 0.35}
+
 
 def merged(overrides):
     out = {k: dict(v) for k, v in BASE_PARAMS.items()}
@@ -189,6 +193,8 @@ def render(n, overrides):
     tmp = f"{PRISM_ROOT}/scenicplus/config{n}/tmp"
     py = f"{PRISM_ROOT}/pycisTopic"
     me, dp = p["params_motif_enrichment"], p["params_data_preparation"]
+    pg_extra = ("\n  build_scplus_mudata: False" if n in SHARED_UPSTREAM else "") + \
+               (f"\n  n_cpu_motif: {N_CPU_MOTIF[n]}" if n in N_CPU_MOTIF else "")
     lines = f"""input_data:
   cisTopic_obj_fname: "{py}/{cistopic_obj_name(n)}"
   GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/{GEX_ANNDATA.get(n, GEX_DEFAULT)}"
@@ -220,7 +226,7 @@ output_data:
 params_general:
   temp_dir: "{tmp}"
   n_cpu: {N_CPU}
-  seed: 666{"" if n not in SHARED_UPSTREAM else chr(10) + "  build_scplus_mudata: False"}
+  seed: 666{pg_extra}
 
 params_data_preparation:
   bc_transform_func: "\\"lambda x: f'{{x}}'\\""

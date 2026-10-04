@@ -58,6 +58,9 @@ else:
                 --nr_cells_per_metacells {params.nr_cells_per_metacells}
             """
 
+# The motif-enrichment steps can be given fewer workers than the rest (params_general: n_cpu_motif). Their peak memory
+# grows with the number of parallel workers and with ctx_rank_threshold (more regions count as motif hits), and the
+# sweep configs with rank >= 0.35 were OOM-killed at 40 workers. Results do not depend on the worker count.
 rule motif_enrichment_cistarget:
     input:
         region_set_folder=config["input_data"]["region_set_folder"],
@@ -77,7 +80,7 @@ rule motif_enrichment_cistarget:
         motif_similarity_fdr=lambda wildcards: config["params_motif_enrichment"]["motif_similarity_fdr"],
         orthologous_identity_threshold=lambda wildcards: config["params_motif_enrichment"]["orthologous_identity_threshold"],
         annotations_to_use=lambda wildcards: config["params_motif_enrichment"]["annotations_to_use"]
-    threads: config["params_general"]["n_cpu"]
+    threads: config["params_general"].get("n_cpu_motif", config["params_general"]["n_cpu"])
     shell:
         """
             scenicplus grn_inference motif_enrichment_cistarget \
@@ -126,7 +129,7 @@ if config["params_motif_enrichment"]["dem_balance_number_of_promoters"]:
             annotations_to_use=lambda wildcards: config["params_motif_enrichment"]["annotations_to_use"],
             seed=lambda wildcards: config["params_general"]["seed"],
             n_cpu=lambda wildcards: config["params_general"]["n_cpu"]
-        threads: config["params_general"]["n_cpu"]
+        threads: config["params_general"].get("n_cpu_motif", config["params_general"]["n_cpu"])
         shell:
             """
                 scenicplus grn_inference motif_enrichment_dem \
@@ -179,7 +182,7 @@ else:
             annotations_to_use=lambda wildcards: config["params_motif_enrichment"]["annotations_to_use"],
             seed=lambda wildcards: config["params_general"]["seed"],
             n_cpu=lambda wildcards: config["params_general"]["n_cpu"]
-        threads: config["params_general"]["n_cpu"]
+        threads: config["params_general"].get("n_cpu_motif", config["params_general"]["n_cpu"])
         shell:
             """
                 scenicplus grn_inference motif_enrichment_dem \
