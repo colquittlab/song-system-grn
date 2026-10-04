@@ -47,7 +47,8 @@ HERE = Path(__file__).resolve().parent
 B = ("/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/"
      "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/")
 RES = B + "results/"
-CONFIGS = [f"config{n}" for n in range(1, 14)]
+CONFIGS = sorted((q.name for q in Path(RES).glob("config*") if (q / "outs" / "scplusmdata.h5mu").exists()
+                  or (q / "outs" / "scplusmdata_slim.h5mu").exists()), key=lambda c: int(c[6:]))  # every config with results
 SWEEP = [f"config{n}" for n in range(1, 12)]
 RHO_PASS = 0.45
 PRESENT_MIN = 9  # of the 11 sweep configs

@@ -1206,9 +1206,14 @@ all_tfs = unique(unlist(lapply(results, function(x) {
   if (!is.null(x)) unique(x$ereg_sane$TF) else NULL
 })))
 
-cat("Generating TF UMAPs for", length(all_tfs), "TFs...\n")
-umap_dir_tfs = file.path(out_dir_base, "tf_umaps")
-plot_tf_umaps(obj, all_tfs, umap_dir_tfs)
+## Slow (two plots per TF, ~hundreds of TFs) and independent of the configs; params$tf_umaps = false skips it.
+if (is.null(params$tf_umaps) || isTRUE(params$tf_umaps)) {
+  cat("Generating TF UMAPs for", length(all_tfs), "TFs...\n")
+  umap_dir_tfs = file.path(out_dir_base, "tf_umaps")
+  plot_tf_umaps(obj, all_tfs, umap_dir_tfs)
+} else {
+  cat("Skipping TF UMAPs (params$tf_umaps = false)\n")
+}
 ```
 
 ## Summary
