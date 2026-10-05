@@ -1,0 +1,34 @@
+config,eRegulons,pos_eRegulons,neg_eRegulons,pos_TFs,median_targets_per_pos_eRegulon,pos_TF_gene_edges,TF_jaccard_vs_config1,edge_jaccard_vs_config1,MAFB,EMX2,changed_from_config1
+config1,199,180,19,121,143.5,52609,1.0,1.0,"direct +/+ (309), extended +/+ (316)",-,-
+config2,212,190,22,134,96.0,42285,0.624,0.482,"direct -/- (10), extended +/+ (264)",direct +/+ (38),"motif_similarity_fdr,ctx_rank_threshold"
+config3,203,181,22,128,113.0,48927,0.66,0.567,extended +/+ (287),-,ctx_rank_threshold
+config4,185,172,13,118,98.0,38979,0.615,0.483,extended +/+ (311),-,ctx_rank_threshold
+config5,209,183,26,128,144.0,54107,0.741,0.633,"direct +/+ (373), extended +/+ (382)",-,motif_similarity_fdr
+config6,218,192,26,136,196.0,65550,0.539,0.366,"direct +/+ (370), extended +/+ (366), extended -/- (13)",-,ctx_nes_threshold
+config7,223,198,25,132,136.0,60465,0.601,0.426,-,-,ctx_auc_threshold
+config8,266,240,26,176,142.5,71363,0.449,0.365,"direct +/+ (355), extended +/+ (407)",-,"dem_adj_pval_thr,dem_log2fc_thr"
+config9,261,220,41,152,140.0,74647,0.542,0.366,direct +/+ (354),-,extended_annotation
+config10,192,166,26,113,128.0,47791,0.708,0.554,extended +/+ (341),-,"search_space_upstream,search_space_downstream"
+config11,241,214,27,151,125.0,61553,0.439,0.316,extended +/+ (301),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config12,333,234,99,164,96.5,26006,0.432,0.125,"direct +/+ (259), direct -/- (71), extended +/+ (203), extended -/- (80)",direct +/+ (64),gex_anndata
+config13,312,219,93,149,75.0,18928,0.475,0.103,"direct +/+ (215), direct -/- (84), extended +/+ (172), extended -/- (69)",direct +/+ (43),"motif_similarity_fdr,ctx_rank_threshold,gex_anndata"
+config14,207,184,23,134,160.5,59459,0.555,0.371,"direct +/+ (245), direct -/- (15), extended +/+ (444)",-,n_topics
+config15,211,176,35,130,205.0,64906,0.569,0.334,extended +/+ (386),-,n_topics
+config16,230,201,29,143,190.0,72251,0.467,0.31,extended +/+ (358),-,"motif_similarity_fdr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config17,281,249,32,181,191.0,86606,0.367,0.28,"direct +/+ (333), extended +/+ (397)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config18,240,216,24,158,178.0,75294,0.492,0.31,extended +/+ (464),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config19,242,214,28,150,133.0,63703,0.514,0.336,extended +/+ (367),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config20,221,195,26,139,146.0,62770,0.595,0.398,extended +/+ (341),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config21,267,231,36,166,152.0,76210,0.428,0.305,"direct -/- (10), extended +/+ (267)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config22,260,233,27,168,188.0,80957,0.438,0.309,-,-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config23,246,222,24,160,123.5,64678,0.57,0.368,extended +/+ (438),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_rank_threshold"
+config24,250,222,28,161,225.0,92726,0.343,0.214,"direct -/- (11), extended +/+ (345)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config25,244,214,30,154,161.0,73586,0.562,0.38,"direct +/+ (347), extended +/+ (410)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config26,231,206,25,145,158.5,68143,0.511,0.33,"direct +/+ (305), extended +/+ (491)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config27,248,217,31,151,164.0,75968,0.478,0.315,extended +/+ (522),-,"dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config28,277,245,32,184,203.0,99327,0.344,0.213,extended +/+ (248),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold"
+config29,183,157,26,113,130.0,57529,0.539,0.447,-,-,region_sets
+config30,226,200,26,145,108.5,58551,0.43,0.299,-,-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,region_sets"
+config31,204,184,20,130,125.5,55422,0.651,0.447,"direct +/+ (337), extended +/+ (422)",-,region_sets
+config32,245,227,18,162,125.0,61072,0.444,0.329,extended +/+ (273),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,region_sets"
+config33,192,172,20,123,143.0,56141,0.574,0.46,"direct +/+ (500), extended +/+ (432)",-,region_sets

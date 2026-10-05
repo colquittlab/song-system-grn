@@ -1,0 +1,16 @@
+TF,sign,n_present,n_configs,configs
+AR,any,17,24,config1 config3 config5 config6 config7 config8 config9 config10 config11 config16 config18 config19 config20 config21 config25 config26 config28
+AR,+/+,12,24,config6 config7 config8 config10 config11 config16 config18 config20 config21 config25 config26 config28
+AR,+/-,12,24,config1 config3 config5 config6 config7 config8 config9 config10 config16 config18 config19 config20
+ALX4,any,21,24,config1 config2 config3 config5 config6 config7 config8 config9 config10 config11 config16 config17 config18 config19 config20 config21 config23 config25 config26 config27 config28
+ALX4,+/+,7,24,config6 config7 config8 config9 config23 config25 config28
+ALX4,+/-,20,24,config1 config2 config3 config5 config6 config7 config8 config9 config10 config11 config16 config17 config18 config19 config20 config21 config23 config25 config26 config27
+EMX2,any,16,24,config2 config4 config6 config7 config9 config11 config17 config18 config19 config20 config21 config22 config24 config25 config26 config28
+EMX2,+/+,1,24,config2
+EMX2,+/-,16,24,config2 config4 config6 config7 config9 config11 config17 config18 config19 config20 config21 config22 config24 config25 config26 config28
+LHX2,any,23,24,config1 config2 config3 config4 config5 config6 config7 config8 config9 config10 config16 config17 config18 config19 config20 config21 config22 config23 config24 config25 config26 config27 config28
+LHX2,+/+,22,24,config1 config2 config3 config4 config5 config6 config7 config8 config9 config10 config16 config17 config18 config20 config21 config22 config23 config24 config25 config26 config27 config28
+LHX2,+/-,7,24,config6 config8 config19 config21 config22 config26 config27
+MAFB,any,24,24,config1 config2 config3 config4 config5 config6 config7 config8 config9 config10 config11 config16 config17 config18 config19 config20 config21 config22 config23 config24 config25 config26 config27 config28
+MAFB,+/+,22,24,config1 config2 config3 config4 config5 config6 config8 config9 config10 config11 config16 config17 config18 config19 config20 config21 config23 config24 config25 config26 config27 config28
+MAFB,+/-,23,24,config1 config2 config3 config4 config5 config6 config7 config8 config9 config10 config11 config16 config17 config18 config19 config20 config21 config22 config23 config25 config26 config27 config28
