@@ -23,6 +23,9 @@ PRISM_ROOT = ("/private/groups/colquittlab/scenicplus/motor-pathway_multiome/"
               "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid")
 CISTARGET_DIR = "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering"  # existing DB, unchanged
 CISTARGET_PREFIX = "ra-arco-hvc-nc_seurat-clustering"
+# Database built on the current (2026-10-05) consensus regions by cisTarget/create_cistarget_db_hybrid.sh; configs 36-39.
+CISTARGET_HYBRID_DIR = "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid"
+CISTARGET_HYBRID_PREFIX = "ra-arco-hvc-nc_hybrid"
 MOTIF_ANNOT = ("/private/groups/colquittlab/scenicplus/v10nr_clust_public/snapshots/"
                "motifs-v10-nr.hgnc-m0.00001-o0.0.tbl")
 N_CPU = 40
@@ -187,6 +190,26 @@ def shared_outs(n):
     return f"{PRISM_ROOT}/scenicplus/{SHARED_DIR.get(n, 'shared')}/outs"
 
 
+# config36-39: the same 40-topic object, but motif enrichment against a cisTarget database built on its own consensus regions
+# (CISTARGET_HYBRID_*), so no region is dropped or shifted by the 40 % overlap match that 34/35 depend on, and with the
+# song-pair DARs either absent (36, 38) or recomputed with ArchR's bias-matched test on the same regions (37, 39; the pycisTopic
+# ones ranked imputed accessibility, which called DARs from topics the foreground barely uses -- see
+# pycisTopic/make_song_pair_dars_archr.R). Strict (config1) thresholds in 36/37, loose (config11) in 38/39. Reading them:
+#   36 vs 34   effect of the database / consensus alone      37 vs 36   effect of the ArchR song-pair DARs
+# ACC_GEX, search space and region-to-gene depend only on the cisTopic object and expression, which these share with config34,
+# so all four reuse shared_k40/ and skip the 3.5 h region-to-gene fit.
+CONFIGS[36] = {}
+CONFIGS[37] = {}
+CONFIGS[38] = {k: dict(v) for k, v in CONFIGS[11].items()}
+CONFIGS[39] = {k: dict(v) for k, v in CONFIGS[11].items()}
+N_TOPICS.update({36: 40, 37: 40, 38: 40, 39: 40})
+NO_SONG_PAIRS |= {36, 38}
+REGION_SET_VARIANT.update({37: "region_sets_k40_archr", 39: "region_sets_k40_archr"})
+CISTARGET_HYBRID = {36, 37, 38, 39}
+SHARED_UPSTREAM |= CISTARGET_HYBRID
+SHARED_DIR.update({n: "shared_k40" for n in CISTARGET_HYBRID})
+
+
 # Workers for the motif-enrichment steps only. The sweep configs with ctx_rank_threshold >= 0.35 (20, 22, 27, 28) were
 # OOM-killed at 40 workers / 600G (all 9 with rank <= 0.34 finished), so they run these steps with fewer.
 N_CPU_MOTIF = {n: 12 for n, o in CONFIGS.items() if o.get("params_motif_enrichment", {}).get("ctx_rank_threshold", 0) >= 0.35}
@@ -210,14 +233,15 @@ def render(n, overrides):
     tmp = f"{PRISM_ROOT}/scenicplus/config{n}/tmp"
     py = f"{PRISM_ROOT}/pycisTopic"
     me, dp = p["params_motif_enrichment"], p["params_data_preparation"]
+    db_dir, db_prefix = (CISTARGET_HYBRID_DIR, CISTARGET_HYBRID_PREFIX) if n in CISTARGET_HYBRID else (CISTARGET_DIR, CISTARGET_PREFIX)
     pg_extra = ("\n  build_scplus_mudata: False" if n in SHARED_UPSTREAM else "") + \
                (f"\n  n_cpu_motif: {N_CPU_MOTIF[n]}" if n in N_CPU_MOTIF else "")
     lines = f"""input_data:
   cisTopic_obj_fname: "{py}/{cistopic_obj_name(n)}"
   GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/{GEX_ANNDATA.get(n, GEX_DEFAULT)}"
   region_set_folder: "{py}/{region_sets_name(n)}"
-  ctx_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.rankings.feather"
-  dem_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.scores.feather"
+  ctx_db_fname: "{db_dir}/{db_prefix}.regions_vs_motifs.rankings.feather"
+  dem_db_fname: "{db_dir}/{db_prefix}.regions_vs_motifs.scores.feather"
   path_to_motif_annotations: "{MOTIF_ANNOT}"
 
 output_data:
