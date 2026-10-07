@@ -20,7 +20,8 @@ The database directory holds the inputs and receives the outputs, so nothing nee
     consensus_regions.bed           the regions the database is built on
     motifs.txt                      the 10,249 Cluster-Buster motif files to score
     singletons/                     those motif files (42 MB)
-    tools/                          create_cisTarget_databases scripts + a static cbust binary (3 MB)
+    tools/                          create_cisTarget_databases scripts, a static cbust binary and a copy of the pure-python
+                                    flatbuffers package (3.7 MB); prism's scenicplus env does not have flatbuffers
     prism/                          these scripts
 ```
 
@@ -28,7 +29,8 @@ Built from the local copy at `/hdd/jupyter/brad/scenicplus/cistarget/ra-arco-hvc
 
 ## Run
 
-On prism (the `scenicplus` conda env needs only numpy, pandas and pyarrow; `cbust` is bundled):
+On prism (the `scenicplus` conda env needs numpy, pandas, pyarrow and numba; `cbust` and `flatbuffers` are bundled, and
+`score_part.sh` checks the imports first):
 
 ```
 rclone copy -vP --exclude build.log lark:/hdd/jupyter/brad/scenicplus/cistarget/ra-arco-hvc-nc_hybrid \

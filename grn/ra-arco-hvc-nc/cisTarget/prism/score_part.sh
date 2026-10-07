@@ -15,6 +15,11 @@ PREFIX="${CT_PREFIX:-ra-arco-hvc-nc_hybrid}"
 FASTA="${CT_FASTA:-$ROOT/lonStrDom2_1kb_bg_padding.fa}"
 MOTIFS="${CT_MOTIFS:-$ROOT/motifs.txt}"
 
+# Fail in seconds, not after queueing, if the active python lacks something the scripts import. tools/ carries its own copy of
+# flatbuffers (pure python; prism's scenicplus env does not have it); numpy, pandas, pyarrow and numba must come from the env.
+(cd "$ROOT/tools" && python -c "import numpy, pandas, pyarrow, numba, cistarget_db") \
+    || { echo "python cannot import what the cisTarget scripts need (numpy, pandas, pyarrow, numba, tools/); is the scenicplus env active?" >&2; exit 1; }
+
 mkdir -p "$ROOT/partial"
 marker="$ROOT/partial/part_${PART}_of_${NPARTS}.done"
 if [ -e "$marker" ]; then echo "part $PART/$NPARTS already done"; exit 0; fi
