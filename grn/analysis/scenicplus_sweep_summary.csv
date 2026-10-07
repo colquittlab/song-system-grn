@@ -32,3 +32,5 @@ config30,226,200,26,145,108.5,58551,0.43,0.299,-,-,"motif_similarity_fdr,dem_adj
 config31,204,184,20,130,125.5,55422,0.651,0.447,"direct +/+ (337), extended +/+ (422)",-,region_sets
 config32,245,227,18,162,125.0,61072,0.444,0.329,extended +/+ (273),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,region_sets"
 config33,192,172,20,123,143.0,56141,0.574,0.46,"direct +/+ (500), extended +/+ (432)",-,region_sets
+config34,206,180,26,122,221.5,80775,0.519,0.304,"direct +/+ (295), extended +/+ (368)",-,"n_topics,region_sets"
+config35,270,245,25,173,160.0,76800,0.4,0.286,"direct +/+ (396), extended +/+ (298)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,n_topics,region_sets"
