@@ -7,7 +7,9 @@
 # otherwise matched to the old regions by the 40 % overlap rule and 14 % of them get no motif scores.
 #
 # Same recipe as create_cistarget_db.sh (1 kb padded background, v10nr_clust singletons, Cluster-Buster), nothing else.
-# Runs locally: ~20.5k motifs x 499k regions. Needs ~60 GB of disk for the three feather files.
+# Single-pass version. Scoring takes ~19 h on 40 cores, so it cannot finish inside one 2 h local background job (the first
+# attempt, at 1,036 of 10,249 motifs, was stopped by that limit and kept nothing): use prism/ (parts + combine) instead, or run
+# this from your own shell. Needs ~60 GB of disk for the three feather files.
 #
 #   nohup ./create_cistarget_db_hybrid.sh > build.log 2>&1 &
 #
