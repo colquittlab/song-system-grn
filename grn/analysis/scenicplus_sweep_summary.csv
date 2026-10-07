@@ -34,3 +34,7 @@ config32,245,227,18,162,125.0,61072,0.444,0.329,extended +/+ (273),-,"motif_simi
 config33,192,172,20,123,143.0,56141,0.574,0.46,"direct +/+ (500), extended +/+ (432)",-,region_sets
 config34,206,180,26,122,221.5,80775,0.519,0.304,"direct +/+ (295), extended +/+ (368)",-,"n_topics,region_sets"
 config35,270,245,25,173,160.0,76800,0.4,0.286,"direct +/+ (396), extended +/+ (298)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,n_topics,region_sets"
+config36,213,183,30,123,195.0,68089,0.516,0.316,extended +/+ (426),-,"n_topics,region_sets"
+config37,214,183,31,123,195.0,68400,0.506,0.316,extended +/+ (459),-,"n_topics,region_sets"
+config38,218,206,12,147,175.5,67430,0.374,0.259,"direct +/+ (311), extended +/+ (351)",-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,n_topics,region_sets"
+config39,218,205,13,146,170.0,66582,0.383,0.26,extended +/+ (241),-,"motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold,ctx_rank_threshold,n_topics,region_sets"
