@@ -26,7 +26,8 @@ SETS_IN <- file.path(STORE, "pycisTopic/region_sets_k40")
 SETS_OUT <- file.path(STORE, "pycisTopic/region_sets_k40_archr")
 THREADS <- as.integer(Sys.getenv("THREADS", "8"))
 ## foreground is the first element; only regions MORE accessible in the foreground are kept, as in the pycisTopic version
-CONTRASTS <- list(c("Glut-CACNA1H-RA", "Glut-CACNA1H-1"), c("Glut-CACNA1H-RA", "Glut-CACNA1H-2"), c("Glut-DACH2-HVCra", "Glut-DACH2-HVCx"))
+## each song cell type against its non-song counterpart: RA vs CACNA1H-1, HVCra vs DACH2-1, HVCx vs DACH2-4
+CONTRASTS <- list(c("Glut-CACNA1H-RA", "Glut-CACNA1H-1"), c("Glut-DACH2-HVCra", "Glut-DACH2-1"), c("Glut-DACH2-HVCx", "Glut-DACH2-4"))
 CUTOFF <- "FDR <= 0.05 & Log2FC >= 0.585"   # the pycisTopic run used adjusted p <= 0.05 and log2FC >= log2(1.5)
 
 addArchRThreads(threads = THREADS)
@@ -61,6 +62,8 @@ message("peak set: ", length(getPeakSet(proj)), " regions")
 proj <- add_cluster_hybrid(proj)
 proj$cluster_hybrid <- as.character(proj$cluster_hybrid)   # getMarkerFeatures errors on a factor
 dir.create(file.path(SETS_OUT, "DARs_song-pairs"), recursive = TRUE, showWarnings = FALSE)
+## only the current contrasts may be in the folder: SCENIC+ runs motif enrichment on every .bed in it
+unlink(list.files(file.path(SETS_OUT, "DARs_song-pairs"), pattern = "\\.bed$", full.names = TRUE))
 summ <- list()
 for (p in CONTRASTS) {
   nm <- paste0(p[1], "_VS_", p[2])

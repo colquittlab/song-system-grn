@@ -16,10 +16,10 @@ depth = np.asarray(fm.sum(0)).ravel()
 rn = pd.Series(np.arange(len(o.region_names)), index=o.region_names)
 base = np.random.default_rng(1).choice(len(o.region_names), 20000, replace=False)
 rnd = np.asarray(det[base].mean(0)).ravel()
-focal = ["Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-DACH2-HVCra", "Glut-DACH2-HVCx"]
+focal = ["Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2", "Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-DACH2-1", "Glut-DACH2-4"]
 dm = (depth >= 10000) & (depth <= 40000)
 
-for fg, bg in (("Glut-CACNA1H-RA", "Glut-CACNA1H-1"), ("Glut-CACNA1H-RA", "Glut-CACNA1H-2"), ("Glut-DACH2-HVCra", "Glut-DACH2-HVCx")):
+for fg, bg in (("Glut-CACNA1H-RA", "Glut-CACNA1H-1"), ("Glut-DACH2-HVCra", "Glut-DACH2-1"), ("Glut-DACH2-HVCx", "Glut-DACH2-4")):
     name = f"{fg}_VS_{bg}"
     b = pd.read_csv(S + f"region_sets_k40_archr/DARs_song-pairs/{name}.bed", sep="\t", header=None, names=["c", "s", "e"])
     idx = rn.reindex(b.c + ":" + b.s.astype(str) + "-" + b.e.astype(str)).dropna().astype(int).values

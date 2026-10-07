@@ -1,4 +1,4 @@
 "contrast","n_fg_cells","n_bg_cells","cutoff","n_dars"
 "Glut-CACNA1H-RA_VS_Glut-CACNA1H-1",432,1381,"FDR <= 0.05 & Log2FC >= 0.585",27176
-"Glut-CACNA1H-RA_VS_Glut-CACNA1H-2",432,1414,"FDR <= 0.05 & Log2FC >= 0.585",41583
-"Glut-DACH2-HVCra_VS_Glut-DACH2-HVCx",1234,210,"FDR <= 0.05 & Log2FC >= 0.585",5917
+"Glut-DACH2-HVCra_VS_Glut-DACH2-1",1234,1409,"FDR <= 0.05 & Log2FC >= 0.585",61240
+"Glut-DACH2-HVCx_VS_Glut-DACH2-4",210,666,"FDR <= 0.05 & Log2FC >= 0.585",32216
