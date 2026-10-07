@@ -51,6 +51,7 @@ if (!"PeakMatrix" %in% getAvailableMatrices(proj) || !file.exists(file.path(PROJ
   mcols(gr)$name <- paste0(seqnames(gr), ":", start(gr) - 1L, "-", end(gr))
   proj <- addPeakSet(proj, peakSet = gr, force = TRUE)
   proj <- addPeakMatrix(proj, force = TRUE)
+  saveArchRProject(proj, load = FALSE)   # persist the new peak set; the markers read the matrix's own coordinates either way
   file.create(file.path(PROJ_COPY, "consensus_peakset_done"))
 }
 proj <- loadArchRProject(PROJ_COPY, showLogo = FALSE)
