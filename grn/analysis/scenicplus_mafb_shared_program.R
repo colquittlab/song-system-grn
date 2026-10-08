@@ -6,7 +6,7 @@
 # its null (random genes) is wide (r = 0.11 +/- 0.13), so it cannot show reuse. Here each gene gets a specificity z-score for RA and
 # for PVALB-2 across the other cell types, and the MAFB target set is compared with random gene sets MATCHED on mean expression and
 # on how broadly the gene is expressed (so "expressed in all neurons" does not count as shared):
-#   S1  number of targets with z > 1 in both        S2  mean z_RA * z_PVALB-2        S3  Spearman(z_RA, z_PVALB-2)
+#   S1  number of targets with z > 1 in both        S2  mean z_RA * z_partner        S3  Spearman(z_RA, z_partner)
 # z is computed across neuron clusters only (Glut-*/GABA-*), the stricter reference; the all-cluster version is also reported.
 # The same statistic is computed for every other TF's +/+ regulon, to see whether MAFB stands out or any large regulon does.
 #
@@ -16,7 +16,11 @@ set.seed(2026)
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 OBJ <- "/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2"
 HERE <- here::here("grn/analysis")
-RA <- "Glut-CACNA1H-RA"; PV <- "GABA-MGE-PVALB-2"
+RA <- "Glut-CACNA1H-RA"
+## partner cell type (default PVALB-2); other partners write files with a suffix, e.g. Rscript ... GABA-MGE-SST-1
+PV <- commandArgs(trailingOnly = TRUE)[1]; if (is.na(PV)) PV <- "GABA-MGE-PVALB-2"
+TAG <- gsub("-", "", sub("^GABA-MGE-", "", PV))
+SUF <- if (PV == "GABA-MGE-PVALB-2") "" else paste0("_vs_", TAG)
 NPERM <- 2000
 
 obj <- qs_read(OBJ, nthreads = 8)
@@ -27,7 +31,8 @@ rm(obj); invisible(gc())
 keep <- names(n_cells)[n_cells >= 50]
 avg <- avg[, intersect(colnames(avg), keep)]
 neu <- grep("^(Glut|GABA)-", colnames(avg), value = TRUE)
-cat("clusters:", ncol(avg), "| neuron clusters:", length(neu), "\n")
+stopifnot(PV %in% colnames(avg), RA %in% colnames(avg))
+cat("partner:", PV, "| clusters:", ncol(avg), "| neuron clusters:", length(neu), "\n")
 
 zs <- function(m) { s <- apply(m, 1, sd); s[s == 0] <- NA; (m - rowMeans(m)) / s }
 z_all <- zs(avg); z_neu <- zs(avg[, neu])
@@ -38,8 +43,8 @@ strata <- paste(cut(mu, quantile(mu, 0:10 / 10), include.lowest = TRUE, labels =
 names(strata) <- pool
 cat("expressed pool:", length(pool), "genes in", length(unique(strata)), "expression/breadth strata\n")
 write_csv(tibble(gene = pool, mean_expr_neurons = mu, sd_expr_neurons = sdv, stratum = strata,
-                 z_RA = z_neu[pool, RA], z_PVALB2 = z_neu[pool, PV], zall_RA = z_all[pool, RA], zall_PVALB2 = z_all[pool, PV],
-                 expr_RA = avg[pool, RA], expr_PVALB2 = avg[pool, PV]), file.path(OUT, "mafb_gene_specificity_RA_PVALB2.csv"))
+                 z_RA = z_neu[pool, RA], z_partner = z_neu[pool, PV], zall_RA = z_all[pool, RA], zall_partner = z_all[pool, PV],
+                 expr_RA = avg[pool, RA], expr_partner = avg[pool, PV]), file.path(OUT, paste0("mafb_gene_specificity_RA_", if (SUF == "") "PVALB2" else TAG, ".csv")))
 
 stat <- function(g, z) { a <- z[g, RA]; b <- z[g, PV]; c(S1 = sum(a > 1 & b > 1), S2 = mean(a * b), S3 = suppressWarnings(cor(a, b, method = "spearman"))) }
 enrich <- function(targets, z = z_neu, nperm = NPERM) {
@@ -78,14 +83,14 @@ res[["stable core (>=12 of 24 configs)"]] <- bind_cols(set = "stable core (>=12 
 # 3. same, all-cluster z (broader reference)
 res[["config1, z across all clusters"]] <- bind_cols(set = "config1, z across all clusters", enrich(mafb[["config1"]], z = z_all))
 tab <- bind_rows(res)
-write_csv(tab, file.path(HERE, "scenicplus_mafb_shared_program.csv"))
+write_csv(tab, file.path(HERE, paste0("scenicplus_mafb_shared_program", SUF, ".csv")))
 print(as.data.frame(tab %>% mutate(across(where(is.numeric), ~ round(.x, 3)))), row.names = FALSE)
 
 # 4. every other TF's +/+ regulon in config1: does MAFB stand out?
 d1 <- ldc("config1")
 sets <- d1 %>% group_by(TF) %>% summarise(genes = list(unique(Gene)), n = n_distinct(Gene)) %>% filter(n >= 50)
 ref <- map2_dfr(sets$TF, sets$genes, function(tf, g) { r <- enrich(g, nperm = 500); if (is.null(r)) NULL else bind_cols(TF = tf, r) })
-write_csv(ref, file.path(HERE, "scenicplus_shared_program_all_tfs_config1.csv"))
+write_csv(ref, file.path(HERE, paste0("scenicplus_shared_program_all_tfs_config1", SUF, ".csv")))
 cat("\nconfig1: MAFB vs", nrow(ref) - 1, "other TFs with >= 50 +/+ targets\n")
 for (m in c("S1_ratio", "S2_z", "S3_z")) cat(sprintf("  %s: MAFB %.2f, rank %d of %d (higher = more shared); other TFs median %.2f (IQR %.2f to %.2f)\n", m,
   ref[[m]][ref$TF == "MAFB"], rank(-ref[[m]])[ref$TF == "MAFB"], nrow(ref), median(ref[[m]][ref$TF != "MAFB"]),

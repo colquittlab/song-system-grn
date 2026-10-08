@@ -11,10 +11,11 @@ Regions are also split by what their linked gene does (specific in both / RA onl
 table) to ask whether the genes that ARE shared sit under shared regions. Regions are the 517k consensus of configs 1-33, read
 from the 30-topic cisTopic object (same regions and cells; only its fragment matrix is used).
 
-    python scenicplus_mafb_shared_regions.py
+    python scenicplus_mafb_shared_regions.py [partner cluster, default GABA-MGE-PVALB-2]
 """
 import pickle
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,10 @@ import scipy.sparse as sp
 HERE = Path(__file__).resolve().parent
 S = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/"
 OUT = Path("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/").expanduser()
-RA, PV = "Glut-CACNA1H-RA", "GABA-MGE-PVALB-2"
+RA = "Glut-CACNA1H-RA"
+PV = sys.argv[1] if len(sys.argv) > 1 else "GABA-MGE-PVALB-2"          # partner cell type; others write files with a suffix
+TAG = PV.replace("GABA-MGE-", "").replace("-", "")
+SUF = "" if PV == "GABA-MGE-PVALB-2" else f"_vs_{TAG}"
 NPERM = 2000
 rng = np.random.default_rng(2026)
 
@@ -34,7 +38,7 @@ fm = o.fragment_matrix.tocsr()
 regions = np.array(o.region_names)
 n_cells = pd.Series(cl).value_counts()
 clusters = [c for c in sorted(n_cells.index) if n_cells[c] >= 50 and re.match(r"^(Glut|GABA)-", c)]
-print("neuron clusters:", len(clusters), "| cells:", int(n_cells[clusters].sum()))
+print("partner:", PV, "| neuron clusters:", len(clusters), "| cells:", int(n_cells[clusters].sum()))
 onehot = sp.csr_matrix((np.ones(len(cl)), (np.arange(len(cl)), [clusters.index(c) if c in clusters else len(clusters) for c in cl])),
                        shape=(len(cl), len(clusters) + 1))[:, : len(clusters)]
 counts = (fm @ onehot).toarray().astype(np.float64)               # regions x clusters
@@ -96,12 +100,13 @@ for cfg in [f"config{n}" for n in list(range(1, 12)) + list(range(16, 29))]:
 print(pd.DataFrame(rows).round(3).to_string(index=False))
 
 # gene classes (from the R script): do shared genes sit under shared regions?
-g = pd.read_csv(OUT / "mafb_gene_specificity_RA_PVALB2.csv").set_index("gene")
+g = pd.read_csv(OUT / f"mafb_gene_specificity_RA_{'PVALB2' if SUF == '' else TAG}.csv").set_index("gene")
+g = g.rename(columns={"z_PVALB2": "z_partner", "expr_PVALB2": "expr_partner"})
 d1 = load("config1")
 m = d1[d1.TF == "MAFB"].drop_duplicates(["Gene", "Region"]).copy()
 m = m[m.Gene.isin(g.index)]
-za, zb = g.loc[m.Gene, "z_RA"].values, g.loc[m.Gene, "z_PVALB2"].values
-m["cls"] = np.select([(za > 1) & (zb > 1), (za > 1) & (zb <= 0), (zb > 1) & (za <= 0)], ["shared", "RA only", "PVALB-2 only"], "neither")
+za, zb = g.loc[m.Gene, "z_RA"].values, g.loc[m.Gene, "z_partner"].values
+m["cls"] = np.select([(za > 1) & (zb > 1), (za > 1) & (zb <= 0), (zb > 1) & (za <= 0)], ["shared", "RA only", "partner only"], "neither")
 print("\nconfig1 MAFB +/+ links by what the linked gene does (z across neuron clusters):")
 cls_rows = []
 for c, sub in m.groupby("cls"):
@@ -111,7 +116,7 @@ for c, sub in m.groupby("cls"):
         cls_rows.append(dict(gene_class=c, n_genes=sub.Gene.nunique(), **r))
         ixu = np.unique(ix[ok[ix]])
         cls_rows[-1]["frac_open_in_RA"] = (zra[ixu] > 1).mean()
-        cls_rows[-1]["frac_open_in_PVALB2"] = (zpv[ixu] > 1).mean()
+        cls_rows[-1]["frac_open_in_partner"] = (zpv[ixu] > 1).mean()
 cls = pd.DataFrame(cls_rows)
 print(cls.round(3).to_string(index=False))
 
@@ -124,15 +129,15 @@ mm = mm[ok[mm.rix.values]]
 mm["z_region_RA"], mm["z_region_PVALB2"] = zra[mm.rix.values], zpv[mm.rix.values]
 mm["open_both"] = (mm.z_region_RA > 1) & (mm.z_region_PVALB2 > 1)
 mm["z_gene_RA"] = g.reindex(mm.Gene).z_RA.values
-mm["z_gene_PVALB2"] = g.reindex(mm.Gene).z_PVALB2.values
+mm["z_gene_PVALB2"] = g.reindex(mm.Gene).z_partner.values
 both = mm[mm.open_both]
 print(f"\nconfig1: {both.Region.nunique()} MAFB regions open in both, linked to {both.Gene.nunique()} genes")
-print("  linked genes' own specificity (neuron z): RA median %.2f, PVALB-2 median %.2f; share with z>1 in RA %.2f, in PVALB-2 %.2f, both %.2f" % (
+print("  linked genes' own specificity (neuron z): RA median %.2f, partner median %.2f; share with z>1 in RA %.2f, in partner %.2f, both %.2f" % (
     both.z_gene_RA.median(), both.z_gene_PVALB2.median(), (both.z_gene_RA > 1).mean(), (both.z_gene_PVALB2 > 1).mean(),
     ((both.z_gene_RA > 1) & (both.z_gene_PVALB2 > 1)).mean()))
-gb = both.groupby("Gene").agg(n_open_both_regions=("Region", "nunique")).join(g[["z_RA", "z_PVALB2", "expr_RA", "expr_PVALB2"]])
+gb = both.groupby("Gene").agg(n_open_both_regions=("Region", "nunique")).join(g[["z_RA", "z_partner", "expr_RA", "expr_partner"]])
 print(gb.sort_values("n_open_both_regions", ascending=False).head(15).round(2).to_string())
-gb.sort_values("n_open_both_regions", ascending=False).to_csv(HERE / "scenicplus_mafb_genes_under_shared_regions.csv")
+gb.sort_values("n_open_both_regions", ascending=False).to_csv(HERE / f"scenicplus_mafb_genes_under_shared_regions{SUF}.csv")
 
 # reference: every other TF's +/+ regions in config1
 ref = []
@@ -149,6 +154,6 @@ for k in ("S1_ratio", "S2_z", "S3_z"):
     other = ref.loc[ref.TF != "MAFB", k]
     print(f"  {k}: MAFB {mf[k]:.2f}, rank {int((ref[k] > mf[k]).sum()) + 1} of {len(ref)}; others median {other.median():.2f} (IQR {other.quantile(.25):.2f} to {other.quantile(.75):.2f})")
 
-pd.DataFrame(rows).to_csv(HERE / "scenicplus_mafb_shared_regions.csv", index=False)
-cls.to_csv(HERE / "scenicplus_mafb_shared_regions_by_gene_class.csv", index=False)
-ref.to_csv(HERE / "scenicplus_shared_regions_all_tfs_config1.csv", index=False)
+pd.DataFrame(rows).to_csv(HERE / f"scenicplus_mafb_shared_regions{SUF}.csv", index=False)
+cls.to_csv(HERE / f"scenicplus_mafb_shared_regions_by_gene_class{SUF}.csv", index=False)
+ref.to_csv(HERE / f"scenicplus_shared_regions_all_tfs_config1{SUF}.csv", index=False)
