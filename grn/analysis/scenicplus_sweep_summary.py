@@ -3,7 +3,7 @@
 
 Reads <out_dir>/configN/scenicplus_eRegulons.txt for every config found, joins the swept parameters from
 scenicplus/config_parameters.tsv, and writes scenicplus_sweep_summary.csv next to this script (small, so
-tracked) and into out_dir. Overlap columns compare each config with config1.
+tracked) and into out_dir. Overlap columns compare each config with REF (config37).
 
     python scenicplus_sweep_summary.py [out_dir]
 """
@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else
            "~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all").expanduser()
 PARAMS = HERE.parent / "ra-arco-hvc-nc" / "scenicplus" / "config_parameters.tsv"
-REF = "config1"
+REF = "config37"   # main comparison config: 40 topics, new cisTarget database on the current consensus, ArchR song-pair DARs
 
 
 def load(cfg):

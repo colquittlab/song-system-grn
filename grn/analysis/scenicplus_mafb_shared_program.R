@@ -17,6 +17,7 @@ OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathwa
 OBJ <- "/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2"
 HERE <- here::here("grn/analysis")
 RA <- "Glut-CACNA1H-RA"
+MAIN <- "config37"   # main comparison config (40 topics, new cisTarget DB, ArchR song-pair DARs)
 ## partner cell type (default PVALB-2); other partners write files with a suffix, e.g. Rscript ... GABA-MGE-SST-1
 PV <- commandArgs(trailingOnly = TRUE)[1]; if (is.na(PV)) PV <- "GABA-MGE-PVALB-2"
 TAG <- gsub("-", "", sub("^GABA-MGE-", "", PV))
@@ -81,17 +82,17 @@ mem <- read_csv(file.path(HERE, "scenicplus_mafb_target_membership.csv"), show_c
 core <- mem$Gene[mem$n_pp >= 12]
 res[["stable core (>=12 of 24 configs)"]] <- bind_cols(set = "stable core (>=12 of 24 configs)", enrich(core))
 # 3. same, all-cluster z (broader reference)
-res[["config1, z across all clusters"]] <- bind_cols(set = "config1, z across all clusters", enrich(mafb[["config1"]], z = z_all))
+res[[paste0(MAIN, ", z across all clusters")]] <- bind_cols(set = paste0(MAIN, ", z across all clusters"), enrich(mafb[[MAIN]], z = z_all))
 tab <- bind_rows(res)
 write_csv(tab, file.path(HERE, paste0("scenicplus_mafb_shared_program", SUF, ".csv")))
 print(as.data.frame(tab %>% mutate(across(where(is.numeric), ~ round(.x, 3)))), row.names = FALSE)
 
-# 4. every other TF's +/+ regulon in config1: does MAFB stand out?
-d1 <- ldc("config1")
+# 4. every other TF's +/+ regulon in the main config: does MAFB stand out?
+d1 <- ldc(MAIN)
 sets <- d1 %>% group_by(TF) %>% summarise(genes = list(unique(Gene)), n = n_distinct(Gene)) %>% filter(n >= 50)
 ref <- map2_dfr(sets$TF, sets$genes, function(tf, g) { r <- enrich(g, nperm = 500); if (is.null(r)) NULL else bind_cols(TF = tf, r) })
-write_csv(ref, file.path(HERE, paste0("scenicplus_shared_program_all_tfs_config1", SUF, ".csv")))
-cat("\nconfig1: MAFB vs", nrow(ref) - 1, "other TFs with >= 50 +/+ targets\n")
+write_csv(ref, file.path(HERE, paste0("scenicplus_shared_program_all_tfs_", MAIN, SUF, ".csv")))
+cat("\n", MAIN, ": MAFB vs", nrow(ref) - 1, "other TFs with >= 50 +/+ targets\n")
 for (m in c("S1_ratio", "S2_z", "S3_z")) cat(sprintf("  %s: MAFB %.2f, rank %d of %d (higher = more shared); other TFs median %.2f (IQR %.2f to %.2f)\n", m,
   ref[[m]][ref$TF == "MAFB"], rank(-ref[[m]])[ref$TF == "MAFB"], nrow(ref), median(ref[[m]][ref$TF != "MAFB"]),
   quantile(ref[[m]][ref$TF != "MAFB"], .25), quantile(ref[[m]][ref$TF != "MAFB"], .75)))
