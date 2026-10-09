@@ -3,8 +3,8 @@
 # GABA-1 scatter (plot_deg_scatter in scenicplus_hybrid_all_template.qmd), with the contrasts from scenicplus_mafb_pvalb_vs_mafb_low_mge.R:
 #   x = RA vs C1H-1     y = PVALB-1 (or PVALB-2) vs the MAFB-low MGE type (LAMP5)
 # One point per target gene (the old plot used one row per region-gene link, which weights genes by their number of links). Color is
-# log TF2G importance (log of the TF-to-gene importance of MAFB -> gene in config37, the notebook's importance_log_TF2G), single-hue
-# sequential as the project's figure standard requires instead of viridis. Of the genes with log2FC > 1 in BOTH contrasts (a directional rule, no padj), the 10 with the largest smaller-of-the-two log2FC are labeled, plus KCNC1, ERBB4 and PVALB, plus genes with literature support for fast-spiking / PV-class roles (italic). Annotated with Pearson r and Spearman rho over the plotted genes.
+# log TF2G importance (log of the TF-to-gene importance of MAFB -> gene in config37, the notebook's importance_log_TF2G), viridis
+# (the project's standard calls for single-hue sequential; viridis was approved for this figure). Of the genes with log2FC > 1 in BOTH contrasts (a directional rule, no padj), the 10 with the largest smaller-of-the-two log2FC are labeled, plus KCNC1, ERBB4 and PVALB, plus genes with literature support for fast-spiking / PV-class roles (italic). Annotated with Pearson r and Spearman rho over the plotted genes.
 #
 #   Rscript scenicplus_mafb_onoff_scatter.R
 suppressMessages({library(tidyverse); library(ggrepel); library(here)})
@@ -49,7 +49,7 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
     geom_text_repel(data = d %>% filter(gene %in% labeled), aes(label = label, fontface = ifelse(gene %in% LIT_GENES, "italic", "plain")), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
                     segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.3, point.padding = 0.1, force = 2, max.time = 5, max.iter = 100000, max.overlaps = Inf, seed = 1) +
     annotate("text", x = min(d$x), y = max(d$y), label = lab, hjust = 0, vjust = 1, size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, lineheight = 0.95) +
-    scale_color_gradient(low = "#c6d8f0", high = "#0f3c78", name = "log TF2G\nimportance") +
+    scale_color_viridis_c(name = "log TF2G\nimportance") +
     scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) +
     labs(x = "log2 fold change, RA vs C1H-1", y = ylab) + theme_fig() +
     theme(aspect.ratio = 1, legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
