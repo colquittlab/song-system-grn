@@ -4,7 +4,7 @@
 #   x = RA vs C1H-1     y = PVALB-1 (or PVALB-2) vs the MAFB-low MGE type (LAMP5)
 # One point per target gene (the old plot used one row per region-gene link, which weights genes by their number of links). Color is
 # log TF2G importance (log of the TF-to-gene importance of MAFB -> gene in config37, the notebook's importance_log_TF2G), single-hue
-# sequential as the project's figure standard requires instead of viridis. The 15 genes farthest from the origin (Euclidean distance in log2FC) are labeled, plus KCNC1, MAF and ERBB4. Annotated with Pearson r and Spearman rho over the plotted genes.
+# sequential as the project's figure standard requires instead of viridis. Only genes up in BOTH contrasts (padj < 0.05 and log2FC > 0.25 in each) are labeled. Annotated with Pearson r and Spearman rho over the plotted genes.
 #
 #   Rscript scenicplus_mafb_onoff_scatter.R
 suppressMessages({library(tidyverse); library(ggrepel); library(here)})
@@ -13,8 +13,7 @@ fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
-LABEL_KEEP <- c("KCNC1", "MAF", "ERBB4")   # always labeled
-N_LABEL <- 15                              # plus the N genes farthest from the origin (Euclidean distance in log2FC space)
+UP_PADJ <- 0.05; UP_LFC <- 0.25   # a gene is "up in both" if padj < UP_PADJ and log2FC > UP_LFC in BOTH contrasts; only those genes are labeled
 
 W <- read_csv(file.path(HERE, paste0("scenicplus_mafb_pvalb_vs_mafb_low_mge_", MAIN, ".csv")), show_col_types = FALSE)
 imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%
@@ -25,12 +24,13 @@ D <- W %>% inner_join(imp, by = "gene")
 cat("targets plotted:", nrow(D), "of", nrow(W), "testable\n")
 
 make <- function(ycol, ylab, tag, min_abs = NULL) {
-  d <- D %>% transmute(gene, x = lfc_RA_vs_C1H1, y = .data[[paste0("lfc_", ycol)]], importance_log_TF2G) %>%
+  d <- D %>% transmute(gene, x = lfc_RA_vs_C1H1, y = .data[[paste0("lfc_", ycol)]], importance_log_TF2G,
+                       both = padj_RA_vs_C1H1 < UP_PADJ & lfc_RA_vs_C1H1 > UP_LFC & .data[[paste0("padj_", ycol)]] < UP_PADJ & .data[[paste0("lfc_", ycol)]] > UP_LFC) %>%
     filter(!is.na(x), !is.na(y))
   n_all <- nrow(d)
   if (!is.null(min_abs)) { d <- d %>% filter(abs(x) > min_abs | abs(y) > min_abs); tag <- paste0(tag, "_absLFC", min_abs) }   # drop genes with no |log2FC| > min_abs in either contrast
   r <- cor(d$x, d$y); rho <- cor(d$x, d$y, method = "spearman")
-  labeled <- union(d$gene[order(-sqrt(d$x^2 + d$y^2))][seq_len(min(N_LABEL, nrow(d)))], intersect(LABEL_KEEP, d$gene))
+  labeled <- d$gene[d$both]
   cat("  labeled:", paste(labeled, collapse = ", "), "\n")
   lab <- paste0("r = ", sprintf("%.2f", r), "\nρ = ", sprintf("%.2f", rho), "\nn = ", nrow(d), " genes")
   cat(sprintf("%s: n=%d, Pearson r=%.3f, Spearman rho=%.3f\n", tag, nrow(d), r, rho))
