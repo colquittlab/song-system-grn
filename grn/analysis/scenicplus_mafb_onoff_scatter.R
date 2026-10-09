@@ -53,13 +53,15 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
     scale_color_viridis_c(name = "log TF2G\nimportance") +
     scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) + coord_cartesian(clip = "off") +
     labs(x = "log2 fold change\nRA vs C1H-1", y = ylab) + theme_fig() +
-    theme(legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
+    theme(plot.background = element_blank(), panel.background = element_blank(), legend.background = element_blank(), legend.key = element_blank(), legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
   p <- egg::set_panel_size(p, width = unit(PANEL_IN, "in"), height = unit(PANEL_IN, "in"))   # the plotting region itself is PANEL_IN x PANEL_IN inches
   W <- PANEL_IN + 1.75; H <- PANEL_IN + 0.85
   fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = W, height = H)
+  # no background fill: fig_save's PNG is drawn on the theme's off-white surface, so rewrite it transparent (the PDF has no page fill)
+  ggsave(file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag, ".png")), p, width = W, height = H, dpi = 600, bg = "transparent")
   # Editable version: cairo_pdf puts all the data labels into ONE text object (an editor imports them as a single block), so also write an
   # SVG where every label is its own <text> element, in Arial (a live font, not outlines or embedded).
-  ggsave(file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag, ".svg")), p, width = W, height = H, bg = FIG_SURFACE,
+  ggsave(file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag, ".svg")), p, width = W, height = H, bg = "transparent",
          device = function(filename, width, height, ...) svglite::svglite(filename, width = width, height = height, system_fonts = list(sans = FIG_FONT), ...))
 }
 make("PV1_vs_low", "log2 fold change\nPVALB-1 vs LAMP5", "PVALB1_vs_LAMP5")
