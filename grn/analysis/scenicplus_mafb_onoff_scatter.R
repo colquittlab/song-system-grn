@@ -24,10 +24,12 @@ imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = co
 D <- W %>% inner_join(imp, by = "gene")
 cat("targets plotted:", nrow(D), "of", nrow(W), "testable\n")
 
-make <- function(ycol, ylab, tag) {
+make <- function(ycol, ylab, tag, min_abs = NULL) {
   d <- D %>% transmute(gene, x = lfc_RA_vs_C1H1, y = .data[[paste0("lfc_", ycol)]], importance_log_TF2G,
                        both = padj_RA_vs_C1H1 < 0.05 & lfc_RA_vs_C1H1 > 0.25 & .data[[paste0("padj_", ycol)]] < 0.05 & .data[[paste0("lfc_", ycol)]] > 0.25) %>%
     filter(!is.na(x), !is.na(y))
+  n_all <- nrow(d)
+  if (!is.null(min_abs)) { d <- d %>% filter(abs(x) > min_abs | abs(y) > min_abs); tag <- paste0(tag, "_absLFC", min_abs) }   # drop genes with no |log2FC| > min_abs in either contrast
   r <- cor(d$x, d$y); rho <- cor(d$x, d$y, method = "spearman")
   lab <- paste0("r = ", sprintf("%.2f", r), "\nρ = ", sprintf("%.2f", rho), "\nn = ", nrow(d), " genes")
   cat(sprintf("%s: n=%d, Pearson r=%.3f, Spearman rho=%.3f, up in both=%d\n", tag, nrow(d), r, rho, sum(d$both)))
@@ -46,3 +48,6 @@ make <- function(ycol, ylab, tag) {
 }
 make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5")
 make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5")
+# same plots keeping only genes with |log2FC| > 0.5 in at least one of the two contrasts
+make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5", min_abs = 0.5)
+make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5", min_abs = 0.5)
