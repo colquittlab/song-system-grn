@@ -4,7 +4,7 @@
 #   x = RA vs C1H-1     y = PVALB-1 (or PVALB-2) vs the MAFB-low MGE type (LAMP5)
 # One point per target gene (the old plot used one row per region-gene link, which weights genes by their number of links). Color is
 # log TF2G importance (log of the TF-to-gene importance of MAFB -> gene in config37, the notebook's importance_log_TF2G), single-hue
-# sequential as the project's figure standard requires instead of viridis. A fixed list of genes of interest is labeled. Annotated with Pearson r and Spearman rho over the plotted genes.
+# sequential as the project's figure standard requires instead of viridis. The 15 genes farthest from the origin (Euclidean distance in log2FC) are labeled, plus KCNC1, MAF and ERBB4. Annotated with Pearson r and Spearman rho over the plotted genes.
 #
 #   Rscript scenicplus_mafb_onoff_scatter.R
 suppressMessages({library(tidyverse); library(ggrepel); library(here)})
@@ -13,7 +13,8 @@ fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
-LABEL <- c("PVALB", "KCNC1", "MAFB", "MAF", "RUNX2", "KIAA1217", "ERBB4", "GRIP1", "NXPH1", "RSPO2", "CNTNAP2", "COL19A1", "PCSK5", "CHN2", "ELFN1", "SGCZ")
+LABEL_KEEP <- c("KCNC1", "MAF", "ERBB4")   # always labeled
+N_LABEL <- 15                              # plus the N genes farthest from the origin (Euclidean distance in log2FC space)
 
 W <- read_csv(file.path(HERE, paste0("scenicplus_mafb_pvalb_vs_mafb_low_mge_", MAIN, ".csv")), show_col_types = FALSE)
 imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%
@@ -29,12 +30,14 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
   n_all <- nrow(d)
   if (!is.null(min_abs)) { d <- d %>% filter(abs(x) > min_abs | abs(y) > min_abs); tag <- paste0(tag, "_absLFC", min_abs) }   # drop genes with no |log2FC| > min_abs in either contrast
   r <- cor(d$x, d$y); rho <- cor(d$x, d$y, method = "spearman")
+  labeled <- union(d$gene[order(-sqrt(d$x^2 + d$y^2))][seq_len(min(N_LABEL, nrow(d)))], intersect(LABEL_KEEP, d$gene))
+  cat("  labeled:", paste(labeled, collapse = ", "), "\n")
   lab <- paste0("r = ", sprintf("%.2f", r), "\nρ = ", sprintf("%.2f", rho), "\nn = ", nrow(d), " genes")
   cat(sprintf("%s: n=%d, Pearson r=%.3f, Spearman rho=%.3f\n", tag, nrow(d), r, rho))
   p <- ggplot(d, aes(x, y)) +
     geom_hline(yintercept = 0, linewidth = 0.3) + geom_vline(xintercept = 0, linewidth = 0.3) +
     geom_point(aes(color = importance_log_TF2G), size = 1, alpha = 0.9, stroke = 0) +
-    geom_text_repel(data = d %>% filter(gene %in% LABEL), aes(label = gene), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
+    geom_text_repel(data = d %>% filter(gene %in% labeled), aes(label = gene), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
                     segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.25, max.overlaps = Inf, seed = 1) +
     annotate("text", x = min(d$x), y = max(d$y), label = lab, hjust = 0, vjust = 1, size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, lineheight = 0.95) +
     scale_color_gradient(low = "#c6d8f0", high = "#0f3c78", name = "log TF2G\nimportance") +
