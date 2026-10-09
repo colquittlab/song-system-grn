@@ -55,7 +55,12 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
     labs(x = "log2 fold change\nRA vs C1H-1", y = ylab) + theme_fig() +
     theme(legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
   p <- egg::set_panel_size(p, width = unit(PANEL_IN, "in"), height = unit(PANEL_IN, "in"))   # the plotting region itself is PANEL_IN x PANEL_IN inches
-  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = PANEL_IN + 1.75, height = PANEL_IN + 0.85)
+  W <- PANEL_IN + 1.75; H <- PANEL_IN + 0.85
+  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = W, height = H)
+  # Editable version: cairo_pdf puts all the data labels into ONE text object (an editor imports them as a single block), so also write an
+  # SVG where every label is its own <text> element, in Arial (a live font, not outlines or embedded).
+  ggsave(file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag, ".svg")), p, width = W, height = H, bg = FIG_SURFACE,
+         device = function(filename, width, height, ...) svglite::svglite(filename, width = width, height = height, system_fonts = list(sans = FIG_FONT), ...))
 }
 make("PV1_vs_low", "log2 fold change\nPVALB-1 vs LAMP5", "PVALB1_vs_LAMP5")
 make("PV2_vs_low", "log2 fold change\nPVALB-2 vs LAMP5", "PVALB2_vs_LAMP5")
