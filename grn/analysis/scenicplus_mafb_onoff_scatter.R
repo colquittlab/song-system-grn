@@ -4,7 +4,7 @@
 #   x = RA vs C1H-1     y = PVALB-1 (or PVALB-2) vs the MAFB-low MGE type (LAMP5)
 # One point per target gene (the old plot used one row per region-gene link, which weights genes by their number of links). Color is
 # log TF2G importance (log of the TF-to-gene importance of MAFB -> gene in config37, the notebook's importance_log_TF2G), single-hue
-# sequential as the project's figure standard requires instead of viridis. Only genes up in BOTH contrasts (padj < 0.05 and log2FC > 0.25 in each) are labeled. Annotated with Pearson r and Spearman rho over the plotted genes.
+# sequential as the project's figure standard requires instead of viridis. Only genes with log2FC > 1 in BOTH contrasts (a directional rule, no padj) are labeled. Annotated with Pearson r and Spearman rho over the plotted genes.
 #
 #   Rscript scenicplus_mafb_onoff_scatter.R
 suppressMessages({library(tidyverse); library(ggrepel); library(here)})
@@ -13,7 +13,7 @@ fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
-UP_PADJ <- 0.05; UP_LFC <- 0.25   # a gene is "up in both" if padj < UP_PADJ and log2FC > UP_LFC in BOTH contrasts; only those genes are labeled
+UP_LFC <- 1   # directional rule, no padj: a gene is labeled if log2FC > UP_LFC in BOTH contrasts
 
 W <- read_csv(file.path(HERE, paste0("scenicplus_mafb_pvalb_vs_mafb_low_mge_", MAIN, ".csv")), show_col_types = FALSE)
 imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%
@@ -25,7 +25,7 @@ cat("targets plotted:", nrow(D), "of", nrow(W), "testable\n")
 
 make <- function(ycol, ylab, tag, min_abs = NULL) {
   d <- D %>% transmute(gene, x = lfc_RA_vs_C1H1, y = .data[[paste0("lfc_", ycol)]], importance_log_TF2G,
-                       both = padj_RA_vs_C1H1 < UP_PADJ & lfc_RA_vs_C1H1 > UP_LFC & .data[[paste0("padj_", ycol)]] < UP_PADJ & .data[[paste0("lfc_", ycol)]] > UP_LFC) %>%
+                       both = lfc_RA_vs_C1H1 > UP_LFC & .data[[paste0("lfc_", ycol)]] > UP_LFC) %>%
     filter(!is.na(x), !is.na(y))
   n_all <- nrow(d)
   if (!is.null(min_abs)) { d <- d %>% filter(abs(x) > min_abs | abs(y) > min_abs); tag <- paste0(tag, "_absLFC", min_abs) }   # drop genes with no |log2FC| > min_abs in either contrast
@@ -38,13 +38,13 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
     geom_hline(yintercept = 0, linewidth = 0.3) + geom_vline(xintercept = 0, linewidth = 0.3) +
     geom_point(aes(color = importance_log_TF2G), size = 1, alpha = 0.9, stroke = 0) +
     geom_text_repel(data = d %>% filter(gene %in% labeled), aes(label = gene), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
-                    segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.25, max.overlaps = Inf, seed = 1) +
+                    segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.4, point.padding = 0.15, force = 3, max.time = 5, max.iter = 100000, max.overlaps = Inf, seed = 1) +
     annotate("text", x = min(d$x), y = max(d$y), label = lab, hjust = 0, vjust = 1, size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, lineheight = 0.95) +
     scale_color_gradient(low = "#c6d8f0", high = "#0f3c78", name = "log TF2G\nimportance") +
     scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) +
     labs(x = "log2 fold change, RA vs C1H-1", y = ylab) + theme_fig() +
     theme(aspect.ratio = 1, legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
-  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = 3.6, height = 2.8)
+  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = 5.2, height = 4.2)
 }
 make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5")
 make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5")
