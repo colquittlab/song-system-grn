@@ -51,3 +51,6 @@ make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_
 # same plots keeping only genes with |log2FC| > 0.5 in at least one of the two contrasts
 make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5", min_abs = 0.5)
 make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5", min_abs = 0.5)
+# and at |log2FC| > 1
+make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5", min_abs = 1)
+make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5", min_abs = 1)
