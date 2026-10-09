@@ -13,6 +13,7 @@ fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
+PANEL_IN <- 1.6   # side of the square plotting region, inches
 UP_LFC <- 1   # directional rule, no padj: a gene is a label candidate if log2FC > UP_LFC in BOTH contrasts
 N_LABEL <- 10 # ... and only the N candidates with the largest smaller-of-the-two log2FC are labeled
 LABEL_KEEP <- c("KCNC1", "ERBB4", "PVALB")   # always labeled (when plotted), whether or not they are in the top N
@@ -46,20 +47,21 @@ make <- function(ycol, ylab, tag, min_abs = NULL) {
   p <- ggplot(d, aes(x, y)) +
     geom_hline(yintercept = 0, linewidth = 0.3) + geom_vline(xintercept = 0, linewidth = 0.3) +
     geom_point(aes(color = importance_log_TF2G), size = 1, alpha = 0.9, stroke = 0) +
-    geom_text_repel(data = d %>% filter(gene %in% labeled), aes(label = label), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
-                    segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.3, point.padding = 0.1, force = 2, max.time = 5, max.iter = 100000, max.overlaps = Inf, seed = 1) +
+    geom_text_repel(data = d %>% filter(gene %in% labeled), aes(label = label), xlim = c(-Inf, Inf), ylim = c(-Inf, Inf), size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, color = FIG_INK_PRIMARY,
+                    segment.size = 0.2, segment.color = FIG_INK_MUTED, min.segment.length = 0.1, box.padding = 0.25, point.padding = 0.05, force = 3, max.time = 15, max.iter = 300000, max.overlaps = Inf, seed = 1) +
     annotate("text", x = min(d$x), y = max(d$y), label = lab, hjust = 0, vjust = 1, size = fig_pt(FIG_PT_AXIS_TEXT), family = FIG_FONT, lineheight = 0.95) +
     scale_color_viridis_c(name = "log TF2G\nimportance") +
-    scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) +
-    labs(x = "log2 fold change, RA vs C1H-1", y = ylab) + theme_fig() +
-    theme(aspect.ratio = 1, legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
-  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = 3.6, height = 2.8)
+    scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) + coord_cartesian(clip = "off") +
+    labs(x = "log2 fold change\nRA vs C1H-1", y = ylab) + theme_fig() +
+    theme(legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
+  p <- egg::set_panel_size(p, width = unit(PANEL_IN, "in"), height = unit(PANEL_IN, "in"))   # the plotting region itself is PANEL_IN x PANEL_IN inches
+  fig_save(p, file.path(OUT, MAIN, paste0("mafb_onoff_scatter_", tag)), width = PANEL_IN + 1.75, height = PANEL_IN + 0.85)
 }
-make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5")
-make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5")
+make("PV1_vs_low", "log2 fold change\nPVALB-1 vs LAMP5", "PVALB1_vs_LAMP5")
+make("PV2_vs_low", "log2 fold change\nPVALB-2 vs LAMP5", "PVALB2_vs_LAMP5")
 # same plots keeping only genes with |log2FC| > 0.5 in at least one of the two contrasts
-make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5", min_abs = 0.5)
-make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5", min_abs = 0.5)
+make("PV1_vs_low", "log2 fold change\nPVALB-1 vs LAMP5", "PVALB1_vs_LAMP5", min_abs = 0.5)
+make("PV2_vs_low", "log2 fold change\nPVALB-2 vs LAMP5", "PVALB2_vs_LAMP5", min_abs = 0.5)
 # and at |log2FC| > 1
-make("PV1_vs_low", "log2 fold change, PVALB-1 vs MAFB-low MGE (LAMP5)", "PVALB1_vs_LAMP5", min_abs = 1)
-make("PV2_vs_low", "log2 fold change, PVALB-2 vs MAFB-low MGE (LAMP5)", "PVALB2_vs_LAMP5", min_abs = 1)
+make("PV1_vs_low", "log2 fold change\nPVALB-1 vs LAMP5", "PVALB1_vs_LAMP5", min_abs = 1)
+make("PV2_vs_low", "log2 fold change\nPVALB-2 vs LAMP5", "PVALB2_vs_LAMP5", min_abs = 1)
