@@ -49,6 +49,7 @@ SCENIC+ GRN inference pipeline and downstream R analysis.
 | `cistarget/` | Scripts to build custom cisTarget motif-to-region databases |
 | `ra-arco-hvc-nc/` | All projection neurons — SCENIC+ pipeline (config3) |
 | `ra-arco-hvc-nc_glut/` | Glutamatergic projection neurons — SCENIC+ pipeline (config15) |
+| `ra-arco-hvc-nc_glut_hybrid/` | Glutamatergic projection neurons, hybrid labels -- SCENIC+ pipeline (config1; see its README) |
 | `ra-arco-hvc-nc_gaba/` | GABAergic neurons — SCENIC+ pipeline (config13) |
 | `ra-arco-hvc-nc_astro-oligo/` | Astrocytes + oligodendrocytes — SCENIC+ pipeline (config1) |
 | `glut-ra_glut-arco-1/` | RA vs ARCO glutamatergic comparison — SCENIC+ pipeline (config18) |
