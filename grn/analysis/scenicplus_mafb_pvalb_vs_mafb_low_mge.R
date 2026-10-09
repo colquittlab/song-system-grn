@@ -109,6 +109,17 @@ for (pp in c("PV1_vs_low", "PV2_vs_low")) {
   cr <- function(g) suppressWarnings(cor(lfcv[g, "RA_vs_C1H1"], lfcv[g, pp], use = "complete.obs", method = "spearman"))
   rows[[length(rows) + 1]] <- rt("log2FC Spearman (ratio col = z)", paste("RA_vs_C1H1 +", pp), cr(tg), sapply(nulls, cr), z = TRUE)
 }
+## directional criterion: no padj (the interneuron contrasts, with few pseudobulk samples, are underpowered for it); log2FC above a threshold
+for (thr in c(0, 0.25, 0.5, 1)) {
+  for (nm in names(C)) {
+    dn <- function(g) sum(lfcv[g, nm] > thr, na.rm = TRUE)
+    rows[[length(rows) + 1]] <- rt(paste0("directional: log2FC > ", thr), nm, dn(tg), sapply(nulls, dn))
+  }
+  for (pp in c("PV1_vs_low", "PV2_vs_low")) {
+    dd <- function(g) sum(lfcv[g, "RA_vs_C1H1"] > thr & lfcv[g, pp] > thr, na.rm = TRUE)
+    rows[[length(rows) + 1]] <- rt(paste0("directional: both log2FC > ", thr), paste("RA_vs_C1H1 +", pp), dd(tg), sapply(nulls, dd))
+  }
+}
 S <- bind_rows(rows)
 write_csv(S %>% mutate(across(where(is.numeric), ~ round(.x, 3))), file.path(HERE, paste0("scenicplus_mafb_pvalb_vs_mafb_low_mge_enrichment_", MAIN, ".csv")))
 cat("\n"); print(as.data.frame(S %>% mutate(across(where(is.numeric), ~ round(.x, 3)))), row.names = FALSE)
