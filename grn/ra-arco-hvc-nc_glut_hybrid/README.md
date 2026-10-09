@@ -26,8 +26,10 @@ renamed them, so the old substring filter would silently keep them.
    Wilcoxon on the peak matrix). pycisTopic's `find_diff_features` ranks imputed accessibility, which calls DARs from topics the foreground
    barely uses; the ArchR test does not, and the pairs do not depend on the cell set or topic count.
 3. `scenicplus/make_configs.py` -- config1 (glut spec) and config2 (strict control); renders through `ra-arco-hvc-nc/scenicplus/make_configs.py`
-   so the YAML cannot drift from the all-cell run. Run on prism after copying `anndata_rna/adata.h5ad`, `pycisTopic/cistopic_obj_glut.pkl`
-   and `pycisTopic/region_sets/` there: `../ra-arco-hvc-nc/scenicplus/submit_all.sh`-style, i.e. `cd configN/Snakemake && mkdir -p logs && sbatch ../run_snakemake.sbatch`.
+   so the YAML and the per-config `run_snakemake.sbatch` are the all-cell run's (only job name and paths differ). The helpers
+   `submit_all.sh`, `link_results_to_hdd.sh` (store: `.../ra-arco-hvc-nc_glut_hybrid/results`) and `.gitignore` are copies of the
+   all-cell ones. On prism, after copying `anndata_rna/adata.h5ad`, `pycisTopic/cistopic_obj_glut.pkl` and `pycisTopic/region_sets/`
+   there: `scenicplus/submit_all.sh` (all configs) or `scenicplus/submit_all.sh 1` (config1 only).
 4. `../analysis/scenicplus_hybrid_glut_template.qmd` -- the all-cell hybrid analysis restricted to the glut object, with the song-pair DEG
    sets `ra`, `hvcra`, `hvcx` in place of `gaba4`/`astro`.
 
