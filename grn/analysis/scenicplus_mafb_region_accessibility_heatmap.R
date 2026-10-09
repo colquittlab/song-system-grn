@@ -28,25 +28,39 @@ ra <- factor(ifelse(d$DAR_RA == 1, "DAR", "not DAR"), levels = names(dar_col))
 pv <- factor(ifelse(d$DAR_PV1 == 1, "DAR", "not DAR"), levels = names(dar_col))
 
 row_hc <- function(m, method) {
-  if (method == "euclidean") hclust(dist(m, "euclidean"), "ward.D") else hclust(as.dist(1 - cor(t(m))), "average")
+  if (method == "euclidean") return(hclust(dist(m, "euclidean"), "ward.D"))
+  r <- cor(t(m)); r[is.na(r)] <- 0   # regions constant across the shown columns have no correlation with anything
+  hclust(as.dist(1 - r), "average")
 }
-for (method in c("euclidean", "correlation")) {
-  hc <- row_hc(mat, method)
-  ha <- rowAnnotation(`RA vs C1H-1` = ra, `PVALB-1 vs LAMP5` = pv, `focal gene` = focal,
-                      col = list(`RA vs C1H-1` = dar_col, `PVALB-1 vs LAMP5` = dar_col, `focal gene` = focal_col),
-                      annotation_name_gp = gp5, simple_anno_size = unit(0.09, "in"),
-                      annotation_legend_param = list(title_gp = gp6, labels_gp = gp5, grid_height = unit(0.09, "in"), grid_width = unit(0.09, "in")))
-  hm <- Heatmap(mat, name = "z", col = col_fun, cluster_rows = hc, cluster_columns = FALSE, show_row_names = FALSE,
-                column_names_gp = gp5, row_dend_width = unit(0.35, "in"), left_annotation = ha,
-                width = unit(2.1, "in"), height = unit(4, "in"),
-                heatmap_legend_param = list(title = "Accessibility\n(z across cell types)", title_gp = gp6, labels_gp = gp5,
-                                            legend_height = unit(0.7, "in"), grid_width = unit(0.09, "in"), at = c(-ZC, 0, ZC), labels = c("≤−2.5", "0", "≥2.5")))
-  stem <- file.path(OUT, MAIN, paste0("mafb_up_both_regions_accessibility_heatmap_", method))
-  cairo_pdf(paste0(stem, ".pdf"), width = 5.2, height = 6.4, family = FIG_FONT)
-  draw(hm, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"))
-  invisible(dev.off())
-  png(paste0(stem, ".png"), width = 5.2, height = 6.4, units = "in", res = 600, type = "cairo", family = FIG_FONT)
-  draw(hm, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"))
-  invisible(dev.off())
-  cat("saved", stem, "\n")
+## column sets: all cell types (as originally made), and RA / C1H-1 plus the MGE clusters only. For a subset the z-score is re-standardized
+## across the shown columns (z is an affine function of log2 CPM, so re-standardizing z equals re-standardizing log2 CPM), and the rows are
+## clustered on the shown columns only.
+SETS <- list(all = list(cols = colnames(mat), width = 2.1, fig_w = 5.2),
+             `RA-MGE` = list(cols = intersect(c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "GABA-MGE-SST-1", "GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-LAMP5"), colnames(mat)),
+                             width = 0.9, fig_w = 4.0))
+for (set_name in names(SETS)) {
+  S <- SETS[[set_name]]
+  m <- mat[, S$cols, drop = FALSE]
+  if (set_name != "all") { sdv <- apply(m, 1, sd); m <- (m - rowMeans(m)) / ifelse(sdv > 0, sdv, 1); m[sdv == 0, ] <- 0 }
+  cat(set_name, ": columns", paste(S$cols, collapse = ", "), "\n")
+  for (method in c("euclidean", "correlation")) {
+    hc <- row_hc(m, method)
+    ha <- rowAnnotation(`RA vs C1H-1` = ra, `PVALB-1 vs LAMP5` = pv, `focal gene` = focal,
+                        col = list(`RA vs C1H-1` = dar_col, `PVALB-1 vs LAMP5` = dar_col, `focal gene` = focal_col),
+                        annotation_name_gp = gp5, simple_anno_size = unit(0.09, "in"),
+                        annotation_legend_param = list(title_gp = gp6, labels_gp = gp5, grid_height = unit(0.09, "in"), grid_width = unit(0.09, "in")))
+    hm <- Heatmap(m, name = "z", col = col_fun, cluster_rows = hc, cluster_columns = FALSE, show_row_names = FALSE,
+                  column_names_gp = gp5, row_dend_width = unit(0.35, "in"), left_annotation = ha,
+                  width = unit(S$width, "in"), height = unit(4, "in"),
+                  heatmap_legend_param = list(title = "Accessibility\n(z across shown\ncell types)", title_gp = gp6, labels_gp = gp5,
+                                              legend_height = unit(0.7, "in"), grid_width = unit(0.09, "in"), at = c(-ZC, 0, ZC), labels = c("\u2264\u22122.5", "0", "\u22652.5")))
+    stem <- file.path(OUT, MAIN, paste0("mafb_up_both_regions_accessibility_heatmap", if (set_name == "all") "" else paste0("_", set_name), "_", method))
+    cairo_pdf(paste0(stem, ".pdf"), width = S$fig_w, height = 6.4, family = FIG_FONT)
+    draw(hm, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"))
+    invisible(dev.off())
+    png(paste0(stem, ".png"), width = S$fig_w, height = 6.4, units = "in", res = 600, type = "cairo", family = FIG_FONT)
+    draw(hm, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"))
+    invisible(dev.off())
+    cat("saved", stem, "\n")
+  }
 }
