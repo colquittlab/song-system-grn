@@ -32,11 +32,11 @@ row_hc <- function(m, method) {
   r <- cor(t(m)); r[is.na(r)] <- 0   # regions constant across the shown columns have no correlation with anything
   hclust(as.dist(1 - r), "average")
 }
-## column sets: all cell types (as originally made), and RA / C1H-1 plus the MGE clusters, with Glut-DACH2-1 as an outgroup (a glutamatergic type that is neither RA nor its sister). For a subset the z-score is re-standardized
+## column sets: all cell types (as originally made), and RA / C1H-1 plus the MGE clusters, with Glut-NSC as an outgroup (a glutamatergic neural stem cell type, far from RA and its sister). For a subset the z-score is re-standardized
 ## across the shown columns (z is an affine function of log2 CPM, so re-standardizing z equals re-standardizing log2 CPM), and the rows are
 ## clustered on the shown columns only.
 SETS <- list(all = list(cols = colnames(mat), width = 2.1, fig_w = 5.2),
-             `RA-MGE` = list(cols = intersect(c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-DACH2-1", "GABA-MGE-SST-1", "GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-LAMP5"), colnames(mat)),
+             `RA-MGE` = list(cols = intersect(c("Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-NSC", "GABA-MGE-SST-1", "GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-LAMP5"), colnames(mat)),
                              width = 1.05, fig_w = 4.15))
 for (set_name in names(SETS)) {
   S <- SETS[[set_name]]
