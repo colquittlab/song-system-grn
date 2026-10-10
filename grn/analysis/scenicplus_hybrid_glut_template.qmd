@@ -908,12 +908,18 @@ process_config = function(config_name, scplus_dir, working_dir, out_dir_base,
   plot_auc_heatmaps(gene_auc, obj_avg, "\\-\\/\\-", out_dir, "negative", "BuGn")
 
   ## UMAP plots (eRegulon targets only - TF UMAPs generated outside loop)
-  cat("Generating eRegulon UMAP plots...\n")
-  umap_dir = file.path(out_dir, "umaps")
-  dir.create(umap_dir, showWarnings = FALSE)
-
+  ## ereg_select is used again below, so it is defined outside the switch
   ereg_select = c("MAFB_extended_+/+", "EMX2_direct_+/+")
-  plot_eregulon_umaps(obj, ereg_sane, ereg_select, umap_dir, nplot = 10)
+  ## params$eregulon_umaps = false skips the plots (default: on)
+  if (is.null(params$eregulon_umaps) || isTRUE(params$eregulon_umaps)) {
+    cat("Generating eRegulon UMAP plots...\n")
+    umap_dir = file.path(out_dir, "umaps")
+    dir.create(umap_dir, showWarnings = FALSE)
+
+    plot_eregulon_umaps(obj, ereg_sane, ereg_select, umap_dir, nplot = 10)
+  } else {
+    cat("Skipping eRegulon UMAPs (params$eregulon_umaps = false)\n")
+  }
 
   ## Dot plots
   cat("Generating dot plots...\n")
