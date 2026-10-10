@@ -1,0 +1,3 @@
+config	direct_annotation	extended_annotation	search_space_upstream	search_space_downstream	search_space_extend_tss	motif_similarity_fdr	annotations_to_use	dem_adj_pval_thr	dem_log2fc_thr	ctx_auc_threshold	ctx_nes_threshold	ctx_rank_threshold	gex_anndata	n_topics	region_sets	changed_from_hybrid_all_config1
+config1	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.001	Direct_annot Orthology_annot Motif_similarity_annot	0.1	0.5	0.0025	2.0	0.2	adata.h5ad	20	region_sets	motif_similarity_fdr,dem_adj_pval_thr,dem_log2fc_thr,ctx_auc_threshold,ctx_nes_threshold
+config2	Direct_annot	Orthology_annot	1000 150000	1000 150000	10 10	0.01	Direct_annot Orthology_annot Motif_similarity_annot	0.05	1.0	0.005	3.0	0.2	adata.h5ad	20	region_sets	-

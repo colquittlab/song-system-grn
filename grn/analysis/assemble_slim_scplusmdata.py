@@ -13,6 +13,7 @@ plus the production adata.h5ad for the cluster labels.
 
     python assemble_slim_scplusmdata.py <config outs dir> [out.h5mu]
 """
+import os
 import sys
 from pathlib import Path
 
@@ -23,8 +24,10 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from scenicplus.scenicplus_mudata import ScenicPlusMuData
 
-ADATA = ("/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
-         "ra-arco-hvc-nc_hybrid/anndata_rna/adata.h5ad")
+B = ("/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/")
+# Cluster labels come from the run's own adata.h5ad: ADATA env var, else the all-cell hybrid run; the glut run sets
+# ADATA=.../ra-arco-hvc-nc_glut_hybrid/anndata_rna/adata.h5ad (see assemble_slim_all.sh, which takes ROOT).
+ADATA = os.environ.get("ADATA", B + "ra-arco-hvc-nc_hybrid/anndata_rna/adata.h5ad")
 OBS_COLS = ["assignment", "barcode", "cluster", "position", "replicate", "run", "sample_short"]  # as in the full file
 
 outs = Path(sys.argv[1])
