@@ -29,8 +29,8 @@ perm_kind <- function(sets, xa, yb, B, kind) {
     obs <- ratio_of(A[idx], Bp[idx])
     nul <- vapply(seq_len(B), function(i) { s <- sample.int(length(pool), n); ratio_of(A[s], Bp[s]) }, numeric(2))
     tibble(TF = tf, kind = kind, n = n, frac_UR = obs["ur"], ratio = obs["ratio"], null_ratio_mean = mean(nul["ratio", ], na.rm = TRUE), null_ratio_sd = sd(nul["ratio", ], na.rm = TRUE),
-           null_frac_mean = mean(nul["ur", ]), p_ratio = (1 + sum(nul["ratio", ] >= obs["ratio"], na.rm = TRUE)) / (1 + B), p_frac = (1 + sum(nul["ur", ] >= obs["ur"])) / (1 + B))
-  }) %>% mutate(z_ratio = (ratio - null_ratio_mean) / null_ratio_sd, q_ratio = p.adjust(p_ratio, "BH"), q_frac = p.adjust(p_frac, "BH"),
+           null_frac_mean = mean(nul["ur", ]), null_frac_sd = sd(nul["ur", ]), p_ratio = (1 + sum(nul["ratio", ] >= obs["ratio"], na.rm = TRUE)) / (1 + B), p_frac = (1 + sum(nul["ur", ] >= obs["ur"])) / (1 + B))
+  }) %>% mutate(z_ratio = (ratio - null_ratio_mean) / null_ratio_sd, z_frac = (frac_UR - null_frac_mean) / null_frac_sd, q_ratio = p.adjust(p_ratio, "BH"), q_frac = p.adjust(p_frac, "BH"),
                 rank_ratio = rank(-ratio, ties.method = "min"), rank_frac = rank(-frac_UR, ties.method = "min"))
 }
 tfs <- e %>% group_by(TF) %>% filter(n_distinct(Region) >= MIN_REGIONS) %>% pull(TF) %>% unique() %>% sort()
