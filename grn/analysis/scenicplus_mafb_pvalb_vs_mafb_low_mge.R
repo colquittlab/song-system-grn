@@ -82,6 +82,12 @@ low_for_pv2 <- setdiff(low, PV2)
 C$PV2_vs_low <- de(PV2, low_for_pv2, paste("PVALB-2 vs MAFB-low MGE (", paste(sub("GABA-MGE-", "", low_for_pv2), collapse = "+"), ")", sep = ""))
 for (nm in names(C)) cat(sprintf("  MAFB in %-12s log2FC %5.2f padj %s\n", nm, C[[nm]]$lfc[C[[nm]]$gene == "MAFB"], signif(C[[nm]]$padj[C[[nm]]$gene == "MAFB"], 2)))
 
+## all genes (not only MAFB targets): per-gene log2FC and padj in each contrast, for comparisons across regulons (scenicplus_dar_overlap_across_regulons.py)
+all_genes <- reduce(imap(C, function(d, nm) d %>% rename_with(~ paste0(.x, "_", nm), c(lfc, padj))), full_join, by = "gene")
+write_csv(all_genes %>% mutate(across(starts_with("lfc"), ~ round(.x, 3)), across(starts_with("padj"), ~ signif(.x, 3))),
+          file.path(HERE, paste0("scenicplus_all_genes_onoff_contrasts_", MAIN, ".csv.gz")))
+cat("all-genes table:", nrow(all_genes), "genes\n")
+
 ## 3. targets, matched null
 e <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c"), progress = FALSE) %>%
   filter(TF == "MAFB", grepl("\\+/\\+$", eRegulon_name))
