@@ -1,0 +1,17 @@
+partner,rule,set,n_genes,n_regions,n_DAR_RA,n_DAR_partner,n_DAR_both,expected_if_independent,obs_over_expected,jaccard,frac_regions_both,p_frac_both_vs_random
+PV1,both log2FC > 1.0,up in both,27.0,363.0,92.0,39.0,12.0,9.9,1.21,0.101,0.033,
+PV1,both log2FC > 0.5,up in both,43.0,443.0,127.0,46.0,14.0,13.2,1.06,0.088,0.032,
+PV1,both log2FC > 0.0,up in both,82.0,742.0,198.0,81.0,18.0,21.6,0.83,0.069,0.024,
+PV1,,RA up only (log2FC > 1; partner <= 0),22.0,233.0,103.0,20.0,4.0,8.8,0.45,0.034,0.017,
+PV1,,partner up only (log2FC > 1; RA <= 0),22.0,180.0,19.0,30.0,2.0,3.2,0.63,0.043,0.011,
+PV1,,all testable MAFB targets,189.0,1671.0,407.0,168.0,27.0,40.9,0.66,0.049,0.016,
+PV1,,"random 27 MAFB targets (mean of 5,000)",27.0,,,,,,0.63,,0.016,0.037
+PV1,,all consensus regions (genome-wide),,499348.0,27176.0,5322.0,457.0,289.6,1.58,0.014,0.0009,
+PV2,both log2FC > 1.0,up in both,27.0,263.0,98.0,12.0,8.0,4.5,1.79,0.078,0.03,
+PV2,both log2FC > 0.5,up in both,49.0,488.0,136.0,19.0,10.0,5.3,1.89,0.069,0.02,
+PV2,both log2FC > 0.0,up in both,80.0,831.0,233.0,30.0,12.0,8.4,1.43,0.048,0.014,
+PV2,,RA up only (log2FC > 1; partner <= 0),20.0,171.0,83.0,3.0,0.0,1.5,0.0,0.0,0.0,
+PV2,,partner up only (log2FC > 1; RA <= 0),20.0,215.0,22.0,10.0,0.0,1.0,0.0,0.0,0.0,
+PV2,,all testable MAFB targets,189.0,1671.0,407.0,52.0,12.0,12.7,0.95,0.027,0.007,
+PV2,,"random 27 MAFB targets (mean of 5,000)",27.0,,,,,,0.91,,0.007,0.0014
+PV2,,all consensus regions (genome-wide),,499348.0,27176.0,976.0,161.0,53.1,3.03,0.006,0.0003,
