@@ -14,7 +14,9 @@ Knockout and overexpression simulations from a config's eRegulons, with the glut
 python assemble_perturbation_h5mu.py <results>/config3/outs
 PERTURB_INPUT_DIR=<results> PERTURB_CONFIGS=config3 PERTURB_H5MU=scplusmdata_perturb.h5mu PERTURB_N_JOBS=40 python run_notebook.py
 ```
-Results go to `<results>/config3/perturbation/` (regressors.pkl, perturb_<TF>_sv<0|10>_<iter>.parquet, PDFs); they are not tracked.
+Results go to `<results>/config3/perturbation/` (`PERTURB_OUT_NAME` changes the folder name) (regressors.pkl, perturb_<TF>_sv<0|10>_<iter>.parquet, PDFs); they are not tracked.
+
+`PERTURB_KO_TFS=MAFB` restricts the TFs; `PERTURB_FORCE_TARGETS_OF=MAFB` gives every eRegulon target of that TF a regressor, on top of the top-5,000 genes (a TF with a small eRegulon otherwise reaches only the fraction of its targets that rank in the top 5,000). An existing `regressors.pkl` is topped up with just the missing genes, so a variant can be seeded by copying it.
 
 Both calls to the child script use the notebook's own interpreter (`sys.executable`) and a non-zero exit status stops the run; the copy this was derived from used a bare `python` and ignored failures, so a wrong environment produced "Done" with no results.
 
