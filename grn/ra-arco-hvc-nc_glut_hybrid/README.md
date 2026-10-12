@@ -28,11 +28,12 @@ renamed them, so the old substring filter would silently keep them.
 3. `scenicplus/make_configs.py` -- config1 (glut spec), config2 (strict control), config3 (config2's parameters with the hybrid cisTarget
    database = the glut counterpart of the all-cell config37) and config4 (glut-spec thresholds with the hybrid database). Configs 3/4 reuse
    config1's accessibility+expression object, search space and region-to-gene fit (none depends on the motif database): on prism run
-   `scenicplus/prepare_shared_upstream.sh` once after config1, before submitting 3 and 4. 20 topics throughout. Renders renders through `ra-arco-hvc-nc/scenicplus/make_configs.py`
+   `scenicplus/prepare_shared_upstream.sh` once after config1, before submitting 3 and 4. 20 topics throughout. Rendered through `ra-arco-hvc-nc/scenicplus/make_configs.py`
    so the YAML and the per-config `run_snakemake.sbatch` are the all-cell run's (only job name and paths differ). The helpers
    `submit_all.sh`, `link_results_to_hdd.sh` (store: `.../ra-arco-hvc-nc_glut_hybrid/results`) and `.gitignore` are copies of the
    all-cell ones. On prism, after copying `anndata_rna/adata.h5ad`, `pycisTopic/cistopic_obj_glut.pkl` and `pycisTopic/region_sets/`
-   there: `scenicplus/submit_all.sh` (all configs) or `scenicplus/submit_all.sh 1` (config1 only).
+   there: `scenicplus/submit_all.sh 1 2` first; after config1 has finished and `prepare_shared_upstream.sh` has run, `scenicplus/submit_all.sh 3 4`
+   (the sbatch for 3/4 stops with a message if the shared files are missing, instead of silently redoing the 3.5 h fit).
 4. `../analysis/scenicplus_hybrid_glut_template.qmd` -- the all-cell hybrid analysis restricted to the glut object, with the song-pair DEG
    sets `ra`, `hvcra`, `hvcx` in place of `gaba4`/`astro`.
 
