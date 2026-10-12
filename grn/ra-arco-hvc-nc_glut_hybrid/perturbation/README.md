@@ -16,5 +16,7 @@ PERTURB_INPUT_DIR=<results> PERTURB_CONFIGS=config3 PERTURB_H5MU=scplusmdata_per
 ```
 Results go to `<results>/config3/perturbation/` (regressors.pkl, perturb_<TF>_sv<0|10>_<iter>.parquet, PDFs); they are not tracked.
 
+Both calls to the child script use the notebook's own interpreter (`sys.executable`) and a non-zero exit status stops the run; the copy this was derived from used a bare `python` and ignored failures, so a wrong environment produced "Done" with no results.
+
 Expression scale: simulations run on the raw counts SCENIC+ itself used, so the OE value of 10 means 10 counts. Earlier runs whose `.raw`
 held log-normalized values (the old double-normalization, see `ra-arco-hvc-nc/anndata_rna/make_adata_doublenorm.py`) were on a different scale; do not compare OE magnitudes across them.
