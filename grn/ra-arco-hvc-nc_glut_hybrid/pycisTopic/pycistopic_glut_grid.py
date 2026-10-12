@@ -31,8 +31,8 @@ if sys.argv[1] == "merge":
         assert os.path.exists(f), f"model_{k}.pkl missing"
         models.extend(pickle.load(open(f, "rb")))
     pickle.dump(models, open(B + "models_grid.pkl", "wb"))
-    rows = [{"n_topic": m.n_topic, **{k: float(v) for k, v in m.metrics.items()
-                                      if not hasattr(v, "__len__") or isinstance(v, (int, float))}} for m in models]
+    # m.metrics is a one-row DataFrame (index "Metric"), one column per metric
+    rows = [{"n_topic": m.n_topic, **{c: float(m.metrics[c].iloc[0]) for c in m.metrics.columns}} for m in models]
     pd.DataFrame(rows).to_csv(B + "models_grid_metrics.csv", index=False)
     print(pd.DataFrame(rows).to_string(index=False))
     sys.exit()
