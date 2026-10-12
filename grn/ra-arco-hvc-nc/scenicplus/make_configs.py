@@ -23,6 +23,9 @@ PRISM_ROOT = ("/private/groups/colquittlab/scenicplus/motor-pathway_multiome/"
               "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid")
 CISTARGET_DIR = "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering"  # existing DB, unchanged
 CISTARGET_PREFIX = "ra-arco-hvc-nc_seurat-clustering"
+# Database built on the current (2026-10-05) consensus regions by cisTarget/create_cistarget_db_hybrid.sh; configs 36-39.
+CISTARGET_HYBRID_DIR = "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid"
+CISTARGET_HYBRID_PREFIX = "ra-arco-hvc-nc_hybrid"
 MOTIF_ANNOT = ("/private/groups/colquittlab/scenicplus/v10nr_clust_public/snapshots/"
                "motifs-v10-nr.hgnc-m0.00001-o0.0.tbl")
 N_CPU = 40
@@ -168,7 +171,44 @@ CONFIGS[31] = {}
 CONFIGS[32] = {k: dict(v) for k, v in CONFIGS[11].items()}
 CONFIGS[33] = {}
 
-SHARED_UPSTREAM = set(range(SWEEP_FIRST, SWEEP_FIRST + SWEEP_N + 1)) | set(REGION_SET_VARIANT)
+# config34/35: the revised cisTopic object -- 40 LDA topics, and the song-pair DAR sets (CACNA1H-RA vs CACNA1H-1/-2 and
+# DACH2-HVCra vs DACH2-HVCx) removed entirely (a typo in those contrasts). region_sets_k40 therefore has Topics_otsu,
+# Topics_top_3k and DARs_all but no DARs_song-pairs (region_sets_k15/k30 still have it). The two changes come together,
+# so 34 vs 1 is the effect of the revised object, not of either change alone. 34 runs at config1's thresholds and builds
+# its own ACC_GEX / region_to_gene (they depend on the topic model, so config1's shared/ cannot be reused); 35 runs
+# config11's loose thresholds and reuses 34's through shared_k40/ (prepare_shared_upstream.sh shared_k40 config34).
+CONFIGS[34] = {}
+CONFIGS[35] = {k: dict(v) for k, v in CONFIGS[11].items()}
+N_TOPICS.update({34: 40, 35: 40})
+NO_SONG_PAIRS = {34, 35}
+
+SHARED_UPSTREAM = set(range(SWEEP_FIRST, SWEEP_FIRST + SWEEP_N + 1)) | set(REGION_SET_VARIANT) | {35}
+SHARED_DIR = {35: "shared_k40"}  # every other shared config uses config1's "shared"
+
+
+def shared_outs(n):
+    return f"{PRISM_ROOT}/scenicplus/{SHARED_DIR.get(n, 'shared')}/outs"
+
+
+# config36-39: the same 40-topic object, but motif enrichment against a cisTarget database built on its own consensus regions
+# (CISTARGET_HYBRID_*), so no region is dropped or shifted by the 40 % overlap match that 34/35 depend on, and with the
+# song-pair DARs either absent (36, 38) or recomputed with ArchR's bias-matched test on the same regions (37, 39; the pycisTopic
+# ones ranked imputed accessibility, which called DARs from topics the foreground barely uses -- see
+# pycisTopic/make_song_pair_dars_archr.R). Strict (config1) thresholds in 36/37, loose (config11) in 38/39. Reading them:
+#   36 vs 34   effect of the database / consensus alone      37 vs 36   effect of the ArchR song-pair DARs
+# ACC_GEX, search space and region-to-gene depend only on the cisTopic object and expression, which these share with config34,
+# so all four reuse shared_k40/ and skip the 3.5 h region-to-gene fit.
+CONFIGS[36] = {}
+CONFIGS[37] = {}
+CONFIGS[38] = {k: dict(v) for k, v in CONFIGS[11].items()}
+CONFIGS[39] = {k: dict(v) for k, v in CONFIGS[11].items()}
+N_TOPICS.update({36: 40, 37: 40, 38: 40, 39: 40})
+NO_SONG_PAIRS |= {36, 38}
+REGION_SET_VARIANT.update({37: "region_sets_k40_archr", 39: "region_sets_k40_archr"})
+CISTARGET_HYBRID = {36, 37, 38, 39}
+SHARED_UPSTREAM |= CISTARGET_HYBRID
+SHARED_DIR.update({n: "shared_k40" for n in CISTARGET_HYBRID})
+
 
 # Workers for the motif-enrichment steps only. The sweep configs with ctx_rank_threshold >= 0.35 (20, 22, 27, 28) were
 # OOM-killed at 40 workers / 600G (all 9 with rank <= 0.34 finished), so they run these steps with fewer.
@@ -189,18 +229,19 @@ def q(v):
 def render(n, overrides):
     p = merged(overrides)
     outs = f"{PRISM_ROOT}/scenicplus/config{n}/outs"
-    up = f"{PRISM_ROOT}/scenicplus/shared/outs" if n in SHARED_UPSTREAM else outs  # shared, motif-independent outputs
+    up = shared_outs(n) if n in SHARED_UPSTREAM else outs  # shared, motif-independent outputs
     tmp = f"{PRISM_ROOT}/scenicplus/config{n}/tmp"
     py = f"{PRISM_ROOT}/pycisTopic"
     me, dp = p["params_motif_enrichment"], p["params_data_preparation"]
+    db_dir, db_prefix = (CISTARGET_HYBRID_DIR, CISTARGET_HYBRID_PREFIX) if n in CISTARGET_HYBRID else (CISTARGET_DIR, CISTARGET_PREFIX)
     pg_extra = ("\n  build_scplus_mudata: False" if n in SHARED_UPSTREAM else "") + \
                (f"\n  n_cpu_motif: {N_CPU_MOTIF[n]}" if n in N_CPU_MOTIF else "")
     lines = f"""input_data:
   cisTopic_obj_fname: "{py}/{cistopic_obj_name(n)}"
   GEX_anndata_fname: "{PRISM_ROOT}/anndata_rna/{GEX_ANNDATA.get(n, GEX_DEFAULT)}"
   region_set_folder: "{py}/{region_sets_name(n)}"
-  ctx_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.rankings.feather"
-  dem_db_fname: "{CISTARGET_DIR}/{CISTARGET_PREFIX}.regions_vs_motifs.scores.feather"
+  ctx_db_fname: "{db_dir}/{db_prefix}.regions_vs_motifs.rankings.feather"
+  dem_db_fname: "{db_dir}/{db_prefix}.regions_vs_motifs.scores.feather"
   path_to_motif_annotations: "{MOTIF_ANNOT}"
 
 output_data:
@@ -304,7 +345,7 @@ snakemake --cores {cpus} --rerun-incomplete --printshellcmds
 SHARED_PRECHECK = """# These come from config1 via prepare_shared_upstream.sh; without them Snakemake would silently redo the 3.5 h
 # region-to-gene fit and the 35 GB object, per config.
 for f in ACC_GEX.h5mu search_space.tsv region_to_gene_adj.tsv; do
-    test -s {shared}/$f || {{ echo "missing shared input {shared}/$f -- run prepare_shared_upstream.sh first" >&2; exit 1; }}
+    test -s {shared}/$f || {{ echo "missing shared input {shared}/$f -- run prepare_shared_upstream.sh{args} first" >&2; exit 1; }}
 done
 """
 
@@ -327,7 +368,7 @@ def write_parameter_table():
             changed.append("gex_anndata")
         if row["n_topics"] != N_TOPICS_DEFAULT:
             changed.append("n_topics")
-        if n in REGION_SET_VARIANT:
+        if n in REGION_SET_VARIANT or n in NO_SONG_PAIRS:
             changed.append("region_sets")
         row["changed_from_config1"] = ",".join(changed) or "-"
         rows.append(row)
@@ -350,7 +391,9 @@ def main():
         (d / "run_snakemake.sbatch").write_text(
             SBATCH.format(n=n, cpus=N_CPU, prism_cfg=f"{PRISM_ROOT}/scenicplus/config{n}",
                           time="08:00:00" if n in SHARED_UPSTREAM else "12:00:00",
-                          precheck=SHARED_PRECHECK.format(shared=f"{PRISM_ROOT}/scenicplus/shared/outs") if n in SHARED_UPSTREAM else ""))
+                          precheck=SHARED_PRECHECK.format(shared=shared_outs(n),
+                                                          args=f" {SHARED_DIR[n]} config34" if n in SHARED_DIR else "")
+                          if n in SHARED_UPSTREAM else ""))
         print("wrote", d)
 
 

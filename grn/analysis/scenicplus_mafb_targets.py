@@ -201,3 +201,24 @@ for gene in ("PVALB", "KCNC1"):
           + (f"{o.min():.1f}-{o.max():.1f} (n={len(o)})" if len(o) else "never"))
 print("  Spearman, candidate-TF count vs KCNC1 percentile: %.2f; vs PVALB percentile: %.2f" % (
     d7.candidate_TFs.corr(d7.KCNC1_pct, method="spearman"), d7.candidate_TFs.corr(d7.PVALB_pct, method="spearman")))
+
+# 8. topic-model configs, outside the aggregates above (different cisTopic object): same readout, each next to its reference.
+# 14/15 = 15/30 topics; 34/35 = 40 topics with the song-pair DAR sets removed (34 at config1's thresholds, 35 at config11's).
+print("\nTopic-model configs (not in the aggregates above):")
+rows8 = []
+for n in (1, 14, 15, 34, 36, 37, 11, 35, 38, 39):
+    cfg = f"config{n}"
+    if not (RES / cfg / "outs" / "tf_to_gene_adj.tsv").exists():
+        print(f"  {cfg}: tf_to_gene_adj.tsv not transferred, skipped")
+        continue
+    adj = pd.read_csv(RES / cfg / "outs" / "tf_to_gene_adj.tsv", sep="\t")
+    n_tfs = adj.TF.nunique()   # the candidate-TF list (tfs.txt is not always transferred)
+    adj = adj[adj.TF == "MAFB"].sort_values("importance", ascending=False).reset_index(drop=True)
+    inc = set(mem[mem.config == cfg].Gene)
+    r = {"config": cfg, "n_topics": P.loc[cfg, "n_topics"], "MAFB_targets": int(size.get(cfg, 0)), "candidate_TFs": n_tfs}
+    for gene in ("PVALB", "KCNC1"):
+        hit = adj.index[adj.target == gene]
+        r[f"{gene}_pct"] = round(100 * (hit[0] + 1) / len(adj), 1) if len(hit) else np.nan
+        r[f"{gene}_included"] = gene in inc
+    rows8.append(r)
+print(pd.DataFrame(rows8).to_string(index=False))

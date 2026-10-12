@@ -1,0 +1,18 @@
+test,pair,obs,null,ratio,p
+targets up vs sister,RA,68,31.448,2.162,0
+targets up vs sister,PV1,33,23.131,1.427,0.02
+targets up vs sister,PV2,26,21.126,1.231,0.147
+targets up vs sister,SST1,48,20.912,2.295,0
+targets up vs sister,RA_vs_C1H1,68,31.448,2.162,0
+targets up in both,RA + PV1,7,3.12,2.243,0.03
+log2FC Spearman,RA + PV1,-0.108,-0.062,-0.748,0.773
+targets up in both,RA + PV2,10,4.381,2.283,0.009
+log2FC Spearman,RA + PV2,0.108,0.062,0.748,0.227
+targets up in both,RA + SST1,12,3.341,3.591,0
+log2FC Spearman,RA + SST1,-0.23,-0.082,-2.488,0.99
+targets up in both,RA_vs_C1H1 + PV1,7,3.12,2.243,0.03
+log2FC Spearman,RA_vs_C1H1 + PV1,-0.108,-0.062,-0.748,0.773
+targets up in both,RA_vs_C1H1 + PV2,10,4.381,2.283,0.009
+log2FC Spearman,RA_vs_C1H1 + PV2,0.108,0.062,0.748,0.227
+targets up in both,RA_vs_C1H1 + SST1,12,3.341,3.591,0
+log2FC Spearman,RA_vs_C1H1 + SST1,-0.23,-0.082,-2.488,0.99

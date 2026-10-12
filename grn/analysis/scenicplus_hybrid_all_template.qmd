@@ -253,56 +253,73 @@ plot_auc_heatmaps = function(gene_auc, obj_avg, ereg_pattern, out_dir, prefix, p
                      intersect(colnames(gene_auc_cur_mean), colnames(obj_avg))]
   expr_mat = t(scale(t(expr_mat)))
 
-  hc = hclust(dist(gene_auc_cur_mean), method="ward.D")
+  ## Row clustering: Ward linkage on Euclidean distance (the original), and average linkage (UPGMA) on correlation distance (1 - Pearson r
+  ## across cell types; rows are min-max scaled per regulon). Ward assumes Euclidean geometry, so the correlation version uses average
+  ## linkage instead. Constant rows have no correlation with anything, so their distance is set to 1. Euclidean keeps the original file
+  ## names; the correlation versions get a "_correlation" suffix.
+  row_hc = function(m, dist_method) {
+    d = as.matrix(dist(m, method = dist_method))
+    d[is.na(d)] = 1
+    diag(d) = 0
+    hclust(as.dist(d), method = if (dist_method == "euclidean") "ward.D" else "average")
+  }
+  hcs = list()
+  for (dist_method in c("euclidean", "correlation")) {
+    hc = row_hc(gene_auc_cur_mean, dist_method)
+    hcs[[dist_method]] = hc
+    sfx = if (dist_method == "euclidean") "" else paste0("_", dist_method)
 
-  # Gene AUC heatmap - no names
-  height = 4
-  width = 3
-  mat = gene_auc_cur_mean
-  colors = scales::brewer_pal(palette = palette, direction = 1)(9)
-  cols = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9), colors = colors)
 
-  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
-               show_row_names = F, col = cols,
-               height = unit(height, "in"), width = unit(width, "in"))
-  pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap_no-names.pdf")), height = height + 2, width = width + 2)
-  print(hm)
-  dev.off()
+    # Gene AUC heatmap - no names
+    height = 4
+    width = 3
+    mat = gene_auc_cur_mean
+    colors = scales::brewer_pal(palette = palette, direction = 1)(9)
+    cols = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9), colors = colors)
 
-  # Gene AUC heatmap - with names
-  height = 10
-  width = height * ncol(mat) / nrow(mat)
-  hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
-               show_row_names = T, col = cols,
-               row_names_gp = gpar(fontsize=6), column_names_gp = gpar(fontsize=6),
-               height = unit(height, "in"), width = unit(width, "in"))
-  pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap_names.pdf")), height = height + 10, width = width + 10)
-  print(hm)
-  dev.off()
+    hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = F, col = cols,
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap", sfx, "_no-names.pdf")), height = height + 2, width = width + 2)
+    print(hm)
+    dev.off()
 
-  # Expression heatmap
-  height = 4
-  width = 3
-  mat = expr_mat
-  cols_expr = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9),
-                         colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
-  hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
-               show_row_names = F, col = cols_expr,
-               height = unit(height, "in"), width = unit(width, "in"))
-  pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap_no-names.pdf")), height = height + 2, width = width + 2)
-  print(hm)
-  dev.off()
+    # Gene AUC heatmap - with names
+    height = 10
+    width = height * ncol(mat) / nrow(mat)
+    hm = Heatmap(gene_auc_cur_mean, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = T, col = cols,
+                 row_names_gp = gpar(fontsize=6), column_names_gp = gpar(fontsize=6),
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, paste0(prefix, "_gene_auc_heatmap", sfx, "_names.pdf")), height = height + 10, width = width + 10)
+    print(hm)
+    dev.off()
 
-  height = 10
-  width = 3
-  hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
-               show_row_names = T, col = cols_expr, row_names_gp = gpar(fontsize=6),
-               height = unit(height, "in"), width = unit(width, "in"))
-  pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap_names.pdf")), height = height + 2, width = width + 2)
-  print(hm)
-  dev.off()
+    # Expression heatmap
+    height = 4
+    width = 3
+    mat = expr_mat
+    cols_expr = colorRamp2(breaks = seq(min(mat), max(mat), length.out=9),
+                           colors = scales::brewer_pal(palette = "PuOr", direction = -1)(9))
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = F, col = cols_expr,
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap", sfx, "_no-names.pdf")), height = height + 2, width = width + 2)
+    print(hm)
+    dev.off()
 
-  return(list(gene_auc_cur_mean = gene_auc_cur_mean, expr_mat = expr_mat, hc = hc))
+    height = 10
+    width = 3
+    hm = Heatmap(mat, cluster_columns = F, cluster_rows = hc,
+                 show_row_names = T, col = cols_expr, row_names_gp = gpar(fontsize=6),
+                 height = unit(height, "in"), width = unit(width, "in"))
+    pdf(file.path(out_dir, paste0(prefix, "_expr_heatmap", sfx, "_names.pdf")), height = height + 2, width = width + 2)
+    print(hm)
+    dev.off()
+
+  }
+
+  return(list(gene_auc_cur_mean = gene_auc_cur_mean, expr_mat = expr_mat, hc = hcs))
 }
 ```
 
