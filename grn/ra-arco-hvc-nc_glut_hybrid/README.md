@@ -34,6 +34,7 @@ renamed them, so the old substring filter would silently keep them.
    all-cell ones. On prism, after copying `anndata_rna/adata.h5ad`, `pycisTopic/cistopic_obj_glut.pkl` and `pycisTopic/region_sets/`
    there: `scenicplus/submit_all.sh 1 2` first; after config1 has finished and `prepare_shared_upstream.sh` has run, `scenicplus/submit_all.sh 3 4`
    (the sbatch for 3/4 stops with a message if the shared files are missing, instead of silently redoing the 3.5 h fit).
+5. `perturbation/` -- in-silico KO/OE from a config's eRegulons (notebook, scripts, README).
 4. `../analysis/scenicplus_hybrid_glut_template.qmd` -- the all-cell hybrid analysis restricted to the glut object, with the song-pair DEG
    sets `ra`, `hvcra`, `hvcx` in place of `gaba4`/`astro`.
 
