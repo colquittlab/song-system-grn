@@ -9,8 +9,8 @@ It repeats the `ra-arco-hvc-nc` hybrid pipeline on the subset that `ra-arco-hvc-
 | cells | `Glut` and not `Pre` | all 27 clusters | `Glut` minus `Glut-NSC/NB/Im` (the renamed `Glut-Pre-1/2/3`): 9 clusters, 9,159 RNA cells (9,063 with ATAC) |
 | `.raw` | older export (not re-checked here) | raw counts | raw counts |
 | LDA topics | 20 | 20 (also 15, 30, 40) | 20 (only this model trained) |
-| motif stage | config15: fdr 0.001, dem 0.1/0.5, auc 0.0025, nes 2.0, rank 0.2 | config1: 0.01, 0.05/1.0, 0.005, 3.0, 0.2 | **config1 = the glut spec**, config2 = the all-cell strict thresholds |
-| cisTarget DB | shared `ra-arco-hvc-nc_seurat-clustering` | same | same (not rebuilt; this run's regions are a subset of its columns) |
+| motif stage | config15: fdr 0.001, dem 0.1/0.5, auc 0.0025, nes 2.0, rank 0.2 | config1: 0.01, 0.05/1.0, 0.005, 3.0, 0.2 | **config1 = the glut spec**, config2 = the all-cell strict thresholds; config3/4 = the same two threshold sets with the hybrid database |
+| cisTarget DB | shared `ra-arco-hvc-nc_seurat-clustering` | same (config1-35); `ra-arco-hvc-nc_hybrid`, built on the object's own regions (config36-39) | config1/2: the shared one (this run's regions are a subset of its columns); **config3/4: `ra-arco-hvc-nc_hybrid`** (identical 499,348-region list) |
 
 The precursor stages are listed explicitly rather than matched on `Pre`: the hybrid relabel (`snrna/naming/hybrid_division_naming.qmd`)
 renamed them, so the old substring filter would silently keep them.
@@ -25,11 +25,15 @@ renamed them, so the old substring filter would silently keep them.
    (`ra-arco-hvc-nc_hybrid/pycisTopic/region_sets_k40_archr/DARs_song-pairs`, from `make_song_pair_dars_archr.R`: ArchR's bias-matched
    Wilcoxon on the peak matrix). pycisTopic's `find_diff_features` ranks imputed accessibility, which calls DARs from topics the foreground
    barely uses; the ArchR test does not, and the pairs do not depend on the cell set or topic count.
-3. `scenicplus/make_configs.py` -- config1 (glut spec) and config2 (strict control); renders through `ra-arco-hvc-nc/scenicplus/make_configs.py`
+3. `scenicplus/make_configs.py` -- config1 (glut spec), config2 (strict control), config3 (config2's parameters with the hybrid cisTarget
+   database = the glut counterpart of the all-cell config37) and config4 (glut-spec thresholds with the hybrid database). Configs 3/4 reuse
+   config1's accessibility+expression object, search space and region-to-gene fit (none depends on the motif database): on prism run
+   `scenicplus/prepare_shared_upstream.sh` once after config1, before submitting 3 and 4. 20 topics throughout. Rendered through `ra-arco-hvc-nc/scenicplus/make_configs.py`
    so the YAML and the per-config `run_snakemake.sbatch` are the all-cell run's (only job name and paths differ). The helpers
    `submit_all.sh`, `link_results_to_hdd.sh` (store: `.../ra-arco-hvc-nc_glut_hybrid/results`) and `.gitignore` are copies of the
    all-cell ones. On prism, after copying `anndata_rna/adata.h5ad`, `pycisTopic/cistopic_obj_glut.pkl` and `pycisTopic/region_sets/`
-   there: `scenicplus/submit_all.sh` (all configs) or `scenicplus/submit_all.sh 1` (config1 only).
+   there: `scenicplus/submit_all.sh 1 2` first; after config1 has finished and `prepare_shared_upstream.sh` has run, `scenicplus/submit_all.sh 3 4`
+   (the sbatch for 3/4 stops with a message if the shared files are missing, instead of silently redoing the 3.5 h fit).
 4. `../analysis/scenicplus_hybrid_glut_template.qmd` -- the all-cell hybrid analysis restricted to the glut object, with the song-pair DEG
    sets `ra`, `hvcra`, `hvcx` in place of `gaba4`/`astro`.
 
