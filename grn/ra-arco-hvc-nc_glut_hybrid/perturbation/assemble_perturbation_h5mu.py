@@ -7,7 +7,9 @@ both assays, with the GEX obs / var / obsm (scenicplus.data_wrangling.process_mu
 (16,467 x 15,948, integer-valued). This rebuilds exactly that modality from anndata_rna/adata.h5ad, keeps SCENIC+'s own ScenicPlusMuData layout,
 and replaces only the accessibility modality (never read here) with a 1-column placeholder, as assemble_slim_scplusmdata.py does.
 
-    python assemble_perturbation_h5mu.py <config outs dir> [out.h5mu]      # default: <outs>/scplusmdata_perturb.h5mu
+    python assemble_perturbation_h5mu.py <config outs dir> [out.h5mu] [--lognorm]   # default: <outs>/scplusmdata_perturb.h5mu
+With --lognorm the expression is log1p(CP10k) of those counts (scanpy normalize_total target_sum=1e4, then log1p) and the default name is
+scplusmdata_perturb_lognorm.h5mu; this is NOT what SCENIC+ saw when it inferred the eRegulons (raw counts), so use it only to compare scales.
 Inputs in <outs>: AUCell_direct.h5mu AUCell_extended.h5mu eRegulon_direct.tsv eRegulons_extended.tsv.  ADATA (env) overrides the expression source.
 """
 import os
@@ -23,8 +25,10 @@ from scenicplus.scenicplus_mudata import ScenicPlusMuData
 
 B = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
 ADATA = os.environ.get("ADATA", B + "ra-arco-hvc-nc_glut_hybrid/anndata_rna/adata.h5ad")
-outs = Path(sys.argv[1])
-out = Path(sys.argv[2]) if len(sys.argv) > 2 else outs / "scplusmdata_perturb.h5mu"
+LOGNORM = "--lognorm" in sys.argv
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+outs = Path(args[0])
+out = Path(args[1]) if len(args) > 1 else outs / ("scplusmdata_perturb_lognorm.h5mu" if LOGNORM else "scplusmdata_perturb.h5mu")
 
 auc_d = mudata.read(str(outs / "AUCell_direct.h5mu"))
 auc_e = mudata.read(str(outs / "AUCell_extended.h5mu"))
@@ -39,6 +43,11 @@ assert not missing, f"{len(missing)} cells absent from {ADATA}, e.g. {missing[:3
 raw = full.raw.to_adata()                                  # raw integer counts, all genes
 raw = raw[cells].copy()
 assert np.all(raw.X.data == np.round(raw.X.data)), "expression is not integer counts"
+if LOGNORM:
+    import scanpy as sc
+    raw.X = csr_matrix(raw.X, dtype=np.float32)
+    sc.pp.normalize_total(raw, target_sum=1e4)
+    sc.pp.log1p(raw)
 rna = ad.AnnData(X=csr_matrix(raw.X, dtype=np.float32), obs=full.obs.loc[cells].copy(), var=raw.var.copy(),
                  obsm={k: np.asarray(v)[[full.obs_names.get_loc(c) for c in cells]] for k, v in full.obsm.items()})
 for c in rna.obs.columns:
@@ -50,5 +59,5 @@ md = ScenicPlusMuData(acc_gex_mdata=mudata.MuData({"scRNA": rna, "scATAC": atac}
                       e_regulon_auc_direct=auc_d, e_regulon_auc_extended=auc_e,
                       e_regulon_metadata_direct=meta_d, e_regulon_metadata_extended=meta_e)
 md.write_h5mu(str(out))
-print(f"wrote {out} ({out.stat().st_size / 1e6:.0f} MB): {len(cells)} cells x {rna.n_vars} genes (raw counts); "
+print(f"wrote {out} ({out.stat().st_size / 1e6:.0f} MB): {len(cells)} cells x {rna.n_vars} genes ({'log1p CP10k' if LOGNORM else 'raw counts'}); "
       f"{auc_d['Gene_based'].n_vars} direct and {auc_e['Gene_based'].n_vars} extended eRegulons")
