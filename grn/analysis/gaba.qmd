@@ -58,11 +58,11 @@ obj = qread(obj_fname)
 ```
 
 ## UMAP object
-Expression UMAPs use the embedding of the hybrid-labeled object written by multiome/seurat/reduction_viz/combined_all_umap_hybrid.R (reduction `dims30nn30mindist0.3`), the same UMAP as the hybrid analyses; `obj` above is only used for the cluster-level averages.
+Expression UMAPs use the embedding of the hybrid-labeled object written by multiome/seurat/reduction_viz/combined_all_umap_hybrid.R (reduction `dims25nn30mindist0.3`), the same UMAP as the hybrid analyses; `obj` above is only used for the cluster-level averages.
 ```{r}
 library(qs2)
 obj_umap = qs_read("/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2", nthreads = 8)
-stopifnot("dims30nn30mindist0.3" %in% Reductions(obj_umap))
+stopifnot("dims25nn30mindist0.3" %in% Reductions(obj_umap))
 ```
 
 ## Average expression
@@ -369,7 +369,7 @@ for (config_dir in config_dirs) {
   to_plot = unique(ereg_sane$TF)
   to_plot = intersect(Features(obj_umap), to_plot)
   DefaultAssay(obj_umap) = "SCT"
-  reduction_cur = "dims30nn30mindist0.3"
+  reduction_cur = "dims25nn30mindist0.3"
 
   ## Selected eRegulons UMAPs
   ereg_select = c("MAFB_direct_+/+")
