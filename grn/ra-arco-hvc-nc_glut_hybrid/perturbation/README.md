@@ -22,7 +22,7 @@ Results go to `<results>/config3/perturbation/` (`PERTURB_OUT_NAME` changes the 
 points, `pca_arrows_*.pdf`; `PERTURB_ARROW_MIN_FRAC`, default 0.02, keeps arrows at least that fraction of the longest) or `both`. SCENIC+'s streamplot drops arrows
 shorter than 15% of the longest, so a sparse field (a TF expressed in few cells, e.g. MAFB at 7% of cells) can come out empty although the field exists; the quiver shows it.
 Each cell's arrow is built from a kNN of 20% of all cells in the 2-D Harmony-PCA embedding, randomly subsampled with unseeded `np.random.choice`: set `PERTURB_SEED` to make it
-reproducible. `PERTURB_POINT_SIZE` (default 1.5) sets the cell scatter size; cluster colours are tab10 without the gray (tab20 beyond 9 clusters).
+reproducible. `PERTURB_FIG_SIZE` (default 1.8) is the figure side in inches and `PERTURB_POINT_SIZE` (default 3.0) the cell scatter size; cluster labels are 5 pt and titles 6 pt Arial (embedded TrueType); cluster colours are tab10 without the gray (tab20 beyond 9 clusters). With `PERTURB_SEED` set the quiver's arrow field is cached next to the figures (`arrow_field_<kd|oe>_<TF>_seed<N>.pkl`, ~10 min to compute), so restyling does not recompute it.
 `PERTURB_REDO_PERTURBATIONS=0` redraws plots from cached simulations; `PERTURB_OE_TFS=none|auto|<TFs>` and `PERTURB_OE_SET_VALUE` control overexpression
 (its value is on the scale of the expression matrix); `PERTURB_EXPRESSION_SCALE=lognorm` is for a matrix built with `assemble_perturbation_h5mu.py --lognorm`.
 
