@@ -57,6 +57,14 @@ dir.create(out_dir_base, showWarnings = FALSE)
 obj = qread(obj_fname)
 ```
 
+## UMAP object
+Expression UMAPs use the embedding of the hybrid-labeled object written by multiome/seurat/reduction_viz/combined_all_umap_hybrid.R (reduction `dims30nn30mindist0.3`), the same UMAP as the hybrid analyses; `obj` above is only used for the cluster-level averages.
+```{r}
+library(qs2)
+obj_umap = qs_read("/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2", nthreads = 8)
+stopifnot("dims30nn30mindist0.3" %in% Reductions(obj_umap))
+```
+
 ## Average expression
 ```{r}
 obj_avg = log1p(AggregateExpression(obj, group.by="cluster", assays = "SCT")[[1]])
@@ -359,8 +367,8 @@ for (config_dir in config_dirs) {
   umap_dir = file.path(out_dir, "umaps")
   dir.create(umap_dir, showWarnings = FALSE)
   to_plot = unique(ereg_sane$TF)
-  to_plot = intersect(Features(obj), to_plot)
-  DefaultAssay(obj) = "SCT"
+  to_plot = intersect(Features(obj_umap), to_plot)
+  DefaultAssay(obj_umap) = "SCT"
   reduction_cur = "dims30nn30mindist0.3"
 
   ## Selected eRegulons UMAPs
@@ -374,18 +382,18 @@ for (config_dir in config_dirs) {
       summarize(across(where(is.numeric), \(x) mean(x, na.rm=TRUE)), .groups="drop") %>%
       arrange(desc(importance_TF2G))
     to_plot = head(na.omit(ereg_sane_cur$Gene), nplot)
-    to_plot = intersect(Features(obj), to_plot)
+    to_plot = intersect(Features(obj_umap), to_plot)
     umap_dir_cur = file.path(umap_dir, sub("/", ":", ereg_base))
     dir.create(umap_dir_cur, showWarnings = FALSE)
 
     for (tp in to_plot) {
-      gg = FeaturePlot_scCustom(obj, features = tp, figure_plot = T,
+      gg = FeaturePlot_scCustom(obj_umap, features = tp, figure_plot = T,
                                 aspect_ratio = 1, reduction = reduction_cur,
                                 raster = T, raster.dpi=c(1024,1024),
                                 pt.size = 2, alpha_exp = 1, alpha_na_exp = .1)
       save_plot(file.path(umap_dir_cur, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
 
-      gg = Nebulosa::plot_density(obj, features = tp, size = .1,
+      gg = Nebulosa::plot_density(obj_umap, features = tp, size = .1,
                                   reduction = reduction_cur) + coord_equal()
       save_plot(file.path(umap_dir_cur, str_interp("${tp}_density.pdf")), gg, base_width=7, base_asp = 1)
     }
