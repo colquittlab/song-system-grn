@@ -39,7 +39,8 @@ axis <- c(sprintf('<line x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" stroke="#222" s
           sprintf('<text x="%.3f" y="%.3f" font-family="Arial" font-size="%.3f" text-anchor="middle" fill="#222">%d</text>', xt, ya + 0.5 + 5 * PT * 0.9, 5 * PT, ticks))
 title <- c(sprintf('<text x="%.3f" y="%.3f" font-family="Arial" font-size="%.3f" font-style="italic" fill="#222">%s</text>', x0, 2.0, 6 * PT, GENE),
            sprintf('<text x="%.3f" y="%.3f" font-family="Arial" font-size="%.3f" fill="#222">expression</text>', x0, 4.2, 6 * PT))
-svg <- c(sprintf('<svg xmlns="http://www.w3.org/2000/svg" width="%.3fmm" height="%.3fmm" viewBox="0 0 %.3f %.3f">', W, H, W, H),
-         '<g id="kcnc1_expression_bars">', title, bars, dots, axis, '</g>', '</svg>')
-writeLines(svg, file.path(OUT, "kcnc1_expression_bars.svg"))
+make_svg <- function(with_points) c(sprintf('<svg xmlns="http://www.w3.org/2000/svg" width="%.3fmm" height="%.3fmm" viewBox="0 0 %.3f %.3f">', W, H, W, H),
+                                    '<g id="kcnc1_expression_bars">', title, bars, if (with_points) dots, axis, '</g>', '</svg>')
+writeLines(make_svg(TRUE), file.path(OUT, "kcnc1_expression_bars.svg"))
+writeLines(make_svg(FALSE), file.path(OUT, "kcnc1_expression_bars_no_points.svg"))     # same bars and axis, no per-bird dots
 cat(sprintf("saved %s (%.1f x %.1f mm; row pitch %.3f mm; axis 0-%d = %.0f mm)\n", file.path(OUT, "kcnc1_expression_bars.svg"), W, H, PITCH, XMAX, BAR_MAX_MM))
