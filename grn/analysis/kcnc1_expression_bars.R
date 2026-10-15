@@ -5,13 +5,18 @@
 # (fig4_scenicplus_v8.svg: label centers 15.77 px = 4.172 mm apart), rows ordered RA, C1H-1, PVALB-1, LAMP5 so it can be dropped in beside the tracks and
 # aligned by eye. Text is live Arial at 5 pt (ticks) / 6 pt (title). Also writes the values (csv) with percent of cells expressing.
 #
+# PV_COMPARATOR=LGE1 replaces the fourth row (LAMP5) with GABA-LGE-1 and writes to <config37>/PVALB1_vs_LGE1/; the default (LAMP5) is unchanged.
+#
 #   Rscript kcnc1_expression_bars.R
+#   PV_COMPARATOR=LGE1 Rscript kcnc1_expression_bars.R
 suppressMessages({library(Seurat); library(qs2); library(tidyverse); library(here)})
 OBJ <- "/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/config37/")
 GENE <- "KCNC1"
+LGE <- identical(Sys.getenv("PV_COMPARATOR", "LAMP5"), "LGE1")
+if (LGE) OUT <- file.path(OUT, "PVALB1_vs_LGE1")
 ROWS <- tribble(~cluster, ~label, ~color,
-                "Glut-CACNA1H-RA", "RA", "#e4332f", "Glut-CACNA1H-1", "C1H-1", "#f4a9a8", "GABA-MGE-PVALB-1", "PVALB-1", "#2a8a3a", "GABA-MGE-LAMP5", "LAMP5", "#2a8a3a")
+                "Glut-CACNA1H-RA", "RA", "#e4332f", "Glut-CACNA1H-1", "C1H-1", "#f4a9a8", "GABA-MGE-PVALB-1", "PVALB-1", "#2a8a3a", if (LGE) "GABA-LGE-1" else "GABA-MGE-LAMP5", if (LGE) "LGE-1" else "LAMP5", "#2a8a3a")
 PITCH <- 4.172; BAR_H <- 2.5; MM_PER_UNIT <- 8 / 3; MIN_CELLS <- 10; DOT_R <- 0.33; PT <- 25.4 / 72     # mm per point
 o <- qs_read(OBJ, nthreads = 8); DefaultAssay(o) <- "SCT"; stopifnot(GENE %in% rownames(o))
 d <- FetchData(o, vars = c(GENE, "cluster_hybrid", "sample_short", "assignment"), layer = "data") %>% rename(expr = 1) %>% filter(cluster_hybrid %in% ROWS$cluster)
