@@ -8,23 +8,32 @@
 # largest smaller-of-the-two log2FC, both above UP_LFC. Annotated with Pearson r, Spearman rho and n. 1.6 x 1.6 in panel, transparent background;
 # each plot is written as PDF and as SVG (one text element per label).
 #
+# PV_COMPARATOR=LGE1 swaps the interneuron contrast for PVALB-1 vs GABA-LGE-1 (RNA: scenicplus_pv1_vs_lge1_contrast.R; accessibility: the ArchR contrast of
+# make_interneuron_dars_archr.R) and writes everything to regulon_scatter_plots/PVALB1_vs_LGE1/ (same layout and file names); the default (LAMP5) is unchanged.
+#
 #   Rscript scenicplus_regulon_scatter_plots.R
+#   PV_COMPARATOR=LGE1 Rscript scenicplus_regulon_scatter_plots.R
 suppressMessages({library(SummarizedExperiment); library(tidyverse); library(ggrepel); library(egg); library(here)})
 source(here::here("config/figure_theme.R"))
 fig_check_font()
 MAIN <- "config37"
+LGE <- identical(Sys.getenv("PV_COMPARATOR", "LAMP5"), "LGE1"); COMP_LAB <- if (LGE) "LGE-1" else "LAMP5"
 MIN_REGIONS <- 100; UP_LFC <- 1; N_LABEL <- 5; PANEL_IN <- 1.6
 ARCHR <- "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_hybrid/archr_consensus"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
-D <- file.path(OUT, MAIN, "regulon_scatter_plots")
+D <- if (LGE) file.path(OUT, MAIN, "regulon_scatter_plots", "PVALB1_vs_LGE1") else file.path(OUT, MAIN, "regulon_scatter_plots")
 for (v in c("gene_expression", "region_accessibility")) dir.create(file.path(D, v), showWarnings = FALSE, recursive = TRUE)
-LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1")
+LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1", LOC110482360 = "LAMA3")
 nm <- function(x) ifelse(x %in% names(LABEL_MAP), LABEL_MAP[x], x)
 
 get_lfc <- function(rds) { se <- readRDS(file.path(ARCHR, rds)); rr <- rowData(se); setNames(as.numeric(assay(se, "Log2FC")[, 1]), paste0(rr$seqnames, ":", rr$start - 1L, "-", rr$end)) }
-LFC_RA <- get_lfc("markers_Glut-CACNA1H-RA_VS_Glut-CACNA1H-1.rds"); LFC_PV <- get_lfc("markers_GABA-MGE-PVALB-1_VS_GABA-MGE-LAMP5.rds")
-g <- read_csv(file.path(HERE, paste0("scenicplus_all_genes_onoff_contrasts_", MAIN, ".csv.gz")), show_col_types = FALSE) %>% filter(!is.na(lfc_RA_vs_C1H1), !is.na(lfc_PV1_vs_low))
+LFC_RA <- get_lfc("markers_Glut-CACNA1H-RA_VS_Glut-CACNA1H-1.rds"); LFC_PV <- get_lfc(if (LGE) "markers_GABA-MGE-PVALB-1_VS_GABA-LGE-1.rds" else "markers_GABA-MGE-PVALB-1_VS_GABA-MGE-LAMP5.rds")
+g <- if (LGE) {
+  read_csv(file.path(HERE, paste0("scenicplus_all_genes_onoff_contrasts_", MAIN, ".csv.gz")), show_col_types = FALSE) %>% select(gene, lfc_RA_vs_C1H1) %>%
+    inner_join(read_csv(file.path(HERE, paste0("scenicplus_all_genes_pv1_vs_lge1_", MAIN, ".csv.gz")), show_col_types = FALSE) %>% select(gene, lfc_PV1_vs_low = lfc_PV1_vs_LGE1), by = "gene") %>%
+    filter(!is.na(lfc_RA_vs_C1H1), !is.na(lfc_PV1_vs_low))      # column name kept from the LAMP5 version: it holds the PVALB-1 contrast either way
+} else read_csv(file.path(HERE, paste0("scenicplus_all_genes_onoff_contrasts_", MAIN, ".csv.gz")), show_col_types = FALSE) %>% filter(!is.na(lfc_RA_vs_C1H1), !is.na(lfc_PV1_vs_low))
 e <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", Region = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%
   filter(grepl("\\+/\\+$", eRegulon_name)) %>% select(TF, Gene, Region, importance_TF2G) %>% filter(Gene %in% g$gene, Region %in% names(LFC_RA), Region %in% names(LFC_PV))
 
@@ -43,7 +52,7 @@ plot_one <- function(d, tf, kind, W = PANEL_IN + 1.75, H = PANEL_IN + 0.95) {
     scale_color_viridis_c(name = "log TF2G\nimportance") +
     scale_x_continuous(expand = fig_expand()) + scale_y_continuous(expand = fig_expand()) + coord_cartesian(clip = "off") +
     labs(title = paste0(tf, " regulon"), x = paste0("log2 fold change", if (kind == "r") " accessibility" else "", "\nRA vs C1H-1"),
-         y = paste0("log2 fold change", if (kind == "r") " accessibility" else "", "\nPVALB-1 vs LAMP5")) +
+         y = paste0("log2 fold change", if (kind == "r") " accessibility" else "", "\nPVALB-1 vs ", COMP_LAB)) +
     theme_fig() + theme(plot.background = element_blank(), panel.background = element_blank(), legend.background = element_blank(), legend.key = element_blank(),
                         legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
                         plot.title = element_text(size = FIG_PT_AXIS_TITLE, family = FIG_FONT, hjust = 0))
