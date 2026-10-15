@@ -9,10 +9,12 @@ source(here::here("config/figure_theme.R"))
 fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
-R <- read_csv(here::here("grn/analysis/scenicplus_regulon_quadrant_fractions_config37.csv"), show_col_types = FALSE) %>%
+LGE <- identical(Sys.getenv("PV_COMPARATOR", "LAMP5"), "LGE1"); SUF <- if (LGE) "_lge1" else ""     # PV_COMPARATOR=LGE1: PVALB-1 vs GABA-LGE-1 instead of vs LAMP5
+PLOT_DIR <- if (LGE) file.path(OUT, MAIN, "regulon_scatter_plots", "PVALB1_vs_LGE1") else file.path(OUT, MAIN, "regulon_scatter_plots")
+R <- read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_fractions_", MAIN, SUF, ".csv")), show_col_types = FALSE) %>%
   mutate(pct = 100 * frac_UR, kind = factor(ifelse(kind == "gene_expression", "genes (RNA log2FC)", "regions (accessibility log2FC)"),
                                             levels = c("genes (RNA log2FC)", "regions (accessibility log2FC)"))) %>%
-  left_join(read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, ".csv")), show_col_types = FALSE) %>%
+  left_join(read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, SUF, ".csv")), show_col_types = FALSE) %>%
               transmute(TF, kind = ifelse(kind == "gene_expression", "genes (RNA log2FC)", "regions (accessibility log2FC)"), p_frac, nlp = -log10(p_frac)), by = c("TF", "kind")) %>%
   mutate(kind = factor(kind, levels = c("genes (RNA log2FC)", "regions (accessibility log2FC)"))) %>%
   group_by(kind) %>% mutate(rank = rank(-pct, ties.method = "min"), n_reg = n()) %>% ungroup()
@@ -36,7 +38,7 @@ p <- ggplot(R, aes(xj, pct)) +
   labs(x = NULL, y = "% in the upper-right quadrant\n(log2FC > 0 in both contrasts)") + theme_fig() +
   theme(plot.background = element_blank(), panel.background = element_blank(), legend.background = element_blank(), legend.key = element_blank(),
         legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TITLE), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
-stem <- file.path(OUT, MAIN, "regulon_scatter_plots", "quadrant_percentages_by_regulon_perm_p")
+stem <- file.path(PLOT_DIR, "quadrant_percentages_by_regulon_perm_p")
 fig_save(p, stem, width = 4.2, height = 3.6)
 ggsave(paste0(stem, ".png"), p, width = 4.2, height = 3.6, dpi = 600, bg = "transparent")
 ggsave(paste0(stem, ".svg"), p, width = 4.2, height = 3.6, bg = "transparent",

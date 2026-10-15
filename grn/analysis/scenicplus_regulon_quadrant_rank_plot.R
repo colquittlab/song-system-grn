@@ -9,10 +9,12 @@ source(here::here("config/figure_theme.R"))
 fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
+LGE <- identical(Sys.getenv("PV_COMPARATOR", "LAMP5"), "LGE1"); SUF <- if (LGE) "_lge1" else ""     # PV_COMPARATOR=LGE1: PVALB-1 vs GABA-LGE-1 instead of vs LAMP5
+PLOT_DIR <- if (LGE) file.path(OUT, MAIN, "regulon_scatter_plots", "PVALB1_vs_LGE1") else file.path(OUT, MAIN, "regulon_scatter_plots")
 KIND <- c(gene_expression = "genes (RNA log2FC)", region_accessibility = "regions (accessibility log2FC)")
-R <- read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_fractions_", MAIN, ".csv")), show_col_types = FALSE) %>%
+R <- read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_fractions_", MAIN, SUF, ".csv")), show_col_types = FALSE) %>%
   select(TF, kind, n, frac_UR) %>%
-  left_join(read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, ".csv")), show_col_types = FALSE) %>% select(TF, kind, p_frac), by = c("TF", "kind")) %>%
+  left_join(read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, SUF, ".csv")), show_col_types = FALSE) %>% select(TF, kind, p_frac), by = c("TF", "kind")) %>%
   mutate(pct = 100 * frac_UR, nlp = -log10(p_frac), kind = factor(KIND[kind], levels = KIND)) %>%
   group_by(kind) %>% arrange(desc(pct), .by_group = TRUE) %>% mutate(rank = rank(-pct, ties.method = "first")) %>% ungroup()
 M <- R %>% filter(TF == "MAFB") %>% mutate(lab = sprintf("MAFB: #%d, %.1f%%", rank, pct))
@@ -33,7 +35,7 @@ p <- ggplot(R, aes(rank, pct)) +
   theme(plot.background = element_blank(), panel.background = element_blank(), legend.background = element_blank(), legend.key = element_blank(), legend.key.size = unit(0.15, "cm"),
         legend.margin = margin(0, 0, 0, 0), legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         strip.text = element_text(size = FIG_PT_AXIS_TITLE, family = FIG_FONT), strip.background = element_blank(), panel.spacing = unit(0.08, "in"))
-stem <- file.path(OUT, MAIN, "regulon_scatter_plots", "quadrant_percentage_by_rank")
+stem <- file.path(PLOT_DIR, "quadrant_percentage_by_rank")
 W <- 3.6; H <- 1.6
 fig_save(p, stem, width = W, height = H)
 ggsave(paste0(stem, ".png"), p, width = W, height = H, dpi = 600, bg = "transparent")
