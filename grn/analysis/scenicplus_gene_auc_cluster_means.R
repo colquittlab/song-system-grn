@@ -19,14 +19,24 @@ gene_auc <- map(c("direct", "extended"), ~ extract_matrix(paste0("/mod/", .x, "_
 obs <- h5read(ereg_file, name = "/mod/scRNA_counts/obs")
 cl <- obs$cluster
 cluster <- factor(cl$codes, levels = 0:(length(cl$categories) - 1), labels = cl$categories)
-grp <- tibble(`_index` = obs$`_index`, cluster = cluster)
+fac <- function(x) factor(x$codes, levels = 0:(length(x$categories) - 1), labels = x$categories)
+grp <- tibble(`_index` = obs$`_index`, cluster = cluster, sample_short = fac(obs$sample_short), assignment = fac(obs$assignment))
 gene_auc <- gene_auc %>% left_join(grp, by = "_index") %>% filter(!is.na(cluster))
 pos <- gene_auc %>% select(cluster, matches("\\+\\/\\+"))
 colnames(pos) <- sub("_(direct|extended)_\\+\\/\\+_\\([0-9]+[a-z]\\)", "", colnames(pos))
+pos_b <- gene_auc %>% select(cluster, sample_short, assignment, matches("\\+\\/\\+"))
+colnames(pos_b) <- sub("_(direct|extended)_\\+\\/\\+_\\([0-9]+[a-z]\\)", "", colnames(pos_b))
+# per bird (one bird in one library, as in the pseudobulk analyses): mean AUC per regulon and cell type, kept when the bird has >= MIN_CELLS cells of that type
+bird <- pos_b %>% pivot_longer(-c(cluster, sample_short, assignment), names_to = "tf") %>% group_by(cluster, sample_short, assignment, tf) %>%
+  summarize(value_mean = mean(value), .groups = "drop") %>%
+  left_join(gene_auc %>% count(cluster, sample_short, assignment, name = "n_cells"), by = c("cluster", "sample_short", "assignment"))
+OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/"); dir.create(file.path(OUT, MAIN, "gene_auc_expanded"), showWarnings = FALSE)
+write_csv(bird %>% mutate(value_mean = signif(value_mean, 5)), file.path(OUT, MAIN, "gene_auc_expanded", "scenicplus_gene_auc_per_bird.csv.gz"))     # raw per-bird means (not tracked: large)
 long <- pos %>% pivot_longer(-cluster, names_to = "tf") %>% group_by(cluster, tf) %>% summarize(value_mean = mean(value), n_cells = n(), .groups = "drop")
 M <- long %>% select(-n_cells) %>% pivot_wider(names_from = cluster, values_from = value_mean)
 write_csv(M %>% mutate(across(where(is.double), ~ signif(.x, 5))), file.path(HERE, paste0("scenicplus_gene_auc_cluster_means_", MAIN, ".csv")))
 S <- M %>% pivot_longer(-tf, names_to = "cluster") %>% group_by(tf) %>% mutate(value = (value - min(value)) / (max(value) - min(value))) %>% ungroup() %>% pivot_wider(names_from = cluster, values_from = value)
 write_csv(S %>% mutate(across(where(is.double), ~ signif(.x, 5))), file.path(HERE, paste0("scenicplus_gene_auc_cluster_means_scaled_", MAIN, ".csv")))
 cat(nrow(M), "TFs x", ncol(M) - 1, "cell types;", n_distinct(gene_auc$`_index`), "cells\n")
+cat("birds (library x assignment):", n_distinct(paste(bird$sample_short, bird$assignment)), "\n")
 cat("cell types:", paste(setdiff(colnames(M), "tf"), collapse = ", "), "\n")
