@@ -8,7 +8,7 @@ the DAR thresholds, which ArchR song pairs apply, and config1's motif/data-prepa
 reference files by exact-string replacement (each replacement is asserted, so a change in the reference breaks this loudly instead of
 silently producing a different script).
 
-    python make_hybrid_subset_dirs.py            # (re)writes every subset directory below; nothing under /hdd is touched
+    python make_hybrid_subset_dirs.py [subset ...]   # (re)writes the named subset directories (default: all); nothing under /hdd is touched
 """
 import json
 import re
@@ -60,6 +60,28 @@ adata = adata[keep.values].copy()
 assert set(adata.obs["cluster"].astype(str)) == set(CLUSTERS), "a cluster is missing after the filter"
 adata.obs["cluster"] = adata.obs["cluster"].astype(str)''',
         K=10, k_note="the earlier RA vs Arco-1 run's hand-picked choice (it trained 2-40)",
+        dar_adjp=0.1, dar_log2fc="np.log2(1.5)", pairs=["Glut-CACNA1H-RA_VS_Glut-CACNA1H-1"],
+        spec_motif=dict(motif_similarity_fdr=0.001, dem_adj_pval_thr=0.05, dem_log2fc_thr=1.0,
+                        ctx_auc_threshold=0.005, ctx_nes_threshold=3.0, ctx_rank_threshold=0.05),
+        spec_dataprep={"extended_annotation": "Orthology_annot Motif_similarity_annot"}, spec_name="config18 of the earlier RA vs Arco-1 run",
+    ),
+    "ra_c1h1_all": dict(
+        dirname="glut-ra_glut-c1h-1_allruns_hybrid",
+        label="Glut-CACNA1H-RA vs Glut-CACNA1H-1, all runs (the hybrid labels of Glut-RA vs Glut-Arco-1, run3 included)",
+        old="glut-ra_glut-arco-1 (config18)",
+        filter_doc=("the two clusters Glut-CACNA1H-RA and Glut-CACNA1H-1 (older labels Glut-RA, Glut-Arco-1) from ALL runs. The earlier run excluded the run3\n"
+                    "samples; glut-ra_glut-c1h-1_hybrid keeps that exclusion (745 cells), this variant does not (1,966 cells)."),
+        filter_code='''CLUSTERS = ["Glut-CACNA1H-RA", "Glut-CACNA1H-1"]
+
+adata = sc.read_h5ad(SRC)
+assert np.all(adata.X.data == np.round(adata.X.data)), "source X is not integer counts"
+
+cl = adata.obs["cluster"].astype(str)
+keep = cl.isin(CLUSTERS)   # all runs, run3 included
+adata = adata[keep.values].copy()
+assert set(adata.obs["cluster"].astype(str)) == set(CLUSTERS), "a cluster is missing after the filter"
+adata.obs["cluster"] = adata.obs["cluster"].astype(str)''',
+        K=10, k_note="the earlier RA vs Arco-1 run's hand-picked choice on its 745 cells (it trained 2-40); not re-selected for the larger cell set",
         dar_adjp=0.1, dar_log2fc="np.log2(1.5)", pairs=["Glut-CACNA1H-RA_VS_Glut-CACNA1H-1"],
         spec_motif=dict(motif_similarity_fdr=0.001, dem_adj_pval_thr=0.05, dem_log2fc_thr=1.0,
                         ctx_auc_threshold=0.005, ctx_nes_threshold=3.0, ctx_rank_threshold=0.05),
@@ -268,7 +290,9 @@ def make_readme(s, tag, root):
     cells_note = {
         "gaba": "all `GABA-*` clusters minus `GABA-Im` (the renamed `GABA-Pre`): 8 clusters, 3,275 RNA cells",
         "ra_c1h1": "`Glut-CACNA1H-RA` and `Glut-CACNA1H-1` with the run3 samples excluded as in the earlier run: 745 RNA cells (258 RA, 487 CACNA1H-1). "
-                   "Without the exclusion (`EXCLUDE_RUN3=0`) it is 1,966 (560 and 1,406).",
+                   "Without the exclusion (`EXCLUDE_RUN3=0`) it is 1,966 (560 and 1,406): that is `glut-ra_glut-c1h-1_allruns_hybrid`.",
+        "ra_c1h1_all": "`Glut-CACNA1H-RA` and `Glut-CACNA1H-1` from all runs, run3 included: 1,966 RNA cells (560 RA, 1,406 CACNA1H-1). The earlier run excluded run3 "
+                       "(`glut-ra_glut-c1h-1_hybrid`, 745 cells). The topic count (10) was picked for those 745 cells and is not re-selected here.",
     }[tag]
     pairs = (f"DARs for the ArchR song pair copied from the all-cell run (`{s['pairs'][0].replace('_VS_', '` vs `')}`)" if s["pairs"]
              else "no song-pair DARs (the earlier run had none)")
@@ -320,5 +344,7 @@ def build(tag, s):
 
 
 if __name__ == "__main__":
-    for tag, s in SUBSETS.items():
-        build(tag, s)
+    import sys
+    wanted = sys.argv[1:] or list(SUBSETS)
+    for tag in wanted:
+        build(tag, SUBSETS[tag])
