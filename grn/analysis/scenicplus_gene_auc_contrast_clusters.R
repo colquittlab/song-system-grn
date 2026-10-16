@@ -13,7 +13,7 @@
 #    correction over 123 regulons. (A permutation of FG/REF labels across glutamatergic types was also tried and has no power by construction.)
 # 2. A regulon is selected if at least one contrast is differential; its module is the pattern of contrasts it passes (all three; HVCra & HVCx; RA only; ...).
 # 3. The MAFB module: regulons in MAFB's branch of an average-linkage tree on 1 - Pearson r of the AUC profiles over ALL 27 cell types, cut at MAFB_CUT.
-# Output: a csv with the per-contrast numbers, pass/fail and module of every regulon, and the expanded heatmap (cells square) with the three differences alongside.
+# Output: a csv with the per-contrast numbers, pass/fail and module of every regulon, and the expanded heatmap (cells square) with the three differences alongside (no markers; the pass/fail calls are in the csv).
 #
 # Input: scenicplus_gene_auc_cluster_means.R (cell-type and per-bird AUC means).
 #   Rscript scenicplus_gene_auc_contrast_clusters.R
@@ -81,7 +81,6 @@ ht <- Heatmap(mat, name = "target gene enrichment", col = cols, cluster_rows = F
 DC <- 0.6
 htd <- Heatmap(D, name = "per-bird difference", col = colorRamp2(c(-DC, 0, DC), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)), cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title = NULL,
                row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = TRUE, row_names_side = "right", width = unit(ncol(D) * CELL_IN, "in"), height = body_h, border = FALSE,
-               cell_fun = function(j, i, x, y, w, h, fill) if (passmat[rownames(D)[i], j]) grid.points(x, y, pch = 16, size = unit(0.025, "in"), gp = gpar(col = FIG_INK_PRIMARY)),
                heatmap_legend_param = list(title = "Difference in\nscaled AUC\n(per-bird mean)", title_gp = gp6, labels_gp = gp5, legend_height = unit(0.6, "in"), grid_width = unit(0.09, "in"), at = c(-DC, 0, DC), labels = c("≤−0.6", "0", "≥0.6")))
 dir.create(file.path(OUT, MAIN, "gene_auc_expanded"), showWarnings = FALSE)
 stem <- file.path(OUT, MAIN, "gene_auc_expanded", "gene_auc_contrast_modules")
