@@ -13,7 +13,7 @@
 #    correction over 123 regulons. (A permutation of FG/REF labels across glutamatergic types was also tried and has no power by construction.)
 # 2. A regulon is selected if at least one contrast is differential; its module is the pattern of contrasts it passes (all three; HVCra & HVCx; RA only; ...).
 # 3. The MAFB module: regulons in MAFB's branch of an average-linkage tree on 1 - Pearson r of the AUC profiles over ALL 27 cell types, cut at MAFB_CUT.
-# Output: a csv with the per-contrast numbers, pass/fail and module of every regulon, and the expanded heatmap (cells square) with the three differences alongside (no markers; the pass/fail calls are in the csv).
+# Output: a csv with the per-contrast numbers, pass/fail and module of every regulon, and the expanded heatmap (cells square) with the three differences alongside (no markers or foreground/reference bars; the pass/fail calls are in the csv).
 #
 # Input: scenicplus_gene_auc_cluster_means.R (cell-type and per-bird AUC means).
 #   Rscript scenicplus_gene_auc_contrast_clusters.R
@@ -72,10 +72,8 @@ GAP <- 0.05
 nsp <- nlevels(keep$group)
 body_h <- unit(nrow(mat) * CELL_IN + (nsp - 1) * GAP, "in")
 cols <- colorRamp2(seq(0, 1, length.out = 9), scales::brewer_pal(palette = "Greys", direction = 1)(9))
-fgmark <- HeatmapAnnotation(type = anno_simple(ifelse(colnames(mat) %in% FGT, "foreground", ifelse(colnames(mat) %in% REFT, "reference", "other")),
-                                               col = c(foreground = FIG_PAL[2], reference = FIG_PAL[1], other = "white"), height = unit(0.06, "in")), show_annotation_name = FALSE, show_legend = FALSE)
 ht <- Heatmap(mat, name = "target gene enrichment", col = cols, cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title_gp = gp6, row_title_rot = 0,
-              row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), top_annotation = fgmark, show_row_names = FALSE,
+              row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = FALSE,
               width = unit(ncol(mat) * CELL_IN, "in"), height = body_h, border = FALSE,
               heatmap_legend_param = list(title = "Target gene\nenrichment", title_gp = gp6, labels_gp = gp5, legend_height = unit(0.6, "in"), grid_width = unit(0.09, "in"), at = c(0, 1), labels = c("0", "1")))
 DC <- 0.6
