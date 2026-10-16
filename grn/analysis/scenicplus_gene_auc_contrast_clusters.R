@@ -23,7 +23,7 @@ fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
 HERE <- here::here("grn/analysis")
-DIFF_MIN <- 0.15; POS_FRAC <- 0.8; MIN_BIRDS <- 3; MIN_CELLS <- 10; FG_ACTIVE <- 0.4; MAFB_CUT <- 0.25; CELL_IN <- 0.12
+DIFF_MIN <- 0.15; POS_FRAC <- 0.8; MIN_BIRDS <- 3; MIN_CELLS <- 10; FG_ACTIVE <- 0.4; MAFB_CUT <- 0.25; WIDTH_IN <- 1.9      # width of the AUC heatmap in inches; the cells are square, so the row height follows (WIDTH_IN / 27)
 PAIRS <- list(`HVCra vs D2-1` = c("Glut-DACH2-HVCra", "Glut-DACH2-1"), `HVCx vs D2-4` = c("Glut-DACH2-HVCx", "Glut-DACH2-4"), `RA vs C1H-1` = c("Glut-CACNA1H-RA", "Glut-CACNA1H-1"))
 FGT <- sapply(PAIRS, `[`, 1); REFT <- sapply(PAIRS, `[`, 2)
 PATTERN <- c(`111` = "all three contrasts", `110` = "HVCra & HVCx", `101` = "HVCra & RA", `011` = "HVCx & RA", `100` = "HVCra only", `010` = "HVCx only", `001` = "RA only")
@@ -68,21 +68,41 @@ keep <- keep %>% mutate(group = factor(group, levels = grp_levels)) %>% dropleve
 mat <- A[keep$tf, ORDER]
 D <- as.matrix(keep[, paste0("mean_diff.", names(PAIRS))]); colnames(D) <- names(PAIRS); rownames(D) <- keep$tf
 gp5 <- gpar(fontsize = FIG_PT_AXIS_TEXT, fontfamily = FIG_FONT); gp6 <- gpar(fontsize = FIG_PT_AXIS_TITLE, fontfamily = FIG_FONT)
-GAP <- 0.05
+CELL_IN <- WIDTH_IN / ncol(mat)
+GAP <- 0.09       # between row groups: room for the group title (5 pt) above each block
 nsp <- nlevels(keep$group)
 body_h <- unit(nrow(mat) * CELL_IN + (nsp - 1) * GAP, "in")
 cols <- colorRamp2(seq(0, 1, length.out = 9), scales::brewer_pal(palette = "Greys", direction = 1)(9))
-ht <- Heatmap(mat, name = "target gene enrichment", col = cols, cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title_gp = gp6, row_title_rot = 0,
-              row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = FALSE,
-              width = unit(ncol(mat) * CELL_IN, "in"), height = body_h, border = FALSE,
-              heatmap_legend_param = list(title = "Target gene\nenrichment", title_gp = gp6, labels_gp = gp5, legend_height = unit(0.6, "in"), grid_width = unit(0.09, "in"), at = c(0, 1), labels = c("0", "1")))
+# no legends in the figure: the 0-1 gray scale is panel A's, and the difference scale is saved separately (*_legend)
+ht <- Heatmap(mat, name = "target gene enrichment", col = cols, cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title = NULL,
+              row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = FALSE, show_heatmap_legend = FALSE,
+              width = unit(ncol(mat) * CELL_IN, "in"), height = body_h, border = FALSE)
 DC <- 0.6
-htd <- Heatmap(D, name = "per-bird difference", col = colorRamp2(c(-DC, 0, DC), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)), cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title = NULL,
-               row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = TRUE, row_names_side = "right", width = unit(ncol(D) * CELL_IN, "in"), height = body_h, border = FALSE,
-               heatmap_legend_param = list(title = "Difference in\nscaled AUC\n(per-bird mean)", title_gp = gp6, labels_gp = gp5, legend_height = unit(0.6, "in"), grid_width = unit(0.09, "in"), at = c(-DC, 0, DC), labels = c("≤−0.6", "0", "≥0.6")))
+dcol <- colorRamp2(c(-DC, 0, DC), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH))
+htd <- Heatmap(D, name = "per-bird difference", col = dcol, cluster_rows = FALSE, cluster_columns = FALSE, row_split = keep$group, row_title = NULL,
+               row_names_gp = gp5, column_names_gp = gp5, row_gap = unit(GAP, "in"), show_row_names = TRUE, row_names_side = "right", show_heatmap_legend = FALSE,
+               width = unit(ncol(D) * CELL_IN, "in"), height = body_h, border = FALSE)
+draw_all <- function() {
+  draw(ht + htd, padding = unit(c(1, 1, 1, 1), "mm"), ht_gap = unit(0.04, "in"))
+  for (i in seq_len(nsp)) decorate_heatmap_body("target gene enrichment", grid.text(levels(keep$group)[i], x = unit(0, "npc"), y = unit(1, "npc") + unit(1.5, "pt"), just = c("left", "bottom"), gp = gp5), slice = i)
+}
 dir.create(file.path(OUT, MAIN, "gene_auc_expanded"), showWarnings = FALSE)
 stem <- file.path(OUT, MAIN, "gene_auc_expanded", "gene_auc_contrast_modules")
-Wd <- 7.4; Ht <- nrow(mat) * CELL_IN + nsp * GAP + 2.2
-cairo_pdf(paste0(stem, ".pdf"), width = Wd, height = Ht, family = FIG_FONT); draw(ht + htd, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"), ht_gap = unit(0.06, "in")); invisible(dev.off())
-png(paste0(stem, ".png"), width = Wd, height = Ht, units = "in", res = 300, type = "cairo", family = FIG_FONT); draw(ht + htd, merge_legend = TRUE, padding = unit(c(2, 2, 2, 2), "mm"), ht_gap = unit(0.06, "in")); invisible(dev.off())
+raw <- tempfile(); CW <- 6; CH <- 6                  # drawn on a generous transparent canvas, then cropped to the drawing (scripts/crop_svg.py); the pdf and png are made from the cropped svg
+svglite::svglite(paste0(raw, ".svg"), width = CW, height = CH, bg = "transparent", system_fonts = list(sans = FIG_FONT)); draw_all(); invisible(dev.off())
+CROP <- here::here("scripts/crop_svg.py")
+export <- function(raw_svg, stem) {
+  size <- system2("python3", c(CROP, raw_svg, paste0(stem, ".svg")), stdout = TRUE)
+  inkscape <- function(...) system2("inkscape", c(paste0(stem, ".svg"), ...), stdout = FALSE, stderr = FALSE)
+  inkscape("--export-type=pdf", paste0("--export-filename=", stem, ".pdf"))
+  inkscape("--export-type=png", "--export-dpi=600", "--export-background-opacity=0", paste0("--export-filename=", stem, ".png"))
+  size
+}
+size <- export(paste0(raw, ".svg"), stem)
+cat(sprintf("figure size %s (AUC heatmap %.2f in wide, cells %.4f in square; %d rows)\n", size, WIDTH_IN, CELL_IN, nrow(mat)))
+# difference legend on its own
+lgd <- Legend(title = "Difference in\nscaled AUC\n(per-bird mean)", col_fun = dcol, at = c(-DC, 0, DC), labels = c("≤−0.6", "0", "≥0.6"), title_gp = gp6, labels_gp = gp5, legend_height = unit(0.6, "in"), grid_width = unit(0.09, "in"))
+rawl <- tempfile()
+svglite::svglite(paste0(rawl, ".svg"), width = 2, height = 2, bg = "transparent", system_fonts = list(sans = FIG_FONT)); draw(lgd); invisible(dev.off())
+cat("legend size", export(paste0(rawl, ".svg"), paste0(stem, "_legend")), "\n")
 cat("saved", stem, "\n")
