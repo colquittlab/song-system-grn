@@ -6,14 +6,11 @@ defines its tables; nothing is written until main()), so the runs cannot drift a
 Derived from ../../ra-arco-hvc-nc_glut_hybrid/scenicplus/make_configs.py by ../../make_hybrid_subset_dirs.py.
 
     config1  the earlier run's parameters (glut-ra_glut-arco-1 (config18)): motif_similarity_fdr 0.001, dem_adj_pval_thr 0.05, dem_log2fc_thr 1.0, ctx_auc_threshold 0.005, ctx_nes_threshold 3.0, ctx_rank_threshold 0.05; extended_annotation 'Orthology_annot Motif_similarity_annot'.
-             10 topics, raw counts in .raw, cisTarget database shared with the all-cell run.
-    config2  control: the all-cell hybrid run's strict config1 thresholds (base parameters).
-    config3  config2's parameters (= the all-cell config37's) with the hybrid cisTarget database, built on the consensus regions
-             (cistarget/ra-arco-hvc-nc_hybrid; its region list is identical to the cisTopic object's 499,348 regions, so no region is dropped
-             or shifted by the 40 % overlap match that config1/2's older shared database needs).
-    config4  config1's thresholds with the hybrid database.
-    Configs 3/4 reuse config1's accessibility + expression object, search space and region-to-gene fit (none depends on the motif database):
-    see prepare_shared_upstream.sh.
+             10 topics, raw counts in .raw.
+    config2  the all-cell hybrid run's strict config1 thresholds (base parameters; = the all-cell config37's), reusing config1's accessibility +
+             expression object, search space and region-to-gene fit (none depends on the motif database): see prepare_shared_upstream.sh.
+    Both use the hybrid cisTarget database (cistarget/ra-arco-hvc-nc_hybrid), built on the consensus regions; its region list is identical to the
+    cisTopic object's 499,348 regions, so no region is dropped or shifted by the 40 % overlap match the older shared database needs.
 
     python make_configs.py
 """
@@ -31,16 +28,15 @@ base.PRISM_ROOT = ("/private/groups/colquittlab/scenicplus/motor-pathway_multiom
                    "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-c1h-1_allruns_hybrid")
 base.N_TOPICS = {}              # one topic count (10); region_sets
 base.REGION_SET_VARIANT = {}
-base.SHARED_UPSTREAM = {3, 4}
+base.SHARED_UPSTREAM = {2}
 base.N_CPU_MOTIF = {}
 base.cistopic_obj_name = lambda n: "cistopic_obj_ra_c1h1_all.pkl"   # the all-cell script names it cistopic_obj_glut.pkl
 
 SPEC = {'params_motif_enrichment': {'motif_similarity_fdr': 0.001, 'dem_adj_pval_thr': 0.05, 'dem_log2fc_thr': 1.0, 'ctx_auc_threshold': 0.005, 'ctx_nes_threshold': 3.0, 'ctx_rank_threshold': 0.05}, 'params_data_preparation': {'extended_annotation': 'Orthology_annot Motif_similarity_annot'}}
-CONFIGS = {1: SPEC, 2: {}, 3: {}, 4: SPEC}
+CONFIGS = {1: SPEC, 2: {}}
 
-OLD_DB = (base.CISTARGET_DIR, base.CISTARGET_PREFIX)
 HYBRID_DB = ("/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid", "ra-arco-hvc-nc_hybrid")
-CONFIG_DB = {1: OLD_DB, 2: OLD_DB, 3: HYBRID_DB, 4: HYBRID_DB}
+CONFIG_DB = {n: HYBRID_DB for n in CONFIGS}   # every config here uses the hybrid cisTarget database
 
 
 def write_parameter_table():

@@ -3,7 +3,8 @@
 
 ra-arco-hvc-nc_glut_hybrid/ is the reference: glutamatergic neurons, hybrid labels, 20 topics, ArchR song-pair DARs, configs 1-4
 (config1 = the older subset run's motif thresholds, config2 = the all-cell run's strict thresholds, config3/4 = the same two with the
-hybrid cisTarget database). Each subset below changes only what the older run of that subset specified: the cell filter, the topic count,
+hybrid cisTarget database). The subset directories generated here have only TWO configs, both on the hybrid cisTarget database
+(ra-arco-hvc-nc_hybrid: built on the cisTopic object's own consensus regions; no overlap matching). Each subset below changes only what the older run of that subset specified: the cell filter, the topic count,
 the DAR thresholds, which ArchR song pairs apply, and config1's motif/data-preparation parameters. Everything else is copied from the
 reference files by exact-string replacement (each replacement is asserted, so a change in the reference breaks this loudly instead of
 silently producing a different script).
@@ -207,14 +208,11 @@ Derived from ../../ra-arco-hvc-nc_glut_hybrid/scenicplus/make_configs.py by ../.
 
     config1  the earlier run's parameters ({s["old"]}): {", ".join(f"{k} {v}" for k, v in mot.items())}{
         "; " + ", ".join(f"{k} {v!r}" for k, v in s["spec_dataprep"].items()) if s["spec_dataprep"] else ""}.
-             {s["K"]} topics, raw counts in .raw, cisTarget database shared with the all-cell run.
-    config2  control: the all-cell hybrid run's strict config1 thresholds (base parameters).
-    config3  config2's parameters (= the all-cell config37's) with the hybrid cisTarget database, built on the consensus regions
-             (cistarget/ra-arco-hvc-nc_hybrid; its region list is identical to the cisTopic object's 499,348 regions, so no region is dropped
-             or shifted by the 40 % overlap match that config1/2's older shared database needs).
-    config4  config1's thresholds with the hybrid database.
-    Configs 3/4 reuse config1's accessibility + expression object, search space and region-to-gene fit (none depends on the motif database):
-    see prepare_shared_upstream.sh.
+             {s["K"]} topics, raw counts in .raw.
+    config2  the all-cell hybrid run's strict config1 thresholds (base parameters; = the all-cell config37's), reusing config1's accessibility +
+             expression object, search space and region-to-gene fit (none depends on the motif database): see prepare_shared_upstream.sh.
+    Both use the hybrid cisTarget database (cistarget/ra-arco-hvc-nc_hybrid), built on the consensus regions; its region list is identical to the
+    cisTopic object's 499,348 regions, so no region is dropped or shifted by the 40 % overlap match the older shared database needs.
 
     python make_configs.py
 """
@@ -232,16 +230,15 @@ base.PRISM_ROOT = ("/private/groups/colquittlab/scenicplus/motor-pathway_multiom
                    "motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/{root}")
 base.N_TOPICS = {{}}              # one topic count ({s["K"]}); region_sets
 base.REGION_SET_VARIANT = {{}}
-base.SHARED_UPSTREAM = {{3, 4}}
+base.SHARED_UPSTREAM = {{2}}
 base.N_CPU_MOTIF = {{}}
 base.cistopic_obj_name = lambda n: "cistopic_obj_{tag}.pkl"   # the all-cell script names it cistopic_obj_glut.pkl
 
 SPEC = {spec!r}
-CONFIGS = {{1: SPEC, 2: {{}}, 3: {{}}, 4: SPEC}}
+CONFIGS = {{1: SPEC, 2: {{}}}}
 
-OLD_DB = (base.CISTARGET_DIR, base.CISTARGET_PREFIX)
 HYBRID_DB = ("/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid", "ra-arco-hvc-nc_hybrid")
-CONFIG_DB = {{1: OLD_DB, 2: OLD_DB, 3: HYBRID_DB, 4: HYBRID_DB}}
+CONFIG_DB = {{n: HYBRID_DB for n in CONFIGS}}   # every config here uses the hybrid cisTarget database
 
 
 def write_parameter_table():
@@ -307,15 +304,16 @@ SCENIC+ on **{s["label"]}**, hybrid labels (`cluster_hybrid`). Derived from `ra-
 | `.raw` | older export (not re-checked here) | raw counts |
 | LDA topics | {s["K"]} (hand-picked from 2-40) | {s["K"]} (only this model trained) |
 | DARs (every cluster) | adj. p {s["dar_adjp"]}, abs(log2FC) >= log2(1.5) | same; {pairs} |
-| motif stage | {", ".join(f"{k} {v}" for k, v in mot.items())}{"; " + ", ".join(f"{k} {v!r}" for k, v in s["spec_dataprep"].items()) if s["spec_dataprep"] else ""} | **config1 = this**, config2 = the all-cell strict thresholds; config3/4 = the same two with the hybrid cisTarget database |
+| motif stage | {", ".join(f"{k} {v}" for k, v in mot.items())}{"; " + ", ".join(f"{k} {v!r}" for k, v in s["spec_dataprep"].items()) if s["spec_dataprep"] else ""} | **config1 = this**, config2 = the all-cell strict thresholds; both with the hybrid cisTarget database |
 
 ## Steps (same as the glut run)
 
 1. `anndata_rna/make_{tag}_adata.py` -> `anndata_rna/adata.h5ad` (`.raw` = raw counts).
 2. `pycisTopic/pycistopic_{tag}.py` (script) or `pycisTopic/pycisTopic.ipynb` (the same code, interactive): subset the all-cell hybrid cisTopic object to
    the cells with ATAC, train the {s["K"]}-topic model, write topic sets and DARs. Output `cistopic_obj_{tag}.pkl` and `region_sets/`.
-3. `scenicplus/make_configs.py` -> config1-4. Configs 3/4 reuse config1's accessibility+expression object, search space and region-to-gene fit:
-   run `scenicplus/submit_all.sh 1 2` on prism, then `scenicplus/prepare_shared_upstream.sh`, then `scenicplus/submit_all.sh 3 4`.
+3. `scenicplus/make_configs.py` -> config1 and config2, **both on the hybrid cisTarget database** (`ra-arco-hvc-nc_hybrid`, built on the cisTopic object's own
+   consensus regions; there is no config on the older shared database here). Config2 reuses config1's accessibility+expression object, search space and
+   region-to-gene fit: run `scenicplus/submit_all.sh 1` on prism, then `scenicplus/prepare_shared_upstream.sh`, then `scenicplus/submit_all.sh 2`.
    Helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) are the glut run's with this root.
 
 Data live under `/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/.../{root}/`, outside git. Analysis templates are not made yet (they need results).
@@ -331,6 +329,9 @@ def build(tag, s):
     pc = make_pycistopic_script(s, tag, root)
     (D / "pycisTopic" / f"pycistopic_{tag}.py").write_text(pc)
     (D / "pycisTopic" / "pycisTopic.ipynb").write_text(make_notebook(pc, tag, s))
+    for old in (D / "scenicplus").glob("config[0-9]*"):   # configs from an earlier version of this generator (generated dirs only: never touch real outs)
+        if old.is_dir() and not (old / "outs").exists():
+            shutil.rmtree(old)
     (D / "scenicplus" / "make_configs.py").write_text(make_configs_script(s, tag, root))
     for name in ("submit_all.sh", ".gitignore", "chromsizes.tsv", "genome_annotation.tsv"):
         shutil.copy2(REF / "scenicplus" / name, D / "scenicplus" / name)

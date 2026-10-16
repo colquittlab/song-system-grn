@@ -3,7 +3,7 @@
 #SBATCH --partition=medium
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=600G
-#SBATCH --time=12:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=logs/scenicplus_config2_%j.out
 #SBATCH --error=logs/scenicplus_config2_%j.err
 # No --account: prism doesn't need one here. --mem/--time are set by hand, not measured; tf_to_gene and
@@ -17,5 +17,10 @@ set +u   # conda's activate scripts read unset variables
 source /private/home/${USER}/miniforge3/etc/profile.d/conda.sh
 conda activate scenicplus
 set -u
+# These come from config1 via prepare_shared_upstream.sh; without them Snakemake would silently redo the 3.5 h
+# region-to-gene fit and the 35 GB object, per config.
+for f in ACC_GEX.h5mu search_space.tsv region_to_gene_adj.tsv; do
+    test -s /private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-c1h-1_allruns_hybrid/scenicplus/shared/outs/$f || { echo "missing shared input /private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-c1h-1_allruns_hybrid/scenicplus/shared/outs/$f -- run prepare_shared_upstream.sh first" >&2; exit 1; }
+done
 mkdir -p /private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-c1h-1_allruns_hybrid/scenicplus/config2/outs /private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/glut-ra_glut-c1h-1_allruns_hybrid/scenicplus/config2/tmp
 snakemake --cores 40 --rerun-incomplete --printshellcmds

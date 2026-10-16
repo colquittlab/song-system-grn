@@ -2,8 +2,8 @@ input_data:
   cisTopic_obj_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_gaba_hybrid/pycisTopic/cistopic_obj_gaba.pkl"
   GEX_anndata_fname: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_gaba_hybrid/anndata_rna/adata.h5ad"
   region_set_folder: "/private/groups/colquittlab/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/ra-arco-hvc-nc_gaba_hybrid/pycisTopic/region_sets"
-  ctx_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering/ra-arco-hvc-nc_seurat-clustering.regions_vs_motifs.rankings.feather"
-  dem_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_seurat-clustering/ra-arco-hvc-nc_seurat-clustering.regions_vs_motifs.scores.feather"
+  ctx_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid/ra-arco-hvc-nc_hybrid.regions_vs_motifs.rankings.feather"
+  dem_db_fname: "/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid/ra-arco-hvc-nc_hybrid.regions_vs_motifs.scores.feather"
   path_to_motif_annotations: "/private/groups/colquittlab/scenicplus/v10nr_clust_public/snapshots/motifs-v10-nr.hgnc-m0.00001-o0.0.tbl"
 
 output_data:
