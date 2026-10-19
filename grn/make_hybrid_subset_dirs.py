@@ -122,6 +122,7 @@ def make_pycistopic_script(s, tag, root):
     t = (REF / "pycisTopic" / "pycistopic_glut.py").read_text()
     body = t[t.index("import os\n"):]
     pairs_doc = ("  4. song-pair DARs: the ArchR ones from the all-cell run, copied (" + ", ".join(p.replace("_VS_", " vs ") for p in s["pairs"]) + ")"
+                 + (" to pycisTopic/archr_song_pair/, NOT into region_sets/ (a single set has no DEM background; DARs_all already has RA-up and C1H-1-up)" if len(s["pairs"]) == 1 else "")
                  if s["pairs"] else "  4. no song-pair DARs for this subset (the earlier run had none)")
     doc = f'''#!/usr/bin/env python3
 """{s["label"]}: pycisTopic stage, hybrid labels (counterpart of {s["old"].split(" ")[0]}/pycisTopic/pycisTopic.ipynb).
@@ -153,6 +154,11 @@ expensive is cached; PYCISTOPIC_REDO=1 recomputes the LDA models. Derived from .
     body = rep(body, "# the object SCENIC+ reads: glut cells only, K-topic model selected", "# the object SCENIC+ reads: this subset's cells only, K-topic model selected")
     a = body.index("# ArchR song-pair DARs from the all-cell hybrid run")
     b = body.index("from pycisTopic.diff_features")
+    if len(s["pairs"]) == 1:
+        # DEM tests each region set against the union of the OTHER sets in the same folder, so a folder with one set has an empty background and
+        # fails ("No objects to concatenate"). Keep the single ArchR pair next to region_sets/, not in it.
+        body = rep(body, 'pairs_out = os.path.join(SETS, "DARs_song-pairs")',
+                   'pairs_out = os.path.join(WORK, "archr_song_pair")  # NOT under region_sets/: a one-set folder has an empty DEM background and fails')
     if s["pairs"]:
         pairs = ", ".join(json.dumps(p) for p in s["pairs"])
         body = body[:a] + (f"# ArchR song-pair DARs from the all-cell hybrid run (read-only source). Only these may be in DARs_song-pairs: SCENIC+ runs motif\n"
@@ -291,8 +297,10 @@ def make_readme(s, tag, root):
         "ra_c1h1_all": "`Glut-CACNA1H-RA` and `Glut-CACNA1H-1` from all runs, run3 included: 1,966 RNA cells (560 RA, 1,406 CACNA1H-1). The earlier run excluded run3 "
                        "(`glut-ra_glut-c1h-1_hybrid`, 745 cells). The topic count (10) was picked for those 745 cells and is not re-selected here.",
     }[tag]
-    pairs = (f"DARs for the ArchR song pair copied from the all-cell run (`{s['pairs'][0].replace('_VS_', '` vs `')}`)" if s["pairs"]
-             else "no song-pair DARs (the earlier run had none)")
+    pairs = ((f"the ArchR song pair copied from the all-cell run (`{s['pairs'][0].replace('_VS_', '` vs `')}`) is kept in `pycisTopic/archr_song_pair/`, "
+              "NOT in `region_sets/`: DEM tests every set against the others in its folder, so a one-set folder has an empty background and fails "
+              "(`No objects to concatenate`); `DARs_all` already has the RA-up and CACNA1H-1-up sets") if len(s["pairs"]) == 1 else
+             (f"DARs for the ArchR song pairs copied from the all-cell run" if s["pairs"] else "no song-pair DARs (the earlier run had none)"))
     return f'''# {root}
 
 SCENIC+ on **{s["label"]}**, hybrid labels (`cluster_hybrid`). Derived from `ra-arco-hvc-nc_glut_hybrid` (see that README) by

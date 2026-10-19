@@ -8,7 +8,7 @@ SCENIC+ on **Glut-CACNA1H-RA vs Glut-CACNA1H-1, all runs (the hybrid labels of G
 | cells | older labels | `Glut-CACNA1H-RA` and `Glut-CACNA1H-1` from all runs, run3 included: 1,966 RNA cells (560 RA, 1,406 CACNA1H-1). The earlier run excluded run3 (`glut-ra_glut-c1h-1_hybrid`, 745 cells). The topic count (10) was picked for those 745 cells and is not re-selected here. |
 | `.raw` | older export (not re-checked here) | raw counts |
 | LDA topics | 10 (hand-picked from 2-40) | 10 (only this model trained) |
-| DARs (every cluster) | adj. p 0.1, abs(log2FC) >= log2(1.5) | same; DARs for the ArchR song pair copied from the all-cell run (`Glut-CACNA1H-RA` vs `Glut-CACNA1H-1`) |
+| DARs (every cluster) | adj. p 0.1, abs(log2FC) >= log2(1.5) | same; the ArchR song pair copied from the all-cell run (`Glut-CACNA1H-RA` vs `Glut-CACNA1H-1`) is kept in `pycisTopic/archr_song_pair/`, NOT in `region_sets/`: DEM tests every set against the others in its folder, so a one-set folder has an empty background and fails (`No objects to concatenate`); `DARs_all` already has the RA-up and CACNA1H-1-up sets |
 | motif stage | motif_similarity_fdr 0.001, dem_adj_pval_thr 0.05, dem_log2fc_thr 1.0, ctx_auc_threshold 0.005, ctx_nes_threshold 3.0, ctx_rank_threshold 0.05; extended_annotation 'Orthology_annot Motif_similarity_annot' | **config1 = this**, config2 = the all-cell strict thresholds; both with the hybrid cisTarget database |
 
 ## Steps (same as the glut run)

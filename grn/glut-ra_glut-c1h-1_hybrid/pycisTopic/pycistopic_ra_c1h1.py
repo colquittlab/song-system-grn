@@ -7,7 +7,7 @@ and so the same cisTarget database) and does what the earlier notebook did after
   1. subset to the cells of anndata_rna/adata.h5ad that have an ATAC profile (make_ra_c1h1_adata.py)
   2. train the mallet LDA model with 10 topics (the earlier RA vs Arco-1 run's hand-picked choice (it trained 2-40); the grid is not retrained)
   3. topic region sets (otsu, top 3k), imputed accessibility, highly variable regions, DARs for every cluster (adj. p 0.1, |log2FC| >= log2(1.5))
-  4. song-pair DARs: the ArchR ones from the all-cell run, copied (Glut-CACNA1H-RA vs Glut-CACNA1H-1)
+  4. song-pair DARs: the ArchR ones from the all-cell run, copied (Glut-CACNA1H-RA vs Glut-CACNA1H-1) to pycisTopic/archr_song_pair/, NOT into region_sets/ (a single set has no DEM background; DARs_all already has RA-up and C1H-1-up)
 
 Parameters are copied from ../../ra-arco-hvc-nc/pycisTopic/pycistopic_topic_k.py (itself copied from the notebook). Everything
 expensive is cached; PYCISTOPIC_REDO=1 recomputes the LDA models. Derived from ../../ra-arco-hvc-nc_glut_hybrid/pycisTopic/pycistopic_glut.py by
@@ -123,7 +123,7 @@ write_sets("DARs_all", markers_dict_all)
 # 4. ArchR song-pair DARs, copied
 import glob
 import shutil
-pairs_out = os.path.join(SETS, "DARs_song-pairs")
+pairs_out = os.path.join(WORK, "archr_song_pair")  # NOT under region_sets/: a one-set folder has an empty DEM background and fails
 os.makedirs(pairs_out, exist_ok=True)
 for f in glob.glob(os.path.join(pairs_out, "*.bed")):
     os.remove(f)
