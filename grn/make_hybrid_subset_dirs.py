@@ -88,6 +88,29 @@ adata.obs["cluster"] = adata.obs["cluster"].astype(str)''',
                         ctx_auc_threshold=0.005, ctx_nes_threshold=3.0, ctx_rank_threshold=0.05),
         spec_dataprep={"extended_annotation": "Orthology_annot Motif_similarity_annot"}, spec_name="config18 of the earlier RA vs Arco-1 run",
     ),
+    "cacna1h": dict(
+        dirname="glut-cacna1h_hybrid", label="all Glut-CACNA1H subtypes (Glut-CACNA1H-RA, -1 and -2)",
+        old="glut-ra_glut-arco-1 (config18; no earlier run of this subset: its thresholds and topic count are reused)",
+        counterpart="a new subset, no earlier run; modelled on glut-ra_glut-arco-1",
+        filter_doc=("all clusters containing \"CACNA1H\" (Glut-CACNA1H-RA, Glut-CACNA1H-1, Glut-CACNA1H-2; older labels Glut-RA, Glut-Arco-1, Glut-Arco-2 and relatives) from ALL\n"
+                    "runs. There is no earlier run of this subset to copy a run3 exclusion from (the RA vs Arco-1 run excluded run3; the two RA vs C1H-1 directories here\n"
+                    "show both options), so every run is kept."),
+        filter_code='''CLUSTERS = ["Glut-CACNA1H-RA", "Glut-CACNA1H-1", "Glut-CACNA1H-2"]
+
+adata = sc.read_h5ad(SRC)
+assert np.all(adata.X.data == np.round(adata.X.data)), "source X is not integer counts"
+
+cl = adata.obs["cluster"].astype(str)
+keep = cl.str.contains("CACNA1H")   # all runs
+adata = adata[keep.values].copy()
+assert set(adata.obs["cluster"].astype(str)) == set(CLUSTERS), "unexpected CACNA1H clusters: " + str(sorted(set(adata.obs["cluster"].astype(str))))
+adata.obs["cluster"] = adata.obs["cluster"].astype(str)''',
+        K=10, k_note="10 as for the RA vs C1H-1 subsets: there is no earlier run of this subset and no topic grid was trained",
+        dar_adjp=0.1, dar_log2fc="np.log2(1.5)", pairs=["Glut-CACNA1H-RA_VS_Glut-CACNA1H-1"],
+        spec_motif=dict(motif_similarity_fdr=0.001, dem_adj_pval_thr=0.05, dem_log2fc_thr=1.0,
+                        ctx_auc_threshold=0.005, ctx_nes_threshold=3.0, ctx_rank_threshold=0.05),
+        spec_dataprep={"extended_annotation": "Orthology_annot Motif_similarity_annot"}, spec_name="config18 of the earlier RA vs Arco-1 run (reused)",
+    ),
 }
 
 
@@ -100,7 +123,7 @@ def make_adata_script(s, tag, root):
     t = (REF / "anndata_rna" / "make_glut_adata.py").read_text()
     head_end = t.index('import os\n')
     doc = f'''#!/usr/bin/env python3
-"""{s["label"]}: SCENIC+ expression input, hybrid labels (the hybrid counterpart of {s["old"].split(" ")[0]}/anndata_rna/anndata.ipynb).
+"""{s["label"]}: SCENIC+ expression input, hybrid labels ({s.get("counterpart", "the hybrid counterpart of " + s["old"].split(" ")[0]) + "/anndata_rna/anndata.ipynb" if "counterpart" not in s else s["counterpart"]}).
 
 Same steps as ../../ra-arco-hvc-nc/anndata_rna/anndata.ipynb (which reads data/adata.h5ad from export_h5ad_hybrid.R), with the cell filter of the
 earlier run: {s["filter_doc"]}
@@ -125,7 +148,7 @@ def make_pycistopic_script(s, tag, root):
                  + (" to pycisTopic/archr_song_pair/, NOT into region_sets/ (a single set has no DEM background; DARs_all already has RA-up and C1H-1-up)" if len(s["pairs"]) == 1 else "")
                  if s["pairs"] else "  4. no song-pair DARs for this subset (the earlier run had none)")
     doc = f'''#!/usr/bin/env python3
-"""{s["label"]}: pycisTopic stage, hybrid labels (counterpart of {s["old"].split(" ")[0]}/pycisTopic/pycisTopic.ipynb).
+"""{s["label"]}: pycisTopic stage, hybrid labels ({s["counterpart"] if "counterpart" in s else "counterpart of " + s["old"].split(" ")[0] + "/pycisTopic/pycisTopic.ipynb"}).
 
 Starts from the all-cell hybrid cisTopic object (../ra-arco-hvc-nc_hybrid/pycisTopic/cistopic_obj.pkl: same QC, same consensus regions
 and so the same cisTarget database) and does what the earlier notebook did after QC, on this subset's cells only:
@@ -294,6 +317,8 @@ def make_readme(s, tag, root):
         "gaba": "all `GABA-*` clusters minus `GABA-Im` (the renamed `GABA-Pre`): 8 clusters, 3,275 RNA cells",
         "ra_c1h1": "`Glut-CACNA1H-RA` and `Glut-CACNA1H-1` with the run3 samples excluded as in the earlier run: 745 RNA cells (258 RA, 487 CACNA1H-1). "
                    "Without the exclusion (`EXCLUDE_RUN3=0`) it is 1,966 (560 and 1,406): that is `glut-ra_glut-c1h-1_allruns_hybrid`.",
+        "cacna1h": "all three `Glut-CACNA1H` subtypes (RA 560, CACNA1H-1 1,406, CACNA1H-2 1,433) from all runs: 3,399 RNA cells. New subset, no earlier run: "
+                   "thresholds and topic count (10) are those of the RA vs C1H-1 run, not re-selected.",
         "ra_c1h1_all": "`Glut-CACNA1H-RA` and `Glut-CACNA1H-1` from all runs, run3 included: 1,966 RNA cells (560 RA, 1,406 CACNA1H-1). The earlier run excluded run3 "
                        "(`glut-ra_glut-c1h-1_hybrid`, 745 cells). The topic count (10) was picked for those 745 cells and is not re-selected here.",
     }[tag]
