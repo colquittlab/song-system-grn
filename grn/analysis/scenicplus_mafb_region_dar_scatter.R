@@ -15,7 +15,7 @@ OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathwa
 HERE <- here::here("grn/analysis")
 PANEL_IN <- 1.6; UP_LFC <- 1; N_LABEL <- 10
 LABEL_KEEP <- c("KCNC1", "ERBB4", "PVALB")
-LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1")
+LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1", LOC110482360 = "LAMA3")
 
 x <- read_csv(file.path(HERE, "scenicplus_mafb_up_both_regions_differential_accessibility_config37.csv"), show_col_types = FALSE)
 imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%

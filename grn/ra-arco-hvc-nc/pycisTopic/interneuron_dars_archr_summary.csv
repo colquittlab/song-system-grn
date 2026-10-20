@@ -1,3 +1,4 @@
 "contrast","n_fg_cells","n_bg_cells","cutoff","n_dars"
 "GABA-MGE-PVALB-1_VS_GABA-MGE-LAMP5",309,167,"FDR <= 0.05 & Log2FC >= 0.585",5322
 "GABA-MGE-PVALB-2_VS_GABA-MGE-LAMP5",521,167,"FDR <= 0.05 & Log2FC >= 0.585",976
+"GABA-MGE-PVALB-1_VS_GABA-LGE-1",309,1134,"FDR <= 0.05 & Log2FC >= 0.585",26840

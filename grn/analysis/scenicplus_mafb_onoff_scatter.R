@@ -21,7 +21,7 @@ LABEL_KEEP <- c("KCNC1", "ERBB4", "PVALB")   # always labeled (when plotted), wh
 # pv_fs_literature_genes.csv). Labeled when plotted (same style as the rank-based labels).
 LIT_GENES <- c("KCNC1", "KCNC2", "PVALB", "ERBB4", "MAF", "MAFB", "SOX6", "CNTNAP2")
 # LOC genes: human counterpart by protein similarity where there is one, otherwise ncRNA-N (basis and evidence: loc_gene_labels_lonStrDom2.csv)
-LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1")
+LABEL_MAP <- c(LOC110468166 = "NTM", LOC110470685 = "TLE4", LOC110474504 = "VIPR1", LOC116183613 = "ncRNA-1", LOC110482360 = "LAMA3")
 
 W <- read_csv(file.path(HERE, paste0("scenicplus_mafb_pvalb_vs_mafb_low_mge_", MAIN, ".csv")), show_col_types = FALSE)
 imp <- read_tsv(file.path(OUT, MAIN, "scenicplus_eRegulons.txt"), col_types = cols_only(TF = "c", Gene = "c", eRegulon_name = "c", importance_TF2G = "d"), progress = FALSE) %>%

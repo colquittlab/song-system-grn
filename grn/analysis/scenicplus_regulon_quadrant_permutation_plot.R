@@ -9,7 +9,9 @@ source(here::here("config/figure_theme.R"))
 fig_check_font()
 MAIN <- "config37"
 OUT <- path.expand("~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_all/")
-R <- read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, ".csv")), show_col_types = FALSE) %>%
+LGE <- identical(Sys.getenv("PV_COMPARATOR", "LAMP5"), "LGE1"); SUF <- if (LGE) "_lge1" else ""     # PV_COMPARATOR=LGE1: PVALB-1 vs GABA-LGE-1 instead of vs LAMP5
+PLOT_DIR <- if (LGE) file.path(OUT, MAIN, "regulon_scatter_plots", "PVALB1_vs_LGE1") else file.path(OUT, MAIN, "regulon_scatter_plots")
+R <- read_csv(here::here(paste0("grn/analysis/scenicplus_regulon_quadrant_permutation_", MAIN, SUF, ".csv")), show_col_types = FALSE) %>%
   mutate(kind = factor(ifelse(kind == "gene_expression", "genes (RNA log2FC)", "regions (accessibility log2FC)"), levels = c("genes (RNA log2FC)", "regions (accessibility log2FC)")))
 L <- bind_rows(
   R %>% transmute(TF, kind, n, metric = "UR ratio", obs = ratio, nm = null_ratio_mean, nsd = null_ratio_sd, p = p_ratio, q = q_ratio),
@@ -33,7 +35,7 @@ p <- ggplot(L, aes(n, obs)) +
   theme(plot.background = element_blank(), panel.background = element_blank(), legend.background = element_blank(), legend.key = element_blank(),
         legend.key.size = unit(0.25, "cm"), legend.title = element_text(size = FIG_PT_AXIS_TITLE), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         strip.text = element_text(size = FIG_PT_AXIS_TITLE, family = FIG_FONT), strip.background = element_blank(), strip.placement = "outside", panel.spacing = unit(0.2, "in"))
-stem <- file.path(OUT, MAIN, "regulon_scatter_plots", "quadrant_permutation")
+stem <- file.path(PLOT_DIR, "quadrant_permutation")
 fig_save(p, stem, width = 6.2, height = 4.6)
 ggsave(paste0(stem, ".svg"), p, width = 6.2, height = 4.6, bg = "transparent",
        device = function(filename, width, height, ...) svglite::svglite(filename, width = width, height = height, system_fonts = list(sans = FIG_FONT), ...))

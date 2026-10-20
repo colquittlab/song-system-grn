@@ -15,7 +15,8 @@ PROJ_COPY <- file.path(STORE, "archr_consensus")
 OUT <- file.path(STORE, "pycisTopic/dars_extra")
 THREADS <- as.integer(Sys.getenv("THREADS", "8"))
 CUTOFF <- "FDR <= 0.05 & Log2FC >= 0.585"
-CONTRASTS <- list(c("GABA-MGE-PVALB-1", "GABA-MGE-LAMP5"), c("GABA-MGE-PVALB-2", "GABA-MGE-LAMP5"))
+CONTRASTS <- list(c("GABA-MGE-PVALB-1", "GABA-MGE-LAMP5"), c("GABA-MGE-PVALB-2", "GABA-MGE-LAMP5"),
+                  c("GABA-MGE-PVALB-1", "GABA-LGE-1"))   # LGE-1: the alternative comparator (scatters under PVALB1_vs_LGE1/); contrasts with a saved rds are read, not recomputed
 addArchRThreads(threads = THREADS)
 stopifnot(file.exists(file.path(PROJ_COPY, "Save-ArchR-Project.rds")))
 proj <- loadArchRProject(PROJ_COPY, showLogo = FALSE)

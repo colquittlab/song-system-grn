@@ -325,7 +325,7 @@ plot_auc_heatmaps = function(gene_auc, obj_avg, ereg_pattern, out_dir, prefix, p
 
 ```{r}
 #' Plot TF UMAPs
-plot_tf_umaps = function(obj, tfs_to_plot, umap_dir, reduction_cur = "dims30nn30mindist0.3") {
+plot_tf_umaps = function(obj, tfs_to_plot, umap_dir, reduction_cur = "dims25nn30mindist0.3") {
   dir.create(umap_dir, showWarnings = FALSE)
   DefaultAssay(obj) = "SCT"
 
@@ -348,7 +348,7 @@ plot_tf_umaps = function(obj, tfs_to_plot, umap_dir, reduction_cur = "dims30nn30
 ```{r}
 #' Plot UMAPs for selected eRegulons
 plot_eregulon_umaps = function(obj, ereg_sane, ereg_select, umap_dir, nplot = 10,
-                                reduction_cur = "dims30nn30mindist0.3") {
+                                reduction_cur = "dims25nn30mindist0.3") {
   DefaultAssay(obj) = "SCT"
 
   for (ereg_select_cur in ereg_select) {
