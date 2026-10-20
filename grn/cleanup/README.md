@@ -4,6 +4,8 @@
 the development part to `grn-dev`. **Nothing here has been applied to `main`.** The classification is provisional (rules in `build_inventory.py`); it is a
 starting point for you to edit.
 
+**Settled (2026-10-20): the paper's GRN uses the hybrid label set.** The older-label subset runs are therefore classified as development (superseded); the remaining decisions are listed in section 4.
+
 - Snapshot: `origin/main` at `8a15dc8` (2026-10-20). Per-file table: [`inventory.csv`](inventory.csv) (path, size, category, group, rationale, first added, last modified, last commit subject).
 - Rebuild it: `python build_inventory.py [ref]`. Build the removal branch locally: `./make_cleanup_branch.sh` (dry run by default; never pushes).
 
@@ -15,8 +17,8 @@ So the GRN material is a small share of the repository's size; the motive for mo
 | category | files | MB | meaning |
 |---|---:|---:|---|
 | PUBLICATION | 74 | 7.8 | candidate to stay in `main` (config37 pipeline, MAFB/regulon figure code, cisTarget builds) |
-| DEVELOPMENT | 144 | 2.4 | candidate to move to `grn-dev` (sweep/control configs, diagnostics, exploration) |
-| DECIDE | 76 | 29.3 | needs your call (see section 4); 27.6 MB of it is the four older-label directories, mostly notebooks with embedded outputs |
+| DEVELOPMENT | 156 | 28.9 | to move to `grn-dev`: the four older-label runs (27.6 MB, mostly notebook outputs), the sweep/control configs, diagnostics |
+| DECIDE | 64 | 2.8 | needs your call (section 4): hybrid subset runs, report templates, coherence tiers, cross-config MAFB analyses, configs 34-39 |
 
 ### Publication candidates
 | group | files | MB |
@@ -32,8 +34,12 @@ So the GRN material is a small share of the repository's size; the motive for mo
 ### Development (move to `grn-dev`)
 | group | files | MB |
 |---|---:|---:|
-| glut hybrid reference run | 28 | 1.2 |
+| older-label subset run: ra-arco-hvc-nc_glut | 9 | 8.4 |
+| older-label subset run: ra-arco-hvc-nc_gaba | 9 | 8.0 |
+| older-label subset run: ra-arco-hvc-nc_astro-oligo | 9 | 6.5 |
+| older-label subset run: glut-ra_glut-arco-1 | 9 | 4.7 |
 | hybrid all-cell: other configs | 99 | 1.1 |
+| analysis: older-label report wrappers | 4 | 0.1 |
 | analysis: sweep / control diagnostics | 10 | 0.1 |
 | hybrid all-cell: pycisTopic | 4 | 0.0 |
 | hybrid all-cell: scenicplus | 1 | 0.0 |
@@ -42,13 +48,10 @@ So the GRN material is a small share of the repository's size; the motive for mo
 ### To decide
 | group | files | MB |
 |---|---:|---:|
-| older-label subset run: ra-arco-hvc-nc_glut | 9 | 8.4 |
-| older-label subset run: ra-arco-hvc-nc_gaba | 9 | 8.0 |
-| older-label subset run: ra-arco-hvc-nc_astro-oligo | 9 | 6.5 |
-| older-label subset run: glut-ra_glut-arco-1 | 9 | 4.7 |
+| glut hybrid reference run | 28 | 1.2 |
 | analysis: coherence tiers | 3 | 1.2 |
-| analysis: report templates | 8 | 0.2 |
 | hybrid all-cell: other configs | 15 | 0.2 |
+| analysis: hybrid report templates | 4 | 0.1 |
 | analysis: cross-config MAFB analysis | 5 | 0.1 |
 | hybrid all-cell: scenicplus | 5 | 0.0 |
 | analysis: local helpers | 2 | 0.0 |
@@ -62,12 +65,12 @@ So the GRN material is a small share of the repository's size; the motive for mo
   29-33 GABA/LGE region-set removal test, 34-35 the 40-topic object, 36-39 the hybrid-database / ArchR-pair comparisons (from the comments in `ra-arco-hvc-nc/scenicplus/make_configs.py`).
 - **The MAFB analyses are manuscript figure code, not scratch.** The unmerged branch `worktree-grn-k40-nosongpairs` is 21 commits ahead of `main` and its subjects read "Panel A expansion", "Fig. 4D track rows",
   "KCNC1 expression bars", UR strip plots. Those files live in `grn/analysis/` and `scripts/`, so they belong in `main` (see Order of work).
-- **The README is out of step with the hybrid-era work.** It lists `ra-arco-hvc-nc` as "config3", `ra-arco-hvc-nc_glut` "config15", `_gaba` "config13", `glut-ra_glut-arco-1` "config18",
-  while `config/paths.R` names config14 / config13 / config11 for the same runs, and the current main result is config37 in `ra-arco-hvc-nc`.
-  The README needs rewriting around whichever label set the paper uses.
-- **The older-label runs are not dead code.** `overexpression/chick_mafb-emx2_run1.qmd` reads SCENIC+ outputs through the `SCENICPLUS_*_CONFIG_DIR` constants in `config/paths.R`
-  (the hdd run directories `glut-ra_glut-arco-1`, `ra-arco_glut` and an older all-cell `ra-arco-hvc-nc_seurat-...` run). If that analysis is in the paper the code that made those runs must stay.
-  Note that `ra-arco_glut` has **no directory under `grn/`** at all, and `grn/ra-arco-hvc-nc` in `main` is the hybrid pipeline, not the older all-cell run that `SCENICPLUS_EMX2_CONFIG_DIR` points at: worth checking where that code is.
+- **The README must be rewritten around the hybrid set.** It still lists `ra-arco-hvc-nc` as "config3", `ra-arco-hvc-nc_glut` "config15", `_gaba` "config13", `glut-ra_glut-arco-1` "config18"
+  (the older labels), while `config/paths.R` names config14 / config13 / config11 for the same runs, and the main result is config37 in `ra-arco-hvc-nc` (hybrid).
+- **The older-label runs are superseded, with one dependency.** `overexpression/chick_mafb-emx2_run1.qmd` reads SCENIC+ outputs through the `SCENICPLUS_*_CONFIG_DIR` constants in `config/paths.R`
+  (the hdd run directories `glut-ra_glut-arco-1`, `ra-arco_glut` and an older all-cell `ra-arco-hvc-nc_seurat-...` run). Before those directories leave `main`, that analysis has to be repointed at hybrid outputs
+  (or the dependency documented as an external input). Note that `ra-arco_glut` has **no directory under `grn/`** at all, and `grn/ra-arco-hvc-nc` in `main` is the hybrid pipeline, not the older all-cell run
+  that `SCENICPLUS_EMX2_CONFIG_DIR` points at: worth checking where that code is.
 
 ## 3. Findings that affect the move
 
@@ -86,16 +89,20 @@ So the GRN material is a small share of the repository's size; the motive for mo
 
 ## 4. Decisions needed (with a recommendation)
 
+Resolved: **label set = hybrid** (2026-10-20).
+
 | # | decision | recommendation |
 |---|---|---|
-| 1 | Which label set does the paper's GRN use: older labels (README: config3/15/13/1/18) or hybrid (config37)? | Decide first; everything below follows. If both appear (e.g. `overexpression/` uses the older runs), keep both pipelines, strip notebooks. |
-| 2 | The four older-label subset directories (36 files, 27.6 MB) | Keep what a figure or the overexpression analysis reads; strip notebook outputs; reconcile the README and `config/paths.R` config numbers. |
-| 3 | Report templates and local helpers (10 files) | Keep the template(s) used to make published results; move the rest to `grn-dev`. |
-| 4 | Coherence tiers (3 files, 1.2 MB) | Keep only if in the paper or supplement. |
-| 5 | Cross-config MAFB analyses (5 files) | Keep only if the config-robustness analysis is in the supplement; they need `config_parameters.tsv` and the sweep results, which would otherwise be gone. |
-| 6 | Configs 34, 35, 36, 38, 39 | Keep config34 (needed to rebuild config37's upstream) or describe it in the README; 35, 36, 38, 39 to `grn-dev` unless cited. |
-| 7 | `make_configs.py` | Keep a trimmed version that defines config37 only; the full 39-config generator goes to `grn-dev`. |
-| 8 | Cluster helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) | Keep `prepare_shared_upstream.sh` (config37 needs it); the other two to `grn-dev`. |
+| 1 | Repoint the one analysis that still reads older-label runs (`overexpression/chick_mafb-emx2_run1.qmd`, `config/paths.R` constants) | Required before the older-label directories (36 files, 27.6 MB) leave `main`: point it at hybrid outputs, or document the inputs as external. |
+| 2 | Which subsets does the paper need in hybrid form? The README listed glut, gaba, astro-oligo and RA vs Arco-1. Hybrid versions: glut (in `main`); gaba, RA vs C1H-1 (with and without run3) and all-CACNA1H (on `grn-dev` via PR #11); astro-oligo (not made) | Promote only what a published figure or table uses: `git checkout grn-dev -- <dir>` into a normal PR against `main`. |
+| 3 | The hybrid glut run (`ra-arco-hvc-nc_glut_hybrid`, 28 files in `main`) | Keep if the paper uses a glut-only SCENIC+ run, otherwise `grn-dev`. |
+| 4 | Hybrid report templates (4 files: `all.qmd`, `glut.qmd`, `scenicplus_hybrid_*_template.qmd`) | Keep if their eRegulon heatmaps / dot plots are published; otherwise `grn-dev`. |
+| 5 | Local helpers (`assemble_slim_*`) | Keep only if the kept templates need them. |
+| 6 | Coherence tiers (3 files, 1.2 MB) | Keep only if in the paper or supplement. |
+| 7 | Cross-config MAFB analyses (5 files) | Keep only if the config-robustness analysis is in the supplement; they need `config_parameters.tsv` and the sweep results, which would otherwise be gone. |
+| 8 | Configs 34, 35, 36, 38, 39 | Keep config34 (needed to rebuild config37's upstream) or describe it in the README; 35, 36, 38, 39 to `grn-dev` unless cited. |
+| 9 | `make_configs.py` | Keep a trimmed version that defines config37 only; the full 39-config generator goes to `grn-dev`. |
+| 10 | Cluster helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) | Keep `prepare_shared_upstream.sh` (config37 needs it); the other two to `grn-dev`. |
 
 Resolve a decision by editing the row's `category` in `inventory.csv` to `PUBLICATION` or `DEVELOPMENT` (edit the rules in `build_inventory.py` if you prefer to regenerate).
 
@@ -107,7 +114,7 @@ Order of work:
 1. **Land PR #11 on `grn-dev`** (it already targets it). `grn-dev` then holds main plus all development work.
 2. **Settle the figure branch first.** `worktree-grn-k40-nosongpairs` (figure code, touches `grn/analysis/`) should go to `main` *before* the cleanup, so the cleanup PR does not conflict with it.
 3. **Tag the pre-cleanup state:** `git tag grn-pre-cleanup origin/main && git push origin grn-pre-cleanup` (a permanent pointer to everything).
-4. **Resolve the decisions** in section 4 by editing `inventory.csv`.
+4. **Resolve the decisions** in section 4 by editing `inventory.csv`, and **repoint `overexpression/chick_mafb-emx2_run1.qmd`** (decision 1) before the older-label directories are removed.
 5. **Build the cleanup branch locally**, review, push, open a PR against `main`:
    ```bash
    cd grn/cleanup

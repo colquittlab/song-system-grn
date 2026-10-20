@@ -54,13 +54,13 @@ def classify(p):
     if d == "cistarget":
         return "cistarget build scripts", "PUBLICATION", "README-listed custom cisTarget database build scripts"
     if d in ("ra-arco-hvc-nc_glut", "ra-arco-hvc-nc_gaba", "ra-arco-hvc-nc_astro-oligo", "glut-ra_glut-arco-1"):
-        why = ("README-listed per-subset pipeline on the earlier (pre-hybrid) labels; which label set is published? Their SCENIC+ outputs are read by "
-               "overexpression/chick_mafb-emx2_run1.qmd via the SCENICPLUS_*_CONFIG_DIR constants in config/paths.R")
+        why = ("older-label subset run, superseded: the paper's GRN uses the hybrid labels (decision 2026-10-20). Fix first: overexpression/chick_mafb-emx2_run1.qmd "
+               "reads these runs' outputs via the SCENICPLUS_*_CONFIG_DIR constants in config/paths.R")
         if p.endswith(".ipynb"):
-            why += " Notebook carries embedded outputs."
-        return f"older-label subset run: {d}", "DECIDE", why
+            why += ". Notebook carries embedded outputs"
+        return f"older-label subset run: {d}", "DEVELOPMENT", why
     if d == "ra-arco-hvc-nc_glut_hybrid":
-        return "glut hybrid reference run", "DEVELOPMENT", "glut-only hybrid-label run, topic-grid exploration and perturbation set-up; not the config37 result the MAFB analyses use"
+        return "glut hybrid reference run", "DECIDE", "hybrid-label counterpart of the README-listed glut run: publication candidate if the paper uses a glut-only SCENIC+ run, development otherwise"
     if d == "ra-arco-hvc-nc":
         sub = parts[2]
         if sub == "anndata_rna":
@@ -106,8 +106,10 @@ def classify(p):
             return "hybrid all-cell: scenicplus", "DECIDE", "cluster operations helper (prepare_shared_upstream.sh is needed to run config37)"
     if d == "analysis":
         stem = base
-        if re.search(r"(^all\.qmd|^gaba\.qmd|^glut\.qmd|^glut-ra\.qmd|^astro-oligo\.qmd|_template\.qmd$)", stem):
-            return "analysis: report templates", "DECIDE", "per-subset SCENIC+ result report (the older template serves the README-listed subsets; the hybrid ones are newer)"
+        if re.search(r"^(gaba\.qmd|glut-ra\.qmd|astro-oligo\.qmd|motor-pathway_scenicplus_v2_cluster-snrna-cr_all_template\.qmd)$", stem):
+            return "analysis: older-label report wrappers", "DEVELOPMENT", "wrapper / template for the older-label subset runs (superseded by the hybrid labels)"
+        if re.search(r"(^all\.qmd|^glut\.qmd|_hybrid_(all|glut)_template\.qmd$)", stem):
+            return "analysis: hybrid report templates", "DECIDE", "per-config SCENIC+ result report for the hybrid runs (gene_auc / expression heatmaps, dot plots): keep if its figures are published, development if it only served the sweep"
         if stem.startswith("assemble_slim"):
             return "analysis: local helpers", "DECIDE", "builds the slim scplusmdata the report templates read"
         if re.search(r"(sweep_summary|normalization_control|gaba_removal|homeodomain|focal_tf)", stem):
