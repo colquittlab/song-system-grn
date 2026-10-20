@@ -52,19 +52,26 @@ def edges_for(d):
 import numpy as np
 W, H = 7.0, 2.9                                # panel size (data units); lower H = more vertical compression
 MX, MY = W / 2, H / 2                          # MAFB centre
-RX, RY = 2.8, 1.2                              # ellipse half-axes
-ANG = {"RA_all": (94, 266), "GABA": (68, -68)}   # first/last angle (degrees from +x, counter-clockwise) of each group's arc; RA left, GABA right
 BG_ALPHA = 0.2                                   # opacity of the coloured panel backgrounds
-STAGGER = 0.3                                  # every second node on a group's arc sits this fraction closer to MAFB (avoids overlaps in narrow panels)
 GREY_FILL, GREY_INK, GREY_EDGE = "#c4c4c4", "#7a7a7a", "#9c9c9c"
 
 
-def place(order, key):
-    """nodes of one group on a half ellipse around MAFB, spaced evenly in y; every second node sits closer to MAFB (STAGGER) so neighbours do not collide"""
-    a0, a1 = ANG[key]
-    ys = np.linspace(np.sin(np.radians(a0)), np.sin(np.radians(a1)), len(order))
-    sgn = np.sign(np.cos(np.radians(a0)))
-    return {tf: (MX + sgn * RX * np.sqrt(1 - y * y) * (1 - STAGGER * (i % 2)), MY + RY * y) for i, (tf, y) in enumerate(zip(order, ys))}
+LAYOUT = {  # node position relative to MAFB (data units): the hand-tuned layout from mafb_inputs_network_circle_mod.svg, shared by both panels
+    "KLF12": (-0.2, 1.2),
+    "NR3C2": (-1.4, 1.0),
+    "NFIA": (-2.17, 0.63),
+    "KLF15": (-2.23, 0.22),
+    "LIN28B": (-2.33, -0.21),
+    "STAT1": (-1.73, -0.6),
+    "FOSL2": (-1.22, -1.03),
+    "AR": (-0.14, -1.2),
+    "MAF": (1.05, 1.11),
+    "SOX6": (1.63, 0.67),
+    "TCF12": (2.31, 0.22),
+    "ARX": (2.15, -0.22),
+    "SATB1": (1.89, -0.67),
+    "MEIS2": (1.25, -1.07),
+}
 
 
 def clip(c, hw, hh, toward, gap=0.05):
@@ -81,7 +88,8 @@ for key, d, title, colour, order in PANELS:
     assert set(order) == inputs, f"{key}: inputs changed: {inputs ^ set(order)}"
     nodes = order + MANUAL.get(key, [])
     groups[key] = dict(nodes=nodes, edges=e[((e.TF == "MAFB") | (e.Gene == "MAFB")) & (e.TF.isin(nodes + ["MAFB"])) & (e.Gene.isin(nodes + ["MAFB"]))],
-                       title=title, colour=colour, pos=place(nodes, key), extra=MANUAL.get(key, []))
+                       title=title, colour=colour, pos={tf: (MX + LAYOUT[tf][0], MY + LAYOUT[tf][1]) for tf in nodes}, extra=MANUAL.get(key, []))
+assert all(tf in LAYOUT for g in groups.values() for tf in g["nodes"]), "a node has no LAYOUT position"
 assert not (set(groups["RA_all"]["nodes"]) & set(groups["GABA"]["nodes"])), "the groups share an input TF: give the shared TF one position"
 POS = {tf: p for g in groups.values() for tf, p in g["pos"].items()}; POS["MAFB"] = (MX, MY)
 HH = 0.17
