@@ -1,0 +1,9 @@
+# Results and run state stay out of git. outs/ and Snakemake/logs are local symlinks into /hdd (see link_results_to_hdd.sh);
+# on prism they are real directories. Tracked here: configs, workflow, sbatch and helper scripts only.
+config*/outs
+config*/Snakemake/logs
+config*/Snakemake/.snakemake/
+.pybiomart.sqlite
+*.sqlite
+*~
+__pycache__/
