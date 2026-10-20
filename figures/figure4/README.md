@@ -74,4 +74,4 @@ Each script was run and its output compared with the file placed in `fig4_scenic
 | E | Cistrome BED identical (2,636 regions, same scores); expression-bar SVGs byte-identical |
 | F | Same genes, statistics (n = 219, r = 0.12, ρ = 0.08) and labels; only the drawing order of overlapping points differs |
 | G | Identical per-eRegulon share, n and p-value (166 rows); pixel-identical |
-| H | see the commit message / PR that added this folder |
+| H | Matches the panel placed in the figure (compared by eye; the figure's labels were restyled). Same arrow counts as the saved run (101 knockout, 357 overexpression). The PDFs now at `results/config3/perturbation_mafb-targets/` have the same arrows but a different cell layout in the Harmony PCA, so they are not the files placed in the figure; that version is not among the saved files. |
