@@ -50,10 +50,11 @@ def edges_for(d):
 
 
 import numpy as np
-W, H = 9.6, 4.8                                # panel size (data units); lower H = more vertical compression
+W, H = 8.2, 4.4                                # panel size (data units); lower H = more vertical compression
 MX, MY = W / 2, H / 2                          # MAFB centre
-RX, RY = 4.0, 1.9                              # ellipse half-axes
-ANG = {"RA_all": (100, 260), "GABA": (65, -65)}   # first/last angle (degrees from +x, counter-clockwise) of each group's arc; RA left, GABA right
+RX, RY = 3.0, 1.7                              # ellipse half-axes
+ANG = {"RA_all": (94, 266), "GABA": (68, -68)}   # first/last angle (degrees from +x, counter-clockwise) of each group's arc; RA left, GABA right
+BG_ALPHA = 0.5                                   # opacity of the coloured panel backgrounds
 GREY_FILL, GREY_INK, GREY_EDGE = "#c4c4c4", "#7a7a7a", "#9c9c9c"
 
 
@@ -82,11 +83,11 @@ POS = {tf: p for g in groups.values() for tf, p in g["pos"].items()}; POS["MAFB"
 HH = 0.22
 half = {tf: (0.15 * len(tf) + 0.4) / 2 for tf in POS}
 
-fig, axes = plt.subplots(1, 2, figsize=(6.2, 2.4))
+fig, axes = plt.subplots(1, 2, figsize=(5.6, 2.3))
 for ax, active in zip(axes, ("RA_all", "GABA")):
     A = groups[active]
     ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off"); ax.set_aspect("auto")
-    ax.add_patch(FancyBboxPatch((0.15, 0.1), W - 0.3, H - 0.2, boxstyle="round,pad=0,rounding_size=0.45", facecolor=A["colour"], edgecolor="none", zorder=0))
+    ax.add_patch(FancyBboxPatch((0.15, 0.1), W - 0.3, H - 0.2, boxstyle="round,pad=0,rounding_size=0.45", facecolor=A["colour"], alpha=BG_ALPHA, edgecolor="none", zorder=0))
     ax.text(W / 2, H + 0.05, A["title"], ha="center", va="bottom", fontsize=6, fontweight="bold", clip_on=False)
 
     def ends(tf, shift=0.0):
