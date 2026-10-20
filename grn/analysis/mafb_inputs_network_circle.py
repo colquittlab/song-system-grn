@@ -80,8 +80,8 @@ for key, d, title, colour, order in PANELS:
                        title=title, colour=colour, pos=place(nodes, key), extra=MANUAL.get(key, []))
 assert not (set(groups["RA_all"]["nodes"]) & set(groups["GABA"]["nodes"])), "the groups share an input TF: give the shared TF one position"
 POS = {tf: p for g in groups.values() for tf, p in g["pos"].items()}; POS["MAFB"] = (MX, MY)
-HH = 0.22
-half = {tf: (0.15 * len(tf) + 0.4) / 2 for tf in POS}
+HH = 0.17
+half = {tf: (0.14 * len(tf) + 0.26) / 2 for tf in POS}
 
 fig, axes = plt.subplots(1, 2, figsize=(5.6, 2.3))
 for ax, active in zip(axes, ("RA_all", "GABA")):
@@ -117,11 +117,11 @@ for ax, active in zip(axes, ("RA_all", "GABA")):
     for key, g in groups.items():
         for tf in g["nodes"]:
             x, y = POS[tf]; on = key == active; w = half[tf] * 2
-            ax.add_patch(FancyBboxPatch((x - w / 2, y - HH), w, 2 * HH, boxstyle="round,pad=0,rounding_size=0.14", facecolor=g["colour"] if on else GREY_FILL,
+            ax.add_patch(FancyBboxPatch((x - w / 2, y - HH), w, 2 * HH, boxstyle="round,pad=0,rounding_size=0.1", facecolor=g["colour"] if on else GREY_FILL,
                                         edgecolor=INK if on else GREY_EDGE, linewidth=0.8 if on else 0.5, zorder=3))
             ax.text(x, y, tf, ha="center", va="center", fontsize=6, style="italic", color=INK if on else GREY_INK, zorder=4)
     x, y = POS["MAFB"]; w = half["MAFB"] * 2
-    ax.add_patch(FancyBboxPatch((x - w / 2, y - HH), w, 2 * HH, boxstyle="round,pad=0,rounding_size=0.14", facecolor=MAFB_FILL, edgecolor=INK, linewidth=0.8, zorder=3))
+    ax.add_patch(FancyBboxPatch((x - w / 2, y - HH), w, 2 * HH, boxstyle="round,pad=0,rounding_size=0.1", facecolor=MAFB_FILL, edgecolor=INK, linewidth=0.8, zorder=3))
     ax.text(x, y, "MAFB", ha="center", va="center", fontsize=6, style="italic", color=INK, zorder=4)
     if groups["RA_all"]["extra"] and active == "RA_all":
         ax.text(0.5, 0.22, "dashed: not an\neRegulon edge here", ha="left", va="bottom", fontsize=4.5, color=INK)
