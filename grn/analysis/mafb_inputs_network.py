@@ -3,6 +3,8 @@
 (rounded coloured panel per cell group, italic TF boxes, MAFB shaded grey).
 
 Nodes: MAFB plus every TF that is an input to MAFB in the dataset's config2 eRegulon tables (direct + extended). Edges: only those touching MAFB (TF -> MAFB, and\nMAFB -> TF where the same tables have it; a double head marks both). Arrow = positive regulation (TF2G rho > 0), flat bar = negative.
+AR (RA panel) is added by hand: it is not an eRegulon input to MAFB in the all-runs config1/2 tables (its direct cistrome equals NR3C2's), so AR -> MAFB is
+drawn dashed; MAFB -> AR is in the config2 tables (19 rows, positive) and is drawn solid.
 TF self-links (TF2G rho exactly 1.000) are injected by SCENIC+ and are not drawn.
 
     python mafb_inputs_network.py [OUT_DIR]      # writes mafb_inputs_network.{svg,pdf,png}; SVG text stays editable
@@ -26,7 +28,7 @@ HB = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome
 OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/ssd/rstudio/multiome/motor-pathway/scenicplus/mafb_inputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 CONFIG = 2
-def column(tfs, x=2.4, top=5.3, bottom=0.7):
+def column(tfs, x=2.4, top=5.5, bottom=0.62):
     step = (top - bottom) / (len(tfs) - 1)
     return {tf: (x, top - i * step) for i, tf in enumerate(tfs)}
 
@@ -35,6 +37,7 @@ PANELS = [  # key, directory, title, background colour, input TFs top to bottom 
     ("RA_all", "glut-ra_glut-c1h-1_allruns_hybrid", "Glut-RA vs. Glut-C1H-1", "#e8504d", ["KLF12", "NR3C2", "NFIA", "KLF15", "LIN28B", "STAT1", "FOSL2"]),
     ("GABA", "ra-arco-hvc-nc_gaba_hybrid", "GABA", "#5b9a5b", ["MAF", "SOX6", "TCF12", "ARX", "SATB1", "MEIS2"]),
 ]
+MANUAL = {"RA_all": ["AR"]}   # hand-added nodes (dashed edge into MAFB; see docstring)
 INK, GREY, MAFB_FILL = "#1a1a1a", "#6b6b6b", "#d4d4d4"
 cols = ["TF", "Gene", "regulation", "rho_TF2G"]
 
@@ -51,7 +54,9 @@ fig, axes = plt.subplots(1, len(PANELS), figsize=(6.2, 2.5))
 for ax, (key, d, title, colour, order) in zip(axes, PANELS):
     inputs, e = edges_for(d)
     assert set(order) == inputs, f"{key}: inputs changed: {inputs ^ set(order)}"
-    pos = column(order); pos["MAFB"] = (8.1, 3.0)
+    extra = MANUAL.get(key, [])
+    allnodes = order + extra
+    pos = column(allnodes); pos["MAFB"] = (8.1, 3.0)
     e = e[(e.TF == "MAFB") | (e.Gene == "MAFB")]
     ax.set_xlim(0, 10); ax.set_ylim(0, 6); ax.axis("off"); ax.set_aspect("auto")
     ax.add_patch(FancyBboxPatch((0.15, 0.1), 9.7, 5.8, boxstyle="round,pad=0,rounding_size=0.45", facecolor=colour, edgecolor="none", zorder=0))
@@ -59,7 +64,7 @@ for ax, (key, d, title, colour, order) in zip(axes, PANELS):
     half = {tf: (0.17 * len(tf) + 0.45) / 2 for tf in pos}
     pairs = set(zip(e.TF, e.Gene))
     mx, my = pos["MAFB"]
-    slot = {tf: my + 0.62 * (i / (len(order) - 1) - 0.5) * -1 for i, tf in enumerate(order)}   # spread the arrow ends along MAFB's left edge
+    slot = {tf: my + 0.62 * (i / (len(allnodes) - 1) - 0.5) * -1 for i, tf in enumerate(allnodes)}   # spread the arrow ends along MAFB's left edge
     for r in e.itertuples():
         if r.TF == "MAFB" and (r.Gene, "MAFB") in pairs:
             continue                                  # drawn once with the TF -> MAFB edge, as a double head
@@ -71,9 +76,18 @@ for ax, (key, d, title, colour, order) in zip(axes, PANELS):
             head = "<|-|>,head_width=2.2,head_length=3.2"
         start, end = (a_pt, m_pt) if r.Gene == "MAFB" else (m_pt, a_pt)   # MAFB -> TF only: reverse the direction
         ax.add_patch(FancyArrowPatch(start, end, arrowstyle=head, mutation_scale=1.0, linewidth=0.8, color=INK, zorder=2, shrinkA=0, shrinkB=0))
+    for tf in extra:                                   # AR: dashed AR -> MAFB (not in the tables), solid MAFB -> AR (config2 tables)
+        a_pt = (pos[tf][0] + half[tf] + 0.04, pos[tf][1]); m_pt = (mx - half["MAFB"] - 0.04, slot[tf])
+        up, down = (m_pt[0], m_pt[1] + 0.09), (m_pt[0], m_pt[1] - 0.09)
+        ax.add_patch(FancyArrowPatch((a_pt[0], a_pt[1] + 0.05), up, arrowstyle="-|>,head_width=2.2,head_length=3.2", mutation_scale=1.0, linewidth=0.8,
+                                     color=INK, linestyle=(0, (3, 2)), zorder=2, shrinkA=0, shrinkB=0))
+        ax.add_patch(FancyArrowPatch(down, (a_pt[0], a_pt[1] - 0.05), arrowstyle="-|>,head_width=2.2,head_length=3.2", mutation_scale=1.0, linewidth=0.8,
+                                     color=INK, zorder=2, shrinkA=0, shrinkB=0))
+    if extra:
+        ax.text(9.7, 0.3, "dashed: not an eRegulon edge in this run", ha="right", va="bottom", fontsize=4.5, color=INK)
     for tf, (x, y) in pos.items():
         w = half[tf] * 2
-        ax.add_patch(FancyBboxPatch((x - w / 2, y - 0.38), w, 0.76, boxstyle="round,pad=0,rounding_size=0.22",
+        ax.add_patch(FancyBboxPatch((x - w / 2, y - 0.31), w, 0.62, boxstyle="round,pad=0,rounding_size=0.2",
                                     facecolor=MAFB_FILL if tf == "MAFB" else colour, edgecolor=INK, linewidth=0.8, zorder=3))
         ax.text(x, y, tf, ha="center", va="center", fontsize=6, style="italic", color=INK, zorder=4)
 fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.02, wspace=0.04)
