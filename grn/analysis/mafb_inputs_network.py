@@ -5,7 +5,6 @@
 Nodes: MAFB plus every TF that is an input to MAFB in the dataset's config2 eRegulon tables (direct + extended). Edges: only those touching MAFB (TF -> MAFB, and\nMAFB -> TF where the same tables have it; a double head marks both). Arrow = positive regulation (TF2G rho > 0), flat bar = negative.
 AR (RA panel) is added by hand: it is not an eRegulon input to MAFB in the all-runs config1/2 tables (its direct cistrome equals NR3C2's), so AR -> MAFB is
 drawn dashed; MAFB -> AR is in the config2 tables (19 rows, positive) and is drawn solid.
-KLF15 is an eRegulon input in RA but is dropped (not detectably expressed in Glut-RA; EXCLUDE below).
 TF self-links (TF2G rho exactly 1.000) are injected by SCENIC+ and are not drawn.
 
     python mafb_inputs_network.py [OUT_DIR]      # writes mafb_inputs_network.{svg,pdf,png}; SVG text stays editable
@@ -50,10 +49,10 @@ def clip(c, hw, hh, toward, gap=0.05):
 
 
 PANELS = [  # key, directory, title, background colour, input TFs along the arc, top to bottom (strongest TF-MAFB correlation first)
-    ("RA_all", "glut-ra_glut-c1h-1_allruns_hybrid", "Glut-RA vs. Glut-C1H-1", "#e8504d", ["KLF12", "NR3C2", "NFIA", "LIN28B", "STAT1", "FOSL2"]),
+    ("RA_all", "glut-ra_glut-c1h-1_allruns_hybrid", "Glut-RA vs. Glut-C1H-1", "#e8504d", ["KLF12", "NR3C2", "NFIA", "KLF15", "LIN28B", "STAT1", "FOSL2"]),
     ("GABA", "ra-arco-hvc-nc_gaba_hybrid", "GABA", "#5b9a5b", ["MAF", "SOX6", "TCF12", "ARX", "SATB1", "MEIS2"]),
 ]
-EXCLUDE = {"RA_all": {"KLF15"}}   # eRegulon inputs left out of the figure: KLF15 is not detectably expressed in Glut-RA
+EXCLUDE = {}   # eRegulon inputs to leave out of the figure, {panel key: {TF}} (KLF15, weakly expressed in Glut-RA, is kept)
 MANUAL = {"RA_all": ["AR"]}   # hand-added nodes (dashed edge into MAFB; see docstring)
 INK, GREY, MAFB_FILL = "#1a1a1a", "#6b6b6b", "#d4d4d4"
 cols = ["TF", "Gene", "regulation", "rho_TF2G"]
