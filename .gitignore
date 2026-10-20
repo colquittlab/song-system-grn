@@ -46,3 +46,7 @@ comparative_genomics/deeptools/output/
 
 # ArchR
 ArchRLogs/
+
+# Figure panel scripts (figures/<figure>/): regenerated outputs, not tracked
+figures/*/output/
+__pycache__/
