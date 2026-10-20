@@ -29,9 +29,10 @@ HB = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome
 OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/ssd/rstudio/multiome/motor-pathway/scenicplus/mafb_inputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 CONFIG = 2
-H = 4.2                                        # panel height (data units); lower H = more vertical compression
-MX, MY = 8.3, H / 2                            # MAFB centre
-RX, RY, SPAN = 5.8, 1.6, 68                   # the inputs sit on an ellipse around MAFB (half-axes, half-angle in degrees)
+H = 4.6                                        # panel height (data units); lower H = more vertical compression
+W = 7.8                                        # panel width (data units)
+MX, MY = 6.2, H / 2                            # MAFB centre
+RX, RY, SPAN = 4.0, 1.8, 72                   # the inputs sit on an ellipse around MAFB (half-axes, half-angle in degrees)
 
 
 def arc(tfs):
@@ -67,7 +68,7 @@ def edges_for(d):
 
 
 
-fig, axes = plt.subplots(1, len(PANELS), figsize=(6.2, 2.0))
+fig, axes = plt.subplots(1, len(PANELS), figsize=(5.1, 2.1))
 HH = 0.22                                      # box half-height
 for ax, (key, d, title, colour, order) in zip(axes, PANELS):
     inputs, e = edges_for(d)
@@ -77,9 +78,9 @@ for ax, (key, d, title, colour, order) in zip(axes, PANELS):
     allnodes = order + extra
     pos = arc(allnodes); pos["MAFB"] = (MX, MY)
     e = e[((e.TF == "MAFB") | (e.Gene == "MAFB")) & e.TF.isin(pos) & e.Gene.isin(pos)]   # edges touching MAFB, between drawn nodes
-    ax.set_xlim(0, 10); ax.set_ylim(0, H); ax.axis("off"); ax.set_aspect("auto")
-    ax.add_patch(FancyBboxPatch((0.15, 0.1), 9.7, H - 0.2, boxstyle="round,pad=0,rounding_size=0.45", facecolor=colour, edgecolor="none", zorder=0))
-    ax.text(5, H + 0.05, title, ha="center", va="bottom", fontsize=6, fontweight="bold", clip_on=False)
+    ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off"); ax.set_aspect("auto")
+    ax.add_patch(FancyBboxPatch((0.15, 0.1), W - 0.3, H - 0.2, boxstyle="round,pad=0,rounding_size=0.45", facecolor=colour, edgecolor="none", zorder=0))
+    ax.text(W / 2, H + 0.05, title, ha="center", va="bottom", fontsize=6, fontweight="bold", clip_on=False)
     half = {tf: (0.15 * len(tf) + 0.4) / 2 for tf in pos}
     pairs = set(zip(e.TF, e.Gene))
 
