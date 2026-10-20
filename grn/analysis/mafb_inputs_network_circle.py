@@ -50,9 +50,9 @@ def edges_for(d):
 
 
 import numpy as np
-W, H = 8.2, 4.4                                # panel size (data units); lower H = more vertical compression
+W, H = 9.4, 2.9                                # panel size (data units); lower H = more vertical compression
 MX, MY = W / 2, H / 2                          # MAFB centre
-RX, RY = 3.0, 1.7                              # ellipse half-axes
+RX, RY = 3.8, 1.1                              # ellipse half-axes
 ANG = {"RA_all": (94, 266), "GABA": (68, -68)}   # first/last angle (degrees from +x, counter-clockwise) of each group's arc; RA left, GABA right
 BG_ALPHA = 0.2                                   # opacity of the coloured panel backgrounds
 GREY_FILL, GREY_INK, GREY_EDGE = "#c4c4c4", "#7a7a7a", "#9c9c9c"
@@ -81,9 +81,9 @@ for key, d, title, colour, order in PANELS:
 assert not (set(groups["RA_all"]["nodes"]) & set(groups["GABA"]["nodes"])), "the groups share an input TF: give the shared TF one position"
 POS = {tf: p for g in groups.values() for tf, p in g["pos"].items()}; POS["MAFB"] = (MX, MY)
 HH = 0.17
-half = {tf: (0.14 * len(tf) + 0.26) / 2 for tf in POS}
+half = {tf: (0.165 * len(tf) + 0.3) / 2 for tf in POS}
 
-fig, axes = plt.subplots(1, 2, figsize=(5.6, 2.3))
+fig, axes = plt.subplots(1, 2, figsize=(5.6, 1.5))
 for ax, active in zip(axes, ("RA_all", "GABA")):
     A = groups[active]
     ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off"); ax.set_aspect("auto")
@@ -124,7 +124,7 @@ for ax, active in zip(axes, ("RA_all", "GABA")):
     ax.add_patch(FancyBboxPatch((x - w / 2, y - HH), w, 2 * HH, boxstyle="round,pad=0,rounding_size=0.1", facecolor=MAFB_FILL, edgecolor=INK, linewidth=0.8, zorder=3))
     ax.text(x, y, "MAFB", ha="center", va="center", fontsize=6, style="italic", color=INK, zorder=4)
     if groups["RA_all"]["extra"] and active == "RA_all":
-        ax.text(0.5, 0.22, "dashed: not an\neRegulon edge here", ha="left", va="bottom", fontsize=4.5, color=INK)
+        ax.text(0.45, 0.2, "dashed: not an\neRegulon edge", ha="left", va="bottom", fontsize=4.5, color=INK)
 fig.subplots_adjust(left=0.01, right=0.99, top=0.88, bottom=0.02, wspace=0.04)
 for ext in ("svg", "pdf", "png"):
     fig.savefig(f"{OUT_DIR}/mafb_inputs_network_circle.{ext}", dpi=300)
