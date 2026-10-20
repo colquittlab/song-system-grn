@@ -54,7 +54,7 @@ W, H = 8.2, 4.4                                # panel size (data units); lower 
 MX, MY = W / 2, H / 2                          # MAFB centre
 RX, RY = 3.0, 1.7                              # ellipse half-axes
 ANG = {"RA_all": (94, 266), "GABA": (68, -68)}   # first/last angle (degrees from +x, counter-clockwise) of each group's arc; RA left, GABA right
-BG_ALPHA = 0.5                                   # opacity of the coloured panel backgrounds
+BG_ALPHA = 0.2                                   # opacity of the coloured panel backgrounds
 GREY_FILL, GREY_INK, GREY_EDGE = "#c4c4c4", "#7a7a7a", "#9c9c9c"
 
 
