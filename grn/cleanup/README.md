@@ -16,9 +16,9 @@ So the GRN material is a small share of the repository's size; the motive for mo
 
 | category | files | MB | meaning |
 |---|---:|---:|---|
-| PUBLICATION | 74 | 7.8 | candidate to stay in `main` (config37 pipeline, MAFB/regulon figure code, cisTarget builds) |
-| DEVELOPMENT | 156 | 28.9 | to move to `grn-dev`: the four older-label runs (27.6 MB, mostly notebook outputs), the sweep/control configs, diagnostics |
-| DECIDE | 64 | 2.8 | needs your call (section 4): hybrid subset runs, report templates, coherence tiers, cross-config MAFB analyses, configs 34-39 |
+| PUBLICATION | 77 | 7.9 | candidate to stay in `main` (config37 pipeline, MAFB/regulon figure code, cisTarget builds) |
+| DEVELOPMENT | 162 | 29.0 | to move to `grn-dev`: the four older-label runs (27.6 MB, mostly notebook outputs), the sweep/control configs, diagnostics |
+| DECIDE | 55 | 2.6 | needs your call (section 4): hybrid subset runs, cross-config MAFB analyses, configs 34-39 |
 
 ### Publication candidates
 | group | files | MB |
@@ -49,9 +49,10 @@ So the GRN material is a small share of the repository's size; the motive for mo
 | group | files | MB |
 |---|---:|---:|
 | glut hybrid reference run | 28 | 1.2 |
-| analysis: coherence tiers | 3 | 1.2 |
+| analysis: coherence tiers (DEVELOPMENT) | 3 | 1.2 |
 | hybrid all-cell: other configs | 15 | 0.2 |
-| analysis: hybrid report templates | 4 | 0.1 |
+| analysis: single-config report (PUBLICATION: template, `assemble_slim_*`) | 3 | 0.05 |
+| analysis: config-sweep reports (DEVELOPMENT) | 3 | 0.05 |
 | analysis: cross-config MAFB analysis | 5 | 0.1 |
 | hybrid all-cell: scenicplus | 5 | 0.0 |
 | analysis: local helpers | 2 | 0.0 |
@@ -96,9 +97,9 @@ Resolved: **label set = hybrid** (2026-10-20).
 | 1 | The older-label directories (36 files, 27.6 MB) and their report wrappers | Move to `grn-dev` now (nothing depends on their code; astro-oligo is out of the paper, the chick analysis is being replaced). Tidy the `SCENICPLUS_*_CONFIG_DIR` constants in `config/paths.R` when the new analysis lands. |
 | 2 | Which subsets does the paper need in hybrid form? The README listed glut, gaba, astro-oligo and RA vs Arco-1; astro-oligo is now out. Hybrid versions: glut (in `main`); gaba, RA vs C1H-1 (with and without run3) and all-CACNA1H (on `grn-dev` via PR #11) | Promote only what a published figure or table uses: `git checkout grn-dev -- <dir>` into a normal PR against `main`. |
 | 3 | The hybrid glut run (`ra-arco-hvc-nc_glut_hybrid`, 28 files in `main`) | Keep if the paper uses a glut-only SCENIC+ run, otherwise `grn-dev`. |
-| 4 | Hybrid report templates (4 files: `all.qmd`, `glut.qmd`, `scenicplus_hybrid_*_template.qmd`) | Keep if their eRegulon heatmaps / dot plots are published; otherwise `grn-dev`. |
-| 5 | Local helpers (`assemble_slim_*`) | Keep only if the kept templates need them. |
-| 6 | Coherence tiers (3 files, 1.2 MB) | Keep only if in the paper or supplement. |
+| 4 | Hybrid report templates | **Decided 2026-10-20:** the sweep reports (`all.qmd`, `glut.qmd`, `scenicplus_hybrid_glut_template.qmd`) go to `grn-dev`. `main` keeps the single-config report: `scenicplus_hybrid_all_template.qmd` (it takes `params$configs`) with the new wrapper `config37.qmd` (`configs: ["config37"]`, not in the inventory because it did not exist at `8a15dc8`). |
+| 5 | Local helpers (`assemble_slim_*`) | **Kept** (the single-config report reads the slim h5mu they build). |
+| 6 | Coherence tiers (3 files, 1.2 MB) | **Decided 2026-10-20:** development, move to `grn-dev`. |
 | 7 | Cross-config MAFB analyses (5 files) | Keep only if the config-robustness analysis is in the supplement; they need `config_parameters.tsv` and the sweep results, which would otherwise be gone. |
 | 8 | Configs 34, 35, 36, 38, 39 | Keep config34 (needed to rebuild config37's upstream) or describe it in the README; 35, 36, 38, 39 to `grn-dev` unless cited. |
 | 9 | `make_configs.py` | Keep a trimmed version that defines config37 only; the full 39-config generator goes to `grn-dev`. |

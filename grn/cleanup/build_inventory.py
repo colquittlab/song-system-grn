@@ -110,14 +110,16 @@ def classify(p):
         stem = base
         if re.search(r"^(gaba\.qmd|glut-ra\.qmd|astro-oligo\.qmd|motor-pathway_scenicplus_v2_cluster-snrna-cr_all_template\.qmd)$", stem):
             return "analysis: older-label report wrappers", "DEVELOPMENT", ("astro-oligo report: that analysis is excluded from the revised manuscript" if stem == "astro-oligo.qmd" else "wrapper / template for the older-label subset runs (superseded by the hybrid labels)")
-        if re.search(r"(^all\.qmd|^glut\.qmd|_hybrid_(all|glut)_template\.qmd$)", stem):
-            return "analysis: hybrid report templates", "DECIDE", "per-config SCENIC+ result report for the hybrid runs (gene_auc / expression heatmaps, dot plots): keep if its figures are published, development if it only served the sweep"
+        if stem == "scenicplus_hybrid_all_template.qmd":
+            return "analysis: single-config report", "PUBLICATION", "hybrid report template; main keeps it for single-config renders (params$configs = [\"config37\"] via config37.qmd)"
+        if re.search(r"(^all\.qmd|^glut\.qmd|_hybrid_glut_template\.qmd$)", stem):
+            return "analysis: config-sweep reports", "DEVELOPMENT", "renders every config of a hybrid sweep (decision 2026-10-20: sweep reports go to grn-dev; main keeps the single-config config37.qmd)"
         if stem.startswith("assemble_slim"):
-            return "analysis: local helpers", "DECIDE", "builds the slim scplusmdata the report templates read"
+            return "analysis: single-config report", "PUBLICATION", "builds the slim scplusmdata the single-config report reads"
         if re.search(r"(sweep_summary|normalization_control|gaba_removal|homeodomain|focal_tf)", stem):
             return "analysis: sweep / control diagnostics", "DEVELOPMENT", "cross-config diagnostic of the sweep, controls or GABA/LGE-removal test"
         if "coherence" in stem:
-            return "analysis: coherence tiers", "DECIDE", "descriptive concordance tiers for every eRegulon in configs 1-13 (1.1 MB table)"
+            return "analysis: coherence tiers", "DEVELOPMENT", "descriptive concordance tiers over the configs 1-13 sweep (decision 2026-10-20: development)"
         if re.search(r"^(scenicplus_mafb_targets\.py|scenicplus_mafb_target_membership\.csv|scenicplus_mafb_shared_program(_vs_PVALB1|_vs_SST1)?\.csv)$", stem):
             return "analysis: cross-config MAFB analysis", "DECIDE", "compares MAFB across configs 1-35 (needs the sweep results and config_parameters.tsv); the config37-suffixed files are the single-config versions"
         if re.search(r"(mafb|regulon_|shared_program|shared_regions|dar_overlap|accessibility_concordance|region_accessibility|pv_fs_literature|fs_gene_aliases|loc_gene_labels)", stem):
