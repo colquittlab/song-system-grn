@@ -8,24 +8,25 @@
 #      region totals, then to cell-type totals.
 #   3. snRNA-seq regional specificity: KL divergence (nats) of each cell type's normalized region profile (2) from uniform. 2 and 3 are the same as
 #      snrna/trees/celltypes_hclust_all_hybrid.qmd -> correlation_average/cluster_proportions_vert_with-bar_ordered.pdf.
-#   4. Spatial (Xenium) regional specificity ("spatial trans."): for each cell type and section, confident RCTD calls with >= 400 transcripts are
-#      binned on a 400 um grid; the Jensen-Shannon divergence (bits) of 100 subsampled cells' bin distribution from that of all cells, minus the
+#   4. Spatial (Xenium) regional specificity ("spatial trans."): for each cell type and section, all confident RCTD calls (singlet or confident
+#      doublet, no transcript floor) are binned on a 400 um grid; the Jensen-Shannon divergence (bits) of 100 subsampled cells' bin distribution from that of all cells, minus the
 #      same for 100 cells drawn at random from all cells (each the mean of 30 draws), averaged over the sections with >= 100 cells of the type.
-#      Glut-DACH2-HVCra-Int has < 100 such cells in every section and is not scored (N.D.). Same as
-#      xenium/label_transfer/spatial_variation_by_type.R (score) + spatial_variation_aligned.R -> spatial_variation/spatial_variation_aligned_bars.pdf,
+#      Glut-DACH2-HVCra-Int reaches 100 cells in one section only, so its score rests on that section. Same as
+#      xenium/label_transfer/spatial_variation_by_type.R 0 (score) + spatial_variation_aligned.R 0 -> spatial_variation/spatial_variation_aligned_bars_allcells.pdf,
 #      which draws 2-4 side by side; the figure takes 2 and 3 from part 3's file and 4 from this one.
 #
 # Inputs: the snRNA-seq object with the hybrid labels; the RCTD calls, proseg centroids and transcript counts (common.R).
 # Outputs: FIG1_OUT/panel_G_dotplot_manual_markers.pdf
 #          FIG1_OUT/panel_G_region_fraction_snrna_specificity.pdf (+ panel_G_region_fraction.csv)
-#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars_gte400.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section]_gte400.csv)
-#          With FIG1_MIN_TRANSCRIPTS=0, part 4 uses every confident call (no transcript floor) and its outputs end in _allcells.
+#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars_allcells.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section]_allcells.csv)
+#          FIG1_MIN_TRANSCRIPTS=400 gives the earlier version of part 4 (cells with >= 400 transcripts; Glut-DACH2-HVCra-Int not scored), tagged _gte400.
 #
 #   Rscript figures/figure1/panel_G_markers_regional_specificity.R
-#   FIG1_MIN_TRANSCRIPTS=0 Rscript figures/figure1/panel_G_markers_regional_specificity.R
+#   FIG1_MIN_TRANSCRIPTS=400 Rscript figures/figure1/panel_G_markers_regional_specificity.R
 source(here::here("figures/figure1/common.R"))
 suppressMessages({library(Seurat); library(scCustomize); library(cowplot); library(egg); library(ComplexHeatmap); library(circlize)})
 theme_set(theme_cowplot())
+set_min_transcripts(0)
 
 obj <- read_snrna()
 stopifnot("doublet assignments present" = !any(grepl("/", obj$assignment)))

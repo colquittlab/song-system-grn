@@ -9,12 +9,13 @@
 # PVALB types and OR52YW26_1_7 (2.2 mm) for the astrocyte types.
 #
 # Input: the RCTD calls, proseg centroids and transcript counts (common.R).
-# Output: FIG1_OUT/panel_F_spatial_<type>_gte400.png, one per type (_allcells.png with FIG1_MIN_TRANSCRIPTS=0: every confident call)
+# Output: FIG1_OUT/panel_F_spatial_<type>_gte400.png, one per type (the figure's floor; with FIG1_MIN_TRANSCRIPTS=0, every confident call, _allcells.png)
 #
 #   Rscript figures/figure1/panel_F_xenium_spatial_maps.R
 #   FIG1_MIN_TRANSCRIPTS=0 Rscript figures/figure1/panel_F_xenium_spatial_maps.R
 source(here::here("figures/figure1/common.R"))
 suppressMessages(library(cowplot))
+set_min_transcripts(400)
 TYPES <- c("GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-PVALB-3", "Astro-1", "Astro-2", "Astro-3")
 
 d <- read_xenium_calls() %>%
