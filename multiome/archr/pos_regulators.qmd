@@ -389,9 +389,10 @@ save_plot(file.path(out_dir, "dotplot.pdf"), gg)
 ```{r}
 ## `obj_filt2`, `cell_order` and `genes_to_plot` were never defined in this file.
 ## The object is the glut subset built just above, the genes are `to_plot`, and the
-## column order is the hybrid cluster order restricted to the groups present.
+## column order is the pair order used in the dotplot (`ct_order`: RA, C1H-1,
+## HVCra, D2-1, HVCx, D2-4), restricted to the groups present.
 expr = AggregateExpression(obj_glut, features=to_plot, assays="SCT",  group.by="cluster_hybrid")[[1]]
-cell_order = intersect(hybrid_ct_order, colnames(expr))
+cell_order = intersect(ct_order, colnames(expr))
 genes_to_plot = to_plot
 
 ```
