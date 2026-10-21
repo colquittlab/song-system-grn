@@ -878,7 +878,8 @@ mat_z_l = as.data.frame(as.matrix(mat_z)) %>% rownames_to_column() %>%
   pivot_longer(-rowname, names_to = "barcode", values_to="value") %>%
   left_join(md %>% select(barcode, cluster, position_cur)) %>%
   rename(TF = rowname) 
-mat_z_l$colors = position_colors2[match(mat_z_l$position_cur, names(position_colors2))]
+## position_colors, not position_colors2: RA/Arco in the red/pink scheme used in the figures
+mat_z_l$colors = position_colors[match(mat_z_l$position_cur, names(position_colors))]
 ```
 
 ```{r}
@@ -889,17 +890,30 @@ for (TF_cur in markerMotifs_sub_z) {
   mat_z_l_cur = mat_z_l %>%
     filter(TF==TF_cur)
   gg = ggplot(mat_z_l_cur, aes(value, y=cluster, fill=colors)) + 
-    geom_density_ridges() + 
-    theme_bw() + 
+    geom_density_ridges(linewidth = 0.25) +
+    theme_bw() +
     scale_fill_identity() +
-    labs(x="motif enrichment\n(z-scored)", y ="") + 
-    theme(axis.text = element_text(size=6),
-          axis.title = element_text(size=7))
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 3)) +
+    labs(x="motif enrichment\n(z-scored)", y ="") +
+    theme(axis.text = element_text(size=5),
+          axis.title = element_text(size=5),
+          panel.border = element_rect(linewidth = 0.25),
+          panel.grid = element_line(linewidth = 0.2),
+          axis.ticks = element_line(linewidth = 0.25),
+          axis.ticks.length = unit(1.5, "pt"),
+          plot.margin = margin(1, 1, 1, 1, "pt"))
   print(gg)
   fname = file.path(out_dir, sprintf("chromVar_motif-enrichment_%s.pdf", TF_cur))
-  ## 3 in wide: the cluster labels take ~1 in, so a square 1.5 in plot left the
-  ## density panel too narrow to read
-  save_plot(fname, gg, base_height=1.5, base_asp=2)
+  ## Figure 3 panel size: the density panel itself is 0.5 in wide (the cluster labels
+  ## add to that) and the whole plot 0.844 in tall
+  g = ggplotGrob(gg)
+  panel_cols = unique(g$layout$l[grepl("^panel", g$layout$name)])
+  g$widths[panel_cols] = unit(0.5, "in")
+  ## the x title is centred on the panel but wider than it; pad the right edge so it isn't clipped
+  title_in = convertWidth(grobWidth(g$grobs[[which(g$layout$name == "xlab-b")]]), "in", valueOnly = TRUE)
+  g = gtable::gtable_add_cols(g, unit(max(0, (title_in - 0.5) / 2), "in"))
+  width_in = convertWidth(sum(g$widths), "in", valueOnly = TRUE)
+  ggsave(fname, g, width = width_in, height = 0.844, units = "in")
 }
 ```
 
