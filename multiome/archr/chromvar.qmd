@@ -913,7 +913,10 @@ for (TF_cur in markerMotifs_sub_z) {
   title_in = convertWidth(grobWidth(g$grobs[[which(g$layout$name == "xlab-b")]]), "in", valueOnly = TRUE)
   g = gtable::gtable_add_cols(g, unit(max(0, (title_in - 0.5) / 2), "in"))
   width_in = convertWidth(sum(g$widths), "in", valueOnly = TRUE)
-  ggsave(fname, g, width = width_in, height = 0.844, units = "in")
+  ## R's pdf devices truncate the page to whole points (0.844 in -> 60 pt = 0.833 in),
+  ## so round up instead: 61 pt = 0.847 in
+  whole_pt = function(x) ceiling(x * 72) / 72
+  ggsave(fname, g, width = whole_pt(width_in), height = whole_pt(0.844), units = "in")
 }
 ```
 
