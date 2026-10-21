@@ -18,9 +18,11 @@
 # Inputs: the snRNA-seq object with the hybrid labels; the RCTD calls, proseg centroids and transcript counts (common.R).
 # Outputs: FIG1_OUT/panel_G_dotplot_manual_markers.pdf
 #          FIG1_OUT/panel_G_region_fraction_snrna_specificity.pdf (+ panel_G_region_fraction.csv)
-#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section].csv)
+#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars_gte400.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section]_gte400.csv)
+#          With FIG1_MIN_TRANSCRIPTS=0, part 4 uses every confident call (no transcript floor) and its outputs end in _allcells.
 #
 #   Rscript figures/figure1/panel_G_markers_regional_specificity.R
+#   FIG1_MIN_TRANSCRIPTS=0 Rscript figures/figure1/panel_G_markers_regional_specificity.R
 source(here::here("figures/figure1/common.R"))
 suppressMessages({library(Seurat); library(scCustomize); library(cowplot); library(egg); library(ComplexHeatmap); library(circlize)})
 theme_set(theme_cowplot())
@@ -93,8 +95,8 @@ by_section <- map_dfr(unique(xd$section_id), function(sid) {
 })
 by_type <- by_section %>% group_by(first_type) %>%
   summarize(n_sections = n(), delta_sd = sd(delta), delta = mean(delta), median_n = median(n_cells), .groups = "drop") %>% arrange(desc(delta))
-write_csv(by_section, file.path(FIG1_OUT, "panel_G_spatial_specificity_by_type_section.csv"))
-write_csv(by_type, file.path(FIG1_OUT, "panel_G_spatial_specificity_by_type.csv"))
+write_csv(by_section, file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_by_type_section", DEPTH_TAG, ".csv")))
+write_csv(by_type, file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_by_type", DEPTH_TAG, ".csv")))
 delta <- by_type$delta[match(CT_ORDER, by_type$first_type)]   # NA (empty slot) for types not scored
 message("not scored: ", paste(CT_ORDER[is.na(delta)], collapse = ", "))
 
@@ -108,7 +110,7 @@ bar_ann <- function(name, v) {
   do.call(HeatmapAnnotation, c(setNames(list(bars), name), list(which = "row", annotation_name_gp = gpar(fontsize = 6), gap = unit(2, "mm"))))
 }
 ht <- hm + bar_ann("snRNA\nspecificity", tab_spec) + bar_ann("Xenium\nlocalisation", delta)
-out <- file.path(FIG1_OUT, "panel_G_spatial_specificity_aligned_bars")
+out <- file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_aligned_bars", DEPTH_TAG))
 pdf(paste0(out, ".pdf"), height = hm_h + 2, width = 5.2); draw(ht, merge_legend = TRUE); invisible(dev.off())
 png(paste0(out, ".png"), height = (hm_h + 2) * 300, width = 5.2 * 300, res = 300); draw(ht, merge_legend = TRUE); invisible(dev.off())
 message("saved ", out)
