@@ -897,7 +897,9 @@ for (TF_cur in markerMotifs_sub_z) {
           axis.title = element_text(size=7))
   print(gg)
   fname = file.path(out_dir, sprintf("chromVar_motif-enrichment_%s.pdf", TF_cur))
-  save_plot(fname, gg, base_height=1.5, base_asp=1)
+  ## 3 in wide: the cluster labels take ~1 in, so a square 1.5 in plot left the
+  ## density panel too narrow to read
+  save_plot(fname, gg, base_height=1.5, base_asp=2)
 }
 ```
 
