@@ -16,6 +16,13 @@
 ## uses that same n, so a rare type is not scored as "localised" purely because
 ## few cells spread thinly across bins. Types with fewer than N_FIX cells in a
 ## section are skipped for that section.
+##
+## Transcript floor from the command line (default 400). The Figure 1 version
+## uses every confident call, with no floor:
+##   Rscript xenium/label_transfer/spatial_variation_by_type.R        # nCount >= 400
+##   Rscript xenium/label_transfer/spatial_variation_by_type.R 0      # all cells -> *_allcells.csv
+## At 400 the outputs keep their original names; any other floor adds a suffix
+## (_allcells for 0, _gte<N> otherwise).
 
 suppressMessages({ library(tidyverse); library(here) })
 source(here::here("config/paths.R"))
@@ -25,7 +32,10 @@ hpc_dir = path.expand("~/hdd/rstudio/xenium/260811_brainard_adult-425g/hpc_rctd_
 out_dir = here::here("xenium/label_transfer", "spatial_variation")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-BIN = 400; N_FIX = 100; B = 30; GTE400 = 400
+.args = commandArgs(trailingOnly = TRUE)
+BIN = 400; N_FIX = 100; B = 30; GTE400 = if (length(.args)) as.numeric(.args[1]) else 400
+TAG = if (GTE400 == 400) "" else if (GTE400 == 0) "_allcells" else paste0("_gte", GTE400)
+cat("transcript floor:", GTE400, " output suffix:", if (nzchar(TAG)) TAG else "(none)", "\n")
 ## N_FIX is both the subsample size and the per-section inclusion threshold.
 ## At 200 several types (e.g. Glut-CACNA1H-RA) cleared it in only one section,
 ## so their index rested on a single panel; 100 buys much wider section
@@ -73,7 +83,7 @@ res = map_dfr(unique(d$section_id), function(sid) {
   })
 })
 
-write_csv(res, file.path(out_dir,"spatial_localisation_by_type_section.csv"))
+write_csv(res, file.path(out_dir,paste0("spatial_localisation_by_type_section",TAG,".csv")))
 
 ## NB: compute the sd BEFORE a column called `delta` is redefined -- summarize()
 ## evaluates in order, so `delta_sd = sd(delta)` after `delta = mean(delta)`
@@ -82,7 +92,7 @@ per_type = res %>% group_by(first_type, class) %>%
   summarize(n_sections=n(), delta_sd=sd(delta), delta_mean=mean(delta),
             median_n=median(n_cells), .groups="drop") %>%
   rename(delta = delta_mean) %>% arrange(desc(delta))
-write_csv(per_type, file.path(out_dir,"spatial_localisation_by_type.csv"))
+write_csv(per_type, file.path(out_dir,paste0("spatial_localisation_by_type",TAG,".csv")))
 
 cat("\n=== per-type spatial localisation index (delta), ranked ===\n")
 print(as.data.frame(per_type %>% mutate(across(where(is.numeric), ~round(.,4)))), row.names=FALSE)
@@ -94,7 +104,7 @@ bycl = per_type %>% group_by(class) %>%
             min_delta=min(delta), max_delta=max(delta), .groups="drop") %>%
   arrange(desc(mean_delta))
 print(as.data.frame(bycl %>% mutate(across(where(is.numeric), ~round(.,4)))), row.names=FALSE)
-write_csv(bycl, file.path(out_dir,"spatial_localisation_by_class_from_types.csv"))
+write_csv(bycl, file.path(out_dir,paste0("spatial_localisation_by_class_from_types",TAG,".csv")))
 
 cat("\n=== Wilcoxon on per-type deltas ===\n")
 for (p in list(c("Glut","Astro"), c("Astro","GABA"), c("Glut","GABA"))) {
