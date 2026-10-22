@@ -425,11 +425,22 @@ for (tp in intersect(Features(obj_glut_umap), to_plot)) {
   ) + theme_nothing()
   save_plot(file.path(out_dir, str_interp("${tp}.pdf")), gg, base_width=7, base_asp = 1)
   
-  gg = Nebulosa::plot_density(obj_glut_umap, features = tp, size = .1,
-                              reduction = reduction_cur) + 
+  ## Expressing cells drawn on top of the non-expressing ones, in increasing order of
+  ## expression, on a single-hue scale capped at the 99th percentile of the expressing
+  ## cells -- in place of the Nebulosa density, which spreads sparse TF signal. Same
+  ## plot as figures/figure4/panel_C_mafb_umap.R.
+  xy = Embeddings(obj_glut_umap, reduction_cur)[, 1:2]
+  d = tibble(x = xy[, 1], y = xy[, 2], expr = FetchData(obj_glut_umap, vars = tp, layer = "data")[, 1])
+  cap = quantile(d$expr[d$expr > 0], 0.99)
+  gg = ggplot() +
+    ggrastr::rasterise(geom_point(data = d %>% filter(expr == 0), aes(x, y), color = "#e3e2dc", size = 0.15, stroke = 0), dpi = 600) +
+    ggrastr::rasterise(geom_point(data = d %>% filter(expr > 0) %>% arrange(expr), aes(x, y, color = pmin(expr, cap)), size = 0.25, stroke = 0), dpi = 600) +
+    scale_color_gradientn(colors = c("#dbe9f6", "#6baed6", "#2171b5", "#08306b"), limits = c(0, cap)) +
     annotate("text", x = Inf, y = Inf, label = tp, size = 3, hjust = 1, vjust = 1) +
-    theme_nothing()
-  save_plot(file.path(out_dir, str_interp("${tp}_density.pdf")), gg, base_width=1.2, base_height=1.2)
+    coord_equal() +
+    theme_void() +
+    theme(legend.position = "none")
+  save_plot(file.path(out_dir, str_interp("${tp}_umap.pdf")), gg, base_width=1.2, base_height=1.2)
 }
 ```
 
