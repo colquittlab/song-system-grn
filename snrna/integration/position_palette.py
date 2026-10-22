@@ -58,3 +58,18 @@ def cluster_color(c):
 
 def song_group(c):
     return "song" if c in SONG_CLUSTERS else "non-song"
+
+
+# Fixed chicken-column order shared by every gg_glutonly_hybrid heatmap (GSI, SAMap,
+# CCA/RPCA, composite) so the methods line up column-for-column: grouped by the
+# marker prefix after "Ex_" in this order, alphabetical within a group. Anything
+# with an unlisted prefix (e.g. Ex_Pre_*) goes after, also alphabetical.
+CHICKEN_PREFIX_ORDER = ["DACH2", "TSHZ2", "CACNA1H", "SATB2", "KIAA1217", "BCL6"]
+
+
+def chicken_col_order(cols):
+    def key(c):
+        prefix = str(c).removeprefix("Ex_").split("_")[0]
+        rank = CHICKEN_PREFIX_ORDER.index(prefix) if prefix in CHICKEN_PREFIX_ORDER else len(CHICKEN_PREFIX_ORDER)
+        return (rank, str(c))
+    return sorted(cols, key=key)
