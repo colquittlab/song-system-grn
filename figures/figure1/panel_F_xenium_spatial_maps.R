@@ -9,11 +9,13 @@
 # PVALB types and OR52YW26_1_7 (2.2 mm) for the astrocyte types.
 #
 # Input: the RCTD calls, proseg centroids and transcript counts (common.R).
-# Output: FIG1_OUT/panel_F_spatial_<type>_gte400.png, one per type
+# Output: FIG1_OUT/panel_F_spatial_<type>_gte400.png, one per type (the figure's floor; with FIG1_MIN_TRANSCRIPTS=0, every confident call, _allcells.png)
 #
 #   Rscript figures/figure1/panel_F_xenium_spatial_maps.R
+#   FIG1_MIN_TRANSCRIPTS=0 Rscript figures/figure1/panel_F_xenium_spatial_maps.R
 source(here::here("figures/figure1/common.R"))
 suppressMessages(library(cowplot))
+set_min_transcripts(400)
 TYPES <- c("GABA-MGE-PVALB-1", "GABA-MGE-PVALB-2", "GABA-MGE-PVALB-3", "Astro-1", "Astro-2", "Astro-3")
 
 d <- read_xenium_calls() %>%
@@ -35,9 +37,9 @@ section_plot <- function(sid, hl) {
 
 for (ty in TYPES) {
   hl <- d %>% filter(confident, nCount >= MIN_TRANSCRIPTS, first_type == ty)
-  p <- plot_grid(plotlist = map(SECTIONS, section_plot, hl = hl), ncol = 5) +
-    draw_figure_label(paste0(ty, "  (n = ", nrow(hl), " confident cells, nCount >= ", MIN_TRANSCRIPTS, ")"), position = "top", size = 14)
-  out <- file.path(FIG1_OUT, paste0("panel_F_spatial_", str_replace_all(ty, "[/-]", "_"), "_gte400.png"))
+  label <- paste0(ty, "  (n = ", nrow(hl), " confident cells", if (MIN_TRANSCRIPTS > 0) paste0(", nCount >= ", MIN_TRANSCRIPTS), ")")
+  p <- plot_grid(plotlist = map(SECTIONS, section_plot, hl = hl), ncol = 5) + draw_figure_label(label, position = "top", size = 14)
+  out <- file.path(FIG1_OUT, paste0("panel_F_spatial_", str_replace_all(ty, "[/-]", "_"), DEPTH_TAG, ".png"))
   ggsave(out, p, width = 20, height = 9.5, dpi = 250, bg = "white")
   message("saved ", out)
 }

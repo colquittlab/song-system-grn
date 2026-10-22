@@ -11,10 +11,17 @@
 ##               (JSD of a type's bin distribution from all cells, minus a
 ##               matched-n permutation null)
 ##
-## Glut-DACH2-HVCra-Int is not scored on the Xenium side: after the
-## confident + nCount>=400 filter it has only 24-74 cells per section, below
-## the n=100 needed for a comparable index. It is drawn as an empty slot rather
-## than given a value computed at a different n.
+## Glut-DACH2-HVCra-Int is not scored on the Xenium side at the default
+## floor: after the confident + nCount>=400 filter it has only 24-74 cells per
+## section, below the n=100 needed for a comparable index. It is drawn as an
+## empty slot rather than given a value computed at a different n. With no
+## floor (all confident calls) it reaches n=100 in one section and is scored
+## from that section alone.
+##
+## Transcript floor from the command line, matching spatial_variation_by_type.R
+## (run that first with the same argument):
+##   Rscript xenium/label_transfer/spatial_variation_aligned.R      # nCount >= 400
+##   Rscript xenium/label_transfer/spatial_variation_aligned.R 0    # all cells -> *_allcells.*
 
 suppressMessages({
   library(Seurat); library(BPCells); library(tidyverse); library(qs2)
@@ -25,6 +32,9 @@ select = dplyr::select
 
 out_dir = here::here("xenium/label_transfer", "spatial_variation")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+.args = commandArgs(trailingOnly = TRUE)
+GTE400 = if (length(.args)) as.numeric(.args[1]) else 400
+TAG = if (GTE400 == 400) "" else if (GTE400 == 0) "_allcells" else paste0("_gte", GTE400)
 obj_fname = here::here("snrna/trees/celltypes_hclust_all_hybrid", "obj_subset.qs2")
 res_to_use = "celltype_hybrid"
 
@@ -65,8 +75,8 @@ stopifnot(identical(colnames(tab), ct_order))
 tab_spec = apply(tab, 2, calc_tissue_specificity)[ct_order]
 
 ## ---- Xenium side ----------------------------------------------------------
-per_type = read_csv(file.path(out_dir,"spatial_localisation_by_type.csv"), show_col_types=FALSE)
-per_sec  = read_csv(file.path(out_dir,"spatial_localisation_by_type_section.csv"), show_col_types=FALSE)
+per_type = read_csv(file.path(out_dir,paste0("spatial_localisation_by_type",TAG,".csv")), show_col_types=FALSE)
+per_sec  = read_csv(file.path(out_dir,paste0("spatial_localisation_by_type_section",TAG,".csv")), show_col_types=FALSE)
 on = per_sec %>% group_by(first_type) %>%
   summarize(obs=mean(obs), null=mean(null), .groups="drop")
 x = tibble(cluster = ct_order) %>%
@@ -136,9 +146,9 @@ hm = Heatmap(t(tab), cluster_rows=FALSE, cluster_columns=FALSE,
 for (variant in c("bars","bars_points")) {
   ht = if (variant=="bars") hm + ann_snrna + ann_xen else hm + ann_snrna + ann_xen + ann_pts
   w = if (variant=="bars") 5.2 else 6.0
-  pdf(file.path(out_dir, paste0("spatial_variation_aligned_",variant,".pdf")),
+  pdf(file.path(out_dir, paste0("spatial_variation_aligned_",variant,TAG,".pdf")),
       height=hm_h+2, width=w); draw(ht, merge_legend=TRUE); dev.off()
-  png(file.path(out_dir, paste0("spatial_variation_aligned_",variant,".png")),
+  png(file.path(out_dir, paste0("spatial_variation_aligned_",variant,TAG,".png")),
       height=(hm_h+2)*300, width=w*300, res=300); draw(ht, merge_legend=TRUE); dev.off()
 }
 cat("wrote aligned figures\n")
@@ -152,7 +162,7 @@ cat(sprintf("\nSpearman snRNA specificity vs Xenium localisation: rho=%.3f, p=%.
             ct_test$estimate, ct_test$p.value, nrow(cmp)))
 write_csv(cmp %>% select(cluster, cluster_type, snrna_spec, xenium_delta=delta,
                          xenium_obs=obs, xenium_null=null),
-          file.path(out_dir,"snrna_vs_xenium_specificity.csv"))
+          file.path(out_dir,paste0("snrna_vs_xenium_specificity",TAG,".csv")))
 
 p = ggplot(cmp, aes(snrna_spec, delta, colour=cluster_type)) +
   geom_point(size=2) +
@@ -162,5 +172,5 @@ p = ggplot(cmp, aes(snrna_spec, delta, colour=cluster_type)) +
        subtitle=sprintf("Spearman rho = %.2f, p = %.2g, n = %d",
                         ct_test$estimate, ct_test$p.value, nrow(cmp))) +
   cowplot::theme_cowplot(font_size=10)
-ggsave(file.path(out_dir,"snrna_vs_xenium_specificity.png"), p, width=7.5, height=6, dpi=300, bg="white")
+ggsave(file.path(out_dir,paste0("snrna_vs_xenium_specificity",TAG,".png")), p, width=7.5, height=6, dpi=300, bg="white")
 cat("DONE\n")

@@ -8,22 +8,25 @@
 #      region totals, then to cell-type totals.
 #   3. snRNA-seq regional specificity: KL divergence (nats) of each cell type's normalized region profile (2) from uniform. 2 and 3 are the same as
 #      snrna/trees/celltypes_hclust_all_hybrid.qmd -> correlation_average/cluster_proportions_vert_with-bar_ordered.pdf.
-#   4. Spatial (Xenium) regional specificity ("spatial trans."): for each cell type and section, confident RCTD calls with >= 400 transcripts are
-#      binned on a 400 um grid; the Jensen-Shannon divergence (bits) of 100 subsampled cells' bin distribution from that of all cells, minus the
+#   4. Spatial (Xenium) regional specificity ("spatial trans."): for each cell type and section, all confident RCTD calls (singlet or confident
+#      doublet, no transcript floor) are binned on a 400 um grid; the Jensen-Shannon divergence (bits) of 100 subsampled cells' bin distribution from that of all cells, minus the
 #      same for 100 cells drawn at random from all cells (each the mean of 30 draws), averaged over the sections with >= 100 cells of the type.
-#      Glut-DACH2-HVCra-Int has < 100 such cells in every section and is not scored (N.D.). Same as
-#      xenium/label_transfer/spatial_variation_by_type.R (score) + spatial_variation_aligned.R -> spatial_variation/spatial_variation_aligned_bars.pdf,
+#      Glut-DACH2-HVCra-Int reaches 100 cells in one section only, so its score rests on that section. Same as
+#      xenium/label_transfer/spatial_variation_by_type.R 0 (score) + spatial_variation_aligned.R 0 -> spatial_variation/spatial_variation_aligned_bars_allcells.pdf,
 #      which draws 2-4 side by side; the figure takes 2 and 3 from part 3's file and 4 from this one.
 #
 # Inputs: the snRNA-seq object with the hybrid labels; the RCTD calls, proseg centroids and transcript counts (common.R).
 # Outputs: FIG1_OUT/panel_G_dotplot_manual_markers.pdf
 #          FIG1_OUT/panel_G_region_fraction_snrna_specificity.pdf (+ panel_G_region_fraction.csv)
-#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section].csv)
+#          FIG1_OUT/panel_G_spatial_specificity_aligned_bars_allcells.{pdf,png} (+ panel_G_spatial_specificity_by_type[_section]_allcells.csv)
+#          FIG1_MIN_TRANSCRIPTS=400 gives the earlier version of part 4 (cells with >= 400 transcripts; Glut-DACH2-HVCra-Int not scored), tagged _gte400.
 #
 #   Rscript figures/figure1/panel_G_markers_regional_specificity.R
+#   FIG1_MIN_TRANSCRIPTS=400 Rscript figures/figure1/panel_G_markers_regional_specificity.R
 source(here::here("figures/figure1/common.R"))
 suppressMessages({library(Seurat); library(scCustomize); library(cowplot); library(egg); library(ComplexHeatmap); library(circlize)})
 theme_set(theme_cowplot())
+set_min_transcripts(0)
 
 obj <- read_snrna()
 stopifnot("doublet assignments present" = !any(grepl("/", obj$assignment)))
@@ -93,8 +96,8 @@ by_section <- map_dfr(unique(xd$section_id), function(sid) {
 })
 by_type <- by_section %>% group_by(first_type) %>%
   summarize(n_sections = n(), delta_sd = sd(delta), delta = mean(delta), median_n = median(n_cells), .groups = "drop") %>% arrange(desc(delta))
-write_csv(by_section, file.path(FIG1_OUT, "panel_G_spatial_specificity_by_type_section.csv"))
-write_csv(by_type, file.path(FIG1_OUT, "panel_G_spatial_specificity_by_type.csv"))
+write_csv(by_section, file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_by_type_section", DEPTH_TAG, ".csv")))
+write_csv(by_type, file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_by_type", DEPTH_TAG, ".csv")))
 delta <- by_type$delta[match(CT_ORDER, by_type$first_type)]   # NA (empty slot) for types not scored
 message("not scored: ", paste(CT_ORDER[is.na(delta)], collapse = ", "))
 
@@ -108,7 +111,7 @@ bar_ann <- function(name, v) {
   do.call(HeatmapAnnotation, c(setNames(list(bars), name), list(which = "row", annotation_name_gp = gpar(fontsize = 6), gap = unit(2, "mm"))))
 }
 ht <- hm + bar_ann("snRNA\nspecificity", tab_spec) + bar_ann("Xenium\nlocalisation", delta)
-out <- file.path(FIG1_OUT, "panel_G_spatial_specificity_aligned_bars")
+out <- file.path(FIG1_OUT, paste0("panel_G_spatial_specificity_aligned_bars", DEPTH_TAG))
 pdf(paste0(out, ".pdf"), height = hm_h + 2, width = 5.2); draw(ht, merge_legend = TRUE); invisible(dev.off())
 png(paste0(out, ".png"), height = (hm_h + 2) * 300, width = 5.2 * 300, res = 300); draw(ht, merge_legend = TRUE); invisible(dev.off())
 message("saved ", out)

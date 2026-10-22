@@ -107,8 +107,14 @@ orient_xy <- function(df, section, xcol = "x", ycol = "y") {
 
 # RCTD calls counted as confident: singlets and confident doublets
 CONFIDENT_CLASSES <- c("singlet", "doublet_certain")
-# Transcript floor for the cells shown in panels F and G (composition below ~400 transcripts is increasingly depth-driven)
-MIN_TRANSCRIPTS <- 400
+#' Transcript floor for the Xenium cells of a panel: the panel's default (the figure's choice -- panel F maps: >= 400 transcripts; panel G spatial
+#' specificity: every confident call), unless FIG1_MIN_TRANSCRIPTS is set. Sets MIN_TRANSCRIPTS and DEPTH_TAG (_gte<N> or _allcells, added to the
+#' names of the outputs that depend on it).
+set_min_transcripts <- function(default) {
+  MIN_TRANSCRIPTS <<- as.numeric(Sys.getenv("FIG1_MIN_TRANSCRIPTS", as.character(default)))
+  DEPTH_TAG <<- if (MIN_TRANSCRIPTS > 0) paste0("_gte", MIN_TRANSCRIPTS) else "_allcells"
+  message("Xenium transcript floor: ", MIN_TRANSCRIPTS, " (outputs tagged ", DEPTH_TAG, ")")
+}
 
 #' Every proseg cell with its section, centroid, RCTD call (spot_class, first_type) and transcript count (nCount)
 read_xenium_calls <- function(dir = RCTD_DIR) {
