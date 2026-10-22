@@ -1,0 +1,551 @@
+---
+title: "Song / non-song glutamatergic pairing by dataset integration (hybrid labels)"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+A complementary test of the song / non-song cell-type pairings, independent of the
+hierarchical clustering in `snrna/trees/celltypes_hclust_glut_robustness_hybrid.qmd`.
+
+The clustering approach controls for song-nucleus identity by *removing song DEGs* before
+building the tree, and the reviewer's concern is that the pairings might be an artifact of
+that removal step. Integration controls for the same axis a completely different way: the
+song and non-song glutamatergic neurons are treated as two **datasets**, the
+dataset-level difference is removed by anchor-based integration, and we then ask which
+non-song cell type each song cell type aligns to. No gene is removed at any point, and no
+tree is built, so the two methods fail differently.
+
+Two readouts come out of one anchor computation per parameter set:
+
+1. **Anchor partners.** `FindIntegrationAnchors()` pairs individual song cells with
+   individual non-song cells. Tabulating the non-song cell type of each song cell's anchor
+   partners is the most direct possible statement of "which type does this song type pair
+   with" -- it is the integration's own correspondence, before any correction is applied.
+2. **Co-embedding neighbours.** `IntegrateData()` on the same anchors, then, in the
+   corrected space, the nearest non-song neighbours of every song cell. This is the
+   "which types do the song neurons integrate with" question asked after the correction
+   rather than before it.
+
+Each dataset is normalised with **SCTransform** and integrated with
+`normalization.method = "SCT"`, matching the normalisation used throughout this project.
+The object's existing SCT assay is deliberately not reused: it was fit across all cells at
+once, so it already absorbs the very song/non-song difference the integration is meant to
+estimate.
+
+Both are swept over **integration strength** (`k.anchor`) and over **RPCA vs CCA**, per the
+reviewer's suggestion. `k.anchor` sets how many neighbours count as a mutual-nearest-neighbour
+anchor: small values give few, high-confidence anchors, large values force more of the two
+datasets into correspondence. A pairing that survives from `k.anchor = 5` to `k.anchor = 50`
+under both reductions is not an artifact of the integration strength.
+
+**Counting caveat, handled throughout.** Anchors and neighbours both scale with cell-type
+size: a non-song type with 1800 cells will collect more anchors than one with 200 for no
+biological reason. Every panel therefore reports a size-normalised enrichment,
+`log2(observed / expected)`, alongside the raw share, where expected is the share that type
+would get if partners were assigned in proportion to cell number.
+
+```{r setup}
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(Matrix)
+library(RANN)
+library(cowplot)
+library(here)
+set.seed(10)
+
+## Arial is not a font the base pdf() device knows; render chunk figures through
+## ragg, and let fig_save() handle the vector output via cairo_pdf.
+knitr::opts_chunk$set(dev = "ragg_png", dpi = 200)
+
+source(here::here("config/figure_theme.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
+
+options(future.globals.maxSize = Inf)
+```
+
+# Parameters
+
+```{r params}
+label_col   = "celltype_hybrid"   # cluster labels (hybrid division naming)
+assay_raw   = "RNA"               # counts to renormalise per dataset
+norm_method = "SCT"               # per-dataset normalisation for the integration
+n_features  = 3000                # SelectIntegrationFeatures (SCT convention here)
+dims_to_use = 1:30
+n_knn       = 20                  # neighbours per song cell in the corrected space
+
+## Integration strength sweep, per the reviewer's suggestion
+k_anchors   = c(5, 10, 20, 30, 50)
+reductions  = c("rpca", "cca")
+## The value to use where a single setting has to be named in the text/figures
+k_ref       = 5
+
+## Song-nucleus cell types under the hybrid labels. Everything else glutamatergic
+## is the non-song set.
+song_pattern = "HVC|LMAN|-RA$"
+
+## Analyses: the two excitatory divisions separately (which is the comparison the
+## manuscript makes -- a song nucleus against its own local surround), and both
+## pooled.
+set_defs = list(
+  ARCO = "^Glut-CACNA1H-",
+  NIDO = "^Glut-DACH2-",
+  ALL  = "^Glut-"
+)
+sets = names(set_defs)
+
+n_threads = min(16L, max(1L, parallel::detectCores() - 4L))
+RhpcBLASctl::blas_set_num_threads(n_threads)
+RcppParallel::setThreadOptions(numThreads = n_threads)
+```
+
+# Directories
+
+```{r dirs}
+script_name = "song_nonsong_integration_hybrid"
+
+## Read-only input: the glutamatergic subset already assembled by the clustering
+## notebook (same cells, same exclusions), so the two analyses cannot drift apart
+## on which cells they consider.
+obj_fname = here::here("snrna/trees/celltypes_hclust_glut_robustness_hybrid",
+                       "obj_clustered_glutamatergic.qs2")
+
+## Hierarchical-clustering pairings, to compare against at the end
+hclust_pairs_fname = here::here("snrna/trees/celltypes_hclust_glut_robustness_hybrid",
+                                "correlation_ward.D", "song_pair_support.csv")
+
+out_dir   = here::here("snrna/integration", script_name)
+cache_dir = file.path(out_dir, "cache")
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+# Load
+
+```{r load}
+obj = qs_read(obj_fname, nthreads = 8)
+
+## The saved object carries the hybrid labels in `celltype_hybrid`; its `cluster`
+## column is still the original naming (the clustering notebook overwrites that
+## only after saving). Use the hybrid column explicitly.
+obj$label = droplevels(as.factor(obj@meta.data[[label_col]]))
+obj$is_song = grepl(song_pattern, obj$label)
+obj$set = ifelse(obj$is_song, "song", "nonsong")
+
+song_types    = sort(unique(as.character(obj$label[obj$is_song])))
+nonsong_types = sort(unique(as.character(obj$label[!obj$is_song])))
+
+tibble(set = c("song", "non-song"),
+       n_types = c(length(song_types), length(nonsong_types)),
+       n_cells = c(sum(obj$is_song), sum(!obj$is_song)),
+       types = c(paste(song_types, collapse = ", "),
+                 paste(nonsong_types, collapse = ", ")))
+```
+
+```{r load-check}
+## Every song type is one nucleus's own cluster, but the NON-song set draws cells
+## from all six dissections, including the song-nucleus libraries (surround tissue
+## captured in the same dissection). That matters: if the non-song set came only
+## from the surround dissections, "song vs non-song" would be perfectly confounded
+## with library and the integration would be removing a pure batch effect.
+table(obj$set, obj$sample_name)
+```
+
+# Integration sweep
+
+One `FindIntegrationAnchors()` per (analysis set x reduction x `k.anchor`), with
+`IntegrateData()` run from the same anchors so both readouts describe the same
+integration. Cached per parameter set.
+
+```{r sweep-fns}
+## Split into the two datasets and renormalise each on its own, which is what makes
+## them independent datasets rather than one dataset with a label. SCT per dataset,
+## following the same idiom as the other integrations in this directory
+## (snrna/integration/cca_glut_sweep/prep.R): SCTransform each, pick integration
+## features across both, PrepSCTIntegration, then a per-object PCA on those
+## features for RPCA to project into.
+##
+## The object's existing SCT assay is NOT reused: it was fit on all the cells at
+## once, so it already carries the song/non-song difference the integration is
+## supposed to be estimating. Each dataset has to be modelled on its own.
+prep_pair = function(obj_set) {
+  ## The RNA assay on this object is BPCells-backed on disk, and Seurat's VST path
+  ## for an IterableMatrix fails on a subset this size. Materialise the counts and
+  ## rebuild a plain object carrying just what the integration needs.
+  cnt = as(LayerData(obj_set, assay = assay_raw, layer = "counts"), "dgCMatrix")
+  keep_md = c("set", "label", "sample_name", "position")
+  mem = CreateSeuratObject(cnt, meta.data = obj_set@meta.data[, keep_md, drop = FALSE])
+  lst = SplitObject(mem, split.by = "set")
+  lst = lst[c("song", "nonsong")]
+
+  lst = lapply(lst, function(x) SCTransform(x, verbose = FALSE))
+  features = SelectIntegrationFeatures(lst, nfeatures = n_features, verbose = FALSE)
+  lst = PrepSCTIntegration(lst, anchor.features = features, verbose = FALSE)
+  lst = lapply(lst, function(x)
+    RunPCA(x, features = features, npcs = max(dims_to_use), verbose = FALSE))
+  list(list = lst, features = features)
+}
+
+## SCTransform is the expensive step and depends only on the analysis set, not on
+## the reduction or k.anchor, so fit it once per set and reuse it across that
+## set's ten parameter combinations. One slot: the sweep is ordered set-major, so
+## a single-entry memo is enough and never holds two large objects at once.
+prep_slot = list(name = NULL, value = NULL)
+get_prep = function(set_name) {
+  if (identical(prep_slot$name, set_name)) return(prep_slot$value)
+  f = file.path(cache_dir, sprintf("prep_%s.qs2", set_name))
+  if (file.exists(f)) {
+    p = qs_read(f, nthreads = 8)
+  } else {
+    message("== SCTransform: ", set_name)
+    cells = colnames(obj)[grepl(set_defs[[set_name]], obj$label)]
+    obj_set = subset(obj, cells = cells)
+    obj_set$label = droplevels(obj_set$label)
+    p = prep_pair(obj_set)
+    p$labels = setNames(as.character(obj_set$label), colnames(obj_set))
+    ## dissection library per cell, for the within-library permutation null
+    p$libs = setNames(as.character(obj_set$sample_name), colnames(obj_set))
+    qs_save(p, f, nthreads = 8)
+    rm(obj_set); gc()
+  }
+  prep_slot <<- list(name = set_name, value = p)
+  p
+}
+
+## Anchor pairs as (song cell, non-song cell). FindIntegrationAnchors reports each
+## pair from both directions; normalise so cell1 is always the song cell.
+anchor_pairs = function(anchorset) {
+  a = anchorset@anchors
+  cells1 = Cells(anchorset@object.list[[1]])   # song   (list order is fixed above)
+  cells2 = Cells(anchorset@object.list[[2]])   # nonsong
+  fwd = a %>% filter(dataset1 == 1, dataset2 == 2) %>%
+    transmute(song_cell = cells1[cell1], nonsong_cell = cells2[cell2], score)
+  rev = a %>% filter(dataset1 == 2, dataset2 == 1) %>%
+    transmute(song_cell = cells1[cell2], nonsong_cell = cells2[cell1], score)
+  bind_rows(fwd, rev) %>% distinct(song_cell, nonsong_cell, .keep_all = TRUE)
+}
+
+## Shared summary: counts of song type x non-song type, with the size-normalised
+## enrichment. `expected` is the share the non-song type would take if partners
+## were drawn in proportion to how many cells it has.
+partner_summary = function(song_lab, nonsong_lab, nonsong_sizes) {
+  exp_share = nonsong_sizes / sum(nonsong_sizes)
+  tibble(song_type = song_lab, nonsong_type = nonsong_lab) %>%
+    count(song_type, nonsong_type, name = "n") %>%
+    complete(song_type, nonsong_type = names(nonsong_sizes), fill = list(n = 0)) %>%
+    group_by(song_type) %>%
+    mutate(share = n / sum(n),
+           expected = exp_share[nonsong_type],
+           enrichment = log2((share + 1e-6) / (expected + 1e-6))) %>%
+    ungroup()
+}
+
+run_one = function(set_name, reduction, k_anchor) {
+  key = sprintf("%s_%s_k%02d", set_name, reduction, k_anchor)
+  f   = file.path(cache_dir, paste0(key, ".qs2"))
+  if (file.exists(f)) return(qs_read(f))
+  message("== ", key)
+
+  prep = get_prep(set_name)
+
+  anchors = FindIntegrationAnchors(prep$list, anchor.features = prep$features,
+                                   normalization.method = norm_method,
+                                   reduction = reduction, dims = dims_to_use,
+                                   k.anchor = k_anchor, verbose = FALSE)
+
+  lab = prep$labels
+  nonsong_sizes = table(lab[!grepl(song_pattern, lab)])
+  nonsong_sizes = setNames(as.numeric(nonsong_sizes), names(nonsong_sizes))
+
+  ## --- readout 1: anchor partners -----------------------------------------
+  ap = anchor_pairs(anchors)
+  ## The anchor table indexes into object.list by position, so a wrong list order
+  ## or index base would silently produce a plausible-looking but meaningless
+  ## table. Assert the mapping instead of trusting it.
+  stopifnot(all(grepl(song_pattern, lab[ap$song_cell])),
+            !any(grepl(song_pattern, lab[ap$nonsong_cell])))
+  anchor_tab = partner_summary(lab[ap$song_cell], lab[ap$nonsong_cell], nonsong_sizes) %>%
+    mutate(readout = "anchor")
+
+  ## --- readout 2: neighbours in the corrected space ------------------------
+  k_weight = min(100, min(vapply(prep$list, ncol, integer(1))) - 1)
+  int = IntegrateData(anchorset = anchors, normalization.method = norm_method,
+                      dims = dims_to_use, k.weight = k_weight, verbose = FALSE)
+  DefaultAssay(int) = "integrated"
+  ## No ScaleData here: IntegrateData(normalization.method = "SCT") returns the
+  ## integrated assay already scaled, and re-scaling would undo it.
+  int = RunPCA(int, npcs = max(dims_to_use), verbose = FALSE)
+  emb = Embeddings(int, "pca")[, dims_to_use]
+
+  is_song_cell  = grepl(song_pattern, lab[colnames(int)])
+  song_cells    = colnames(int)[is_song_cell]
+  nonsong_cells = colnames(int)[!is_song_cell]
+  nn = RANN::nn2(emb[nonsong_cells, , drop = FALSE],
+                 emb[song_cells, , drop = FALSE],
+                 k = min(n_knn, length(nonsong_cells)))
+  nb = tibble(song_cell = rep(song_cells, times = ncol(nn$nn.idx)),
+              nonsong_cell = nonsong_cells[as.vector(nn$nn.idx)])
+  nn_tab = partner_summary(lab[nb$song_cell], lab[nb$nonsong_cell], nonsong_sizes) %>%
+    mutate(readout = "neighbour")
+
+  ## How far the two datasets actually merged: of each song cell's n_knn nearest
+  ## cells overall, the fraction that are non-song. 0 = still separate,
+  ## ~(non-song share of cells) = fully mixed.
+  nn_all = RANN::nn2(emb, emb[song_cells, , drop = FALSE], k = n_knn + 1)
+  all_cells = rownames(emb)
+  frac_cross = mean(all_cells[as.vector(nn_all$nn.idx[, -1])] %in% nonsong_cells)
+
+  ## The pair lists are kept, not just their summary: a label-shuffling null has
+  ## to permute labels on this exact graph, and it cannot be reconstructed from
+  ## the counts.
+  res = list(set = set_name, reduction = reduction, k_anchor = k_anchor,
+             pairs_anchor = ap,
+             pairs_neighbour = nb,
+             cell_meta = tibble(cell = names(prep$labels),
+                                label = unname(prep$labels),
+                                library = unname(prep$libs[names(prep$labels)])),
+             n_anchors = nrow(ap),
+             frac_cross_neighbours = frac_cross,
+             mixing_expected = length(nonsong_cells) / nrow(emb),
+             table = bind_rows(anchor_tab, nn_tab) %>%
+               mutate(set = set_name, reduction = reduction, k_anchor = k_anchor))
+  qs_save(res, f, nthreads = 4)
+  rm(int, anchors); gc()
+  res
+}
+```
+
+```{r sweep}
+#| message: false
+grid = expand_grid(set = sets, reduction = reductions, k_anchor = k_anchors)
+runs = pmap(grid, function(set, reduction, k_anchor) run_one(set, reduction, k_anchor))
+
+## Enrichment is recomputed here rather than taken from the cached tables, with
+## add-one smoothing. A partner type that collects zero anchors would otherwise
+## take log2 of a bare pseudocount and land near -15, which swamps the diverging
+## colour scale and hides the differences among the types that actually do pair.
+## Smoothing bounds the empty cells without touching the ordering of the rest.
+partners = map_dfr(runs, "table") %>%
+  group_by(readout, set, reduction, k_anchor, song_type) %>%
+  mutate(share_smoothed = (n + 1) / (sum(n) + n()),
+         enrichment = log2(share_smoothed / expected)) %>%
+  ungroup() %>%
+  mutate(k_anchor = factor(k_anchor, levels = k_anchors),
+         set = factor(set, levels = sets))
+write_csv(partners, file.path(out_dir, "partner_composition.csv"))
+
+run_info = map_dfr(runs, function(r)
+  tibble(set = r$set, reduction = r$reduction, k_anchor = r$k_anchor,
+         n_anchors = r$n_anchors,
+         frac_cross_neighbours = r$frac_cross_neighbours,
+         mixing_expected = r$mixing_expected))
+write_csv(run_info, file.path(out_dir, "run_summary.csv"))
+run_info
+```
+
+# Which non-song type does each song type pair with?
+
+```{r top-partner}
+## Two ways to call the partner, reported side by side because they can disagree
+## when cell-type sizes are very unequal: the size-normalised enrichment (primary,
+## since a big non-song type collects partners for free) and the raw share of
+## partners (what the integration literally did, uncorrected).
+top_partner = partners %>%
+  group_by(readout, set, reduction, k_anchor, song_type) %>%
+  summarise(top_partner       = nonsong_type[which.max(enrichment)],
+            enrichment        = max(enrichment),
+            share             = share[which.max(enrichment)],
+            top_partner_share = nonsong_type[which.max(share)],
+            share_of_top      = max(share),
+            .groups = "drop") %>%
+  mutate(criteria_agree = top_partner == top_partner_share)
+write_csv(top_partner, file.path(out_dir, "top_partner.csv"))
+
+## Does the top partner hold across the whole k.anchor sweep?
+consistency = top_partner %>%
+  group_by(readout, set, reduction, song_type) %>%
+  summarise(n_k = n(), n_distinct_partners = n_distinct(top_partner),
+            modal_partner = names(sort(table(top_partner), decreasing = TRUE))[1],
+            frac_k_at_modal = mean(top_partner == modal_partner),
+            modal_partner_by_share = names(sort(table(top_partner_share), decreasing = TRUE))[1],
+            frac_criteria_agree = mean(criteria_agree),
+            .groups = "drop")
+write_csv(consistency, file.path(out_dir, "top_partner_consistency.csv"))
+consistency
+```
+
+# Figures
+
+```{r fig-fns}
+## Strip the shared prefix so labels fit at 5 pt. The division prefix is constant
+## within the ARCO and NIDO panels and only tells anything apart in ALL, so it is
+## abbreviated rather than dropped.
+short = function(x) {
+  x %>%
+    str_replace("^Glut-DACH2-", "D2-") %>%
+    str_replace("^Glut-CACNA1H-", "C1H-") %>%
+    str_replace("^Glut-", "")
+}
+
+song_position = function(x) case_when(grepl("LMAN", x) ~ "lman",
+                                      grepl("HVC", x)  ~ "hvc",
+                                      grepl("RA", x)   ~ "ra",
+                                      TRUE             ~ NA_character_)
+
+## Row order and colour, matching the clustering figures: grouped by nucleus,
+## labels in the standard HVC / LMAN / RA position colours.
+song_levels = function(x) {
+  u = unique(as.character(x))
+  rev(u[order(match(song_position(u), c("hvc", "lman", "ra")), u)])
+}
+```
+
+```{r fig-enrichment}
+#| fig-width: 7
+#| fig-height: 4
+## Full composition: song type x non-song type, one column block per k.anchor.
+enrich_plot = function(d, ttl) {
+  lv = song_levels(d$song_type)
+  d = d %>% mutate(song_type = factor(as.character(song_type), levels = lv))
+  axis_cols = unname(position_colors[song_position(lv)])
+  ## clip at the strongest positive signal: depletion is not the point here, and
+  ## letting it set the limits flattens everything else
+  lim = max(abs(d$enrichment), na.rm = TRUE)
+  lim = min(lim, max(3, ceiling(max(d$enrichment, na.rm = TRUE))))
+  ggplot(d, aes(short(nonsong_type), song_type, fill = enrichment)) +
+    geom_tile(colour = FIG_SURFACE, linewidth = 0.2) +
+    facet_grid(reduction ~ k_anchor, scales = "free_x", space = "free_x",
+               labeller = labeller(k_anchor = function(x) paste0("k.anchor ", x))) +
+    scale_fill_gradient2(low = FIG_DIV_LOW, mid = FIG_DIV_MID, high = FIG_DIV_HIGH,
+                         midpoint = 0, limits = c(-lim, lim),
+                         oob = scales::squish, name = "log2 obs/exp") +
+    scale_x_discrete(expand = fig_expand()) +
+    scale_y_discrete(labels = short, expand = fig_expand()) +
+    labs(x = "non-song cell type", y = NULL, title = ttl) +
+    theme_fig() +
+    ## theme_fig() sets panel.grid.major explicitly, and a specific element
+    ## beats the panel.grid parent, so both children have to be blanked
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+          axis.text.y = element_text(colour = axis_cols),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE,
+                                    colour = FIG_INK_SECONDARY))
+}
+
+for (rd in c("anchor", "neighbour")) {
+  for (st in sets) {
+    d = filter(partners, readout == rd, set == st)
+    if (!nrow(d)) next
+    p = enrich_plot(d, sprintf("%s | %s partners", st, rd))
+    print(p)
+    fig_save(p, file.path(out_dir, sprintf("enrichment_%s_%s", rd, tolower(st))),
+             width = 1.2 + 0.11 * length(unique(d$nonsong_type)) * length(k_anchors),
+             height = 2.4)
+  }
+}
+```
+
+```{r fig-top-partner}
+#| fig-width: 6
+#| fig-height: 3
+## The summary panel, in the same idiom as the clustering figure: rows = song
+## types, columns = integration strength, tile text = the partner it pairs with,
+## fill = how enriched that pairing is.
+top_plot = function(d, ttl) {
+  lv = song_levels(d$song_type)
+  d = d %>% mutate(song_type = factor(as.character(song_type), levels = lv),
+                   lab = short(top_partner))
+  axis_cols = unname(position_colors[song_position(lv)])
+  ggplot(d, aes(k_anchor, song_type, fill = enrichment)) +
+    geom_tile(colour = FIG_SURFACE, linewidth = 0.2) +
+    geom_text(aes(label = lab), size = fig_pt(5), family = FIG_FONT,
+              colour = FIG_INK_PRIMARY) +
+    facet_wrap(~reduction, nrow = 1) +
+    scale_fill_gradient(low = FIG_SURFACE, high = FIG_PAL[1],
+                        name = "log2 obs/exp") +
+    scale_x_discrete(expand = fig_expand()) +
+    scale_y_discrete(labels = short, expand = fig_expand()) +
+    labs(x = "k.anchor (integration strength)", y = NULL, title = ttl) +
+    theme_fig() +
+    theme(axis.text.y = element_text(colour = axis_cols),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE,
+                                    colour = FIG_INK_SECONDARY))
+}
+
+for (rd in c("anchor", "neighbour")) {
+  for (st in sets) {
+    d = filter(top_partner, readout == rd, set == st)
+    if (!nrow(d)) next
+    p = top_plot(d, sprintf("%s | top %s partner", st, rd))
+    print(p)
+    fig_save(p, file.path(out_dir, sprintf("top_partner_%s_%s", rd, tolower(st))),
+             width = 1.4 + 0.34 * length(k_anchors) * length(reductions),
+             height = 0.32 * n_distinct(d$song_type) + 1.0)
+  }
+}
+```
+
+```{r fig-mixing}
+#| fig-width: 4
+#| fig-height: 2
+## Sanity check on the sweep itself: integration strength should actually change
+## how much the two datasets merge, or the sweep is not testing anything.
+p_mix = run_info %>%
+  mutate(k_anchor = factor(k_anchor, levels = k_anchors)) %>%
+  ggplot(aes(k_anchor, frac_cross_neighbours, colour = reduction,
+             group = interaction(reduction, set))) +
+  geom_hline(aes(yintercept = mixing_expected), linetype = 2,
+             colour = FIG_INK_MUTED, linewidth = 0.25) +
+  geom_line(linewidth = 0.3) + geom_point(size = 0.6) +
+  facet_wrap(~set, nrow = 1) +
+  scale_colour_manual(values = FIG_PAL[1:2]) +
+  scale_y_continuous(expand = fig_expand()) +
+  labs(x = "k.anchor", y = "non-song fraction of\nsong cells' neighbours",
+       caption = paste("dashed = the non-song share of all cells, i.e. the value if the two sets",
+                       "were indistinguishable.\nStaying below it is expected -- song and non-song",
+                       "are genuinely different cell types; integration\nremoves the dataset-level",
+                       "offset, it does not merge distinct types.")) +
+  theme_fig() +
+  theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+print(p_mix)
+fig_save(p_mix, file.path(out_dir, "mixing_by_k"), width = 4.2, height = 1.6)
+```
+
+# Agreement with the hierarchical clustering
+
+The two methods share no machinery: one removes song DEGs and builds a correlation tree on
+pseudobulk profiles, the other keeps every gene and matches individual cells across two
+datasets. Where they name the same partner, that pairing does not depend on either method's
+particular control for song-nucleus identity.
+
+```{r agreement}
+hclust_pairs = read_csv(hclust_pairs_fname, show_col_types = FALSE) %>%
+  filter(region %in% c("ARCO", "NIDO"), threshold_label == "0.1") %>%
+  transmute(set = region, song_type = song_cluster,
+            hclust_partner = sister, hclust_au = au)
+
+agreement = top_partner %>%
+  filter(set %in% c("ARCO", "NIDO")) %>%
+  left_join(hclust_pairs, by = c("set", "song_type")) %>%
+  mutate(partner_in_hclust_set = map2_lgl(top_partner, hclust_partner,
+                                          ~ !is.na(.y) && .x %in% str_split(.y, ",\\s*")[[1]]))
+write_csv(agreement, file.path(out_dir, "agreement_with_hclust.csv"))
+
+agreement %>%
+  group_by(readout, reduction, song_type) %>%
+  summarise(hclust_partner = first(hclust_partner),
+            integration_partners = paste(sort(unique(top_partner)), collapse = ", "),
+            frac_k_agreeing = mean(partner_in_hclust_set), .groups = "drop") %>%
+  arrange(readout, reduction, song_type)
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```

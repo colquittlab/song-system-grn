@@ -17,9 +17,9 @@ S[i,j] = sqrt(fwd[i,j] * rev[j,i]) (reciprocal_score.symmetrize) -- a pair only 
 high if both label-transfer directions independently nominate it.
 
 Row order is fixed biological order (Glut-SATB2-1 inserted after the DACH2 clusters,
-before the CACNA1H clusters); columns are hierarchically clustered (via scipy linkage, no
-dendrogram drawn -- only used to pick a legible column order) so similar chicken columns
-group together without disturbing the fixed row order. Only Glut-SATB2-1's row label is
+before the CACNA1H clusters); columns use the fixed chicken order shared
+with the GSI/SAMap/composite heatmaps (position_palette.chicken_col_order: DACH2, TSHZ2,
+CACNA1H, SATB2, KIAA1217, BCL6) so the methods line up column-for-column. Only Glut-SATB2-1's row label is
 coloured light purple/lilac (#cab2d6, common_aesthetics.R's 'fieldl' slot) -- chicken
 column labels are left uncoloured. Square cells, 6pt labels, compressed spacing.
 
@@ -39,14 +39,13 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import pandas as pd
 import seaborn as sns
-from scipy.cluster.hierarchy import linkage, leaves_list
 
 import sys
-sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
-sys.path.insert(0, "/private/groups/colquittlab/song-system-grn/snrna/integration")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR
 from reciprocal_score import symmetrize
 from position_palette import (POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, CLUSTER_POSITION,
-                              EXCLUDED_CLUSTERS)
+                              EXCLUDED_CLUSTERS, chicken_col_order)
 
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -55,8 +54,8 @@ SATB2_CLUSTER = "Glut-SATB2-1"
 
 KA_VALUES = [2, 5, 10, 20, 30, 50, 75, 100]
 KF, DIMS = 200, 40
-R = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/rpca/results/cca")
-OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/rpca/results/gg_glutonly_hybrid")
+R = INTEGRATION_DIR / "gg_glutonly_hybrid/rpca/results/cca"
+OUT = INTEGRATION_DIR / "gg_glutonly_hybrid/rpca/results/gg_glutonly_hybrid"
 
 BASE_ROW_ORDER = [
     "Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh", "Glut-CACNA1H-RA",
@@ -103,9 +102,7 @@ def make_figure(tag, stub_tag, title_suffix, ka):
         order += sorted(missing)
     So = S.loc[order]
 
-    col_link = linkage(So.T.values, method="average", metric="euclidean")
-    col_order = So.columns[leaves_list(col_link)]
-    Mo = So[col_order]
+    Mo = So[chicken_col_order(So.columns)]
 
     n_rows, n_cols = Mo.shape
     core_h = ROW_PITCH_IN * n_rows

@@ -1,0 +1,429 @@
+---
+title: "Reciprocal label-transfer score for the song / non-song pairings (hybrid labels)"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+`song_nonsong_label_transfer_hybrid.qmd` scores the pairings with a **one-directional**
+label transfer: song cells as query, non-song cells as reference. This notebook computes
+the **reciprocity-weighted** score used by the cross-species integrations in
+`snrna/integration/gg_glutonly_hybrid/rpca/`, so the two analyses are scored the same way.
+
+## Why the one-directional score needs this
+
+`TransferData` has no reject option. Every query cell must distribute its vote over the
+reference labels, so a query cluster that matches *nothing* well still returns a high score
+for whichever reference is nearest. The score measures how concentrated the vote is, not
+how good the match is.
+
+`plot_sweep_percluster.py` documents exactly this failure, on this cluster:
+
+> the raw one-directional fwd score can be artifactually high for a genuinely isolated
+> query cluster (no reject/novel option in TransferData's vote) -- observed for Glut-RA
+> under the manuscript-exact RPCA/SCT config: fwd score 0.968 (highest of any cluster)
+> ... the reverse direction shows 374/377 (99%) of its forward-assigned partner's own cells
+> vote to Arco clusters, NONE to Glut-RA ... Reciprocity weighting sends Glut-RA's score
+> to 0.0.
+
+In the cross-species matrices the song clusters' forward scores (0.14-0.51) collapse to
+0.02-0.07 under reciprocity while the non-song clusters hold (Glut-DACH2-6: 0.629 ->
+0.635), so the collapse is specific to the clusters this project is about.
+
+## The score, matched to the cross-species code
+
+Per direction, for query cluster *a* and reference label *b*:
+
+```
+M[a,b] = frac[a,b] * mean_score[a,b]
+```
+
+`frac` = the share of cluster *a*'s cells whose `predicted.id` is *b*; `mean_score` = the
+mean of `prediction.score.b` over cluster *a*'s cells. A label that is never the argmax
+contributes 0 however much soft probability it carried, which is why these matrices are
+sparse and their rows sum to less than 1.
+
+Then, with `fwd` = song query / non-song reference and `rev` = non-song query / song
+reference:
+
+```
+S[i,j] = sqrt( fwd[i,j] * rev[j,i] )
+```
+
+A pairing scores high only if the song type votes for the non-song type **and** that
+non-song type's own cells vote back.
+
+**One ambiguity, flagged rather than hidden.** The toolkit that generates the cross-species
+matrices (`finch-integration-toolkit`, on the cluster and not in this repo) is the authority
+on whether `mean_score` is taken over all of cluster *a*'s cells or only over those assigned
+to *b*. Only the docstring's `frac*mean_score` is available here, and both readings fit the
+matrices' row sums and sparsity. This notebook uses the mean over **all** of the cluster's
+cells; `mean_over_assigned_only` below switches it.
+
+**ARCO is degenerate for this score.** Its only song type is `Glut-CACNA1H-RA`, so the
+reverse direction has a single reference label, every non-song cell is forced to vote for
+it, and `rev` is identically 1 -- making `S = sqrt(fwd)`, which carries no reciprocal
+information. RA's informative reciprocal test is the pooled `ALL` analysis, where the
+reverse direction chooses among five song types. ARCO is computed anyway and marked.
+
+```{r setup}
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(here)
+set.seed(10)
+
+knitr::opts_chunk$set(dev = "ragg_png", dpi = 200)
+
+source(here::here("config/figure_theme.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
+
+options(future.globals.maxSize = Inf)
+```
+
+# Parameters
+
+```{r params}
+sets        = c("ARCO", "NIDO", "ALL")
+reductions  = c("pcaproject", "cca")
+k_anchors   = c(5, 20)
+dims_to_use = 1:30
+norm_method = "SCT"
+k_weight    = 50
+
+## See the note above: which cells the mean prediction score is taken over.
+mean_over_assigned_only = FALSE
+
+song_pattern = "HVC|LMAN|-RA$"
+
+parent_dir = here::here("snrna/integration/song_nonsong_integration_hybrid")
+cache_dir  = file.path(parent_dir, "cache")
+## the one-directional result, to compare against
+fwd_only   = here::here("snrna/integration/song_nonsong_label_transfer_hybrid",
+                        "top_partner_label_transfer.csv")
+
+script_name = "song_nonsong_reciprocal_transfer_hybrid"
+out_dir  = here::here("snrna/integration", script_name)
+rc_cache = file.path(out_dir, "cache")
+dir.create(rc_cache, recursive = TRUE, showWarnings = FALSE)
+
+n_threads = min(16L, max(1L, parallel::detectCores() - 4L))
+RhpcBLASctl::blas_set_num_threads(n_threads)
+RcppParallel::setThreadOptions(numThreads = n_threads)
+```
+
+# Both directions
+
+```{r transfer-fns}
+## One transfer direction, returning the frac * mean_score matrix with query
+## clusters as rows and reference labels as columns.
+transfer_matrix = function(ref, query, features, reduction, k_anchor, query_labels) {
+  ## a single reference label makes the vote trivial (everything scores 1)
+  if (n_distinct(ref$celltype) < 2) {
+    qt = sort(unique(query_labels))
+    m = matrix(1, nrow = length(qt), ncol = 1,
+               dimnames = list(qt, unique(ref$celltype)))
+    return(list(mat = m, degenerate = TRUE, n_anchors = NA_integer_))
+  }
+
+  anchors = FindTransferAnchors(reference = ref, query = query,
+                                normalization.method = norm_method,
+                                features = features,
+                                reduction = reduction, dims = dims_to_use,
+                                k.anchor = k_anchor, verbose = FALSE)
+  n_anchor_cells = min(dplyr::n_distinct(anchors@anchors[, "cell1"]),
+                       dplyr::n_distinct(anchors@anchors[, "cell2"]))
+  pred = TransferData(anchorset = anchors, refdata = ref$celltype,
+                      weight.reduction = if (reduction == "cca") "cca" else "pcaproject",
+                      dims = dims_to_use, k.weight = min(k_weight, n_anchor_cells - 1),
+                      verbose = FALSE)
+
+  score_cols = setdiff(grep("^prediction\\.score\\.", colnames(pred), value = TRUE),
+                       "prediction.score.max")
+  scores = pred[, score_cols, drop = FALSE]
+  ref_types = sort(unique(ref$celltype))
+  colnames(scores) = ref_types[match(gsub("^prediction\\.score\\.", "", score_cols),
+                                     make.names(ref_types))]
+  stopifnot(!any(is.na(colnames(scores))))
+
+  long = as_tibble(scores, rownames = "cell") %>%
+    mutate(query_type = unname(query_labels[cell]),
+           predicted = pred$predicted.id) %>%
+    pivot_longer(-c(cell, query_type, predicted),
+                 names_to = "ref_type", values_to = "score")
+
+  ## frac: share of the query cluster assigned to this reference label
+  ## mean_score: mean prediction score for that label, over all of the query
+  ## cluster's cells (or only the assigned ones -- see mean_over_assigned_only)
+  tab = long %>%
+    group_by(query_type, ref_type) %>%
+    summarise(frac = mean(predicted == ref_type),
+              mean_score = if (mean_over_assigned_only)
+                             mean(score[predicted == ref_type]) else mean(score),
+              .groups = "drop") %>%
+    mutate(mean_score = replace_na(mean_score, 0),
+           value = frac * mean_score)
+
+  m = tab %>%
+    select(query_type, ref_type, value) %>%
+    pivot_wider(names_from = ref_type, values_from = value) %>%
+    column_to_rownames("query_type") %>%
+    as.matrix()
+  list(mat = m, degenerate = FALSE, n_anchors = nrow(anchors@anchors))
+}
+
+reciprocal_one = function(set_name, reduction, k_anchor) {
+  key = sprintf("%s_%s_k%02d", set_name, reduction, k_anchor)
+  f   = file.path(rc_cache, paste0(key, ".qs2"))
+  if (file.exists(f)) return(qs_read(f))
+  message("== ", key)
+
+  prep = qs_read(file.path(cache_dir, sprintf("prep_%s.qs2", set_name)), nthreads = 8)
+  lab  = prep$labels
+  song    = prep$list[["song"]];    song$celltype    = unname(lab[colnames(song)])
+  nonsong = prep$list[["nonsong"]]; nonsong$celltype = unname(lab[colnames(nonsong)])
+
+  ## fwd: song cells labelled from the non-song reference
+  fwd_res = transfer_matrix(ref = nonsong, query = song, features = prep$features,
+                            reduction = reduction, k_anchor = k_anchor,
+                            query_labels = setNames(song$celltype, colnames(song)))
+  ## rev: non-song cells labelled from the song reference
+  ## (named *_res, not fwd/rev: tibble() below creates columns called fwd and rev,
+  ## and its sequential evaluation would shadow a local of the same name)
+  rev_res = transfer_matrix(ref = song, query = nonsong, features = prep$features,
+                            reduction = reduction, k_anchor = k_anchor,
+                            query_labels = setNames(nonsong$celltype, colnames(nonsong)))
+
+  song_types    = rownames(fwd_res$mat)
+  nonsong_types = colnames(fwd_res$mat)
+  Fm = fwd_res$mat[song_types, nonsong_types, drop = FALSE]
+  ## rev has non-song clusters as rows and song types as columns; align and
+  ## transpose so both are song x non-song before combining
+  Rm = matrix(0, nrow = length(song_types), ncol = length(nonsong_types),
+              dimnames = list(song_types, nonsong_types))
+  shared_rows = intersect(nonsong_types, rownames(rev_res$mat))
+  shared_cols = intersect(song_types, colnames(rev_res$mat))
+  Rm[shared_cols, shared_rows] = t(rev_res$mat[shared_rows, shared_cols, drop = FALSE])
+
+  S = sqrt(Fm * Rm)
+  rev_deg = rev_res$degenerate
+
+  res = tibble(set = set_name, reduction = reduction, k_anchor = k_anchor,
+               song_type = rep(song_types, times = length(nonsong_types)),
+               nonsong_type = rep(nonsong_types, each = length(song_types)),
+               fwd = as.vector(Fm), rev = as.vector(Rm), reciprocal = as.vector(S),
+               rev_degenerate = rev_deg)
+  qs_save(res, f, nthreads = 4)
+  rm(prep, song, nonsong); gc()
+  res
+}
+```
+
+```{r transfer}
+#| message: false
+grid = expand_grid(set = sets, reduction = reductions, k_anchor = k_anchors)
+recip = pmap_dfr(grid, function(set, reduction, k_anchor)
+  reciprocal_one(set, reduction, k_anchor))
+write_csv(recip, file.path(out_dir, "reciprocal_scores.csv"))
+
+recip %>% count(set, reduction, k_anchor, rev_degenerate, name = "n_cells_in_matrix")
+```
+
+# Does the pairing survive reciprocity?
+
+```{r top-recip}
+top_recip = recip %>%
+  group_by(set, reduction, k_anchor, song_type) %>%
+  summarise(top_fwd = nonsong_type[which.max(fwd)],
+            fwd_max = max(fwd),
+            top_reciprocal = nonsong_type[which.max(reciprocal)],
+            reciprocal_max = max(reciprocal),
+            ## the reverse score AT the forward-preferred partner: this is the
+            ## number that decides whether the forward call was one-directional
+            rev_at_fwd_top = rev[which.max(fwd)],
+            rev_degenerate = first(rev_degenerate),
+            .groups = "drop") %>%
+  mutate(same_partner = top_fwd == top_reciprocal)
+write_csv(top_recip, file.path(out_dir, "top_partner_reciprocal.csv"))
+
+top_recip %>%
+  filter(!rev_degenerate) %>%
+  mutate(across(c(fwd_max, reciprocal_max, rev_at_fwd_top), ~ round(.x, 3))) %>%
+  arrange(song_type, reduction, k_anchor)
+```
+
+```{r collapse}
+## The diagnostic from the cross-species work: how far the score falls when the
+## reverse direction is required. A song cluster whose forward call was a
+## one-directional artifact collapses; a real pairing holds.
+collapse = top_recip %>%
+  filter(!rev_degenerate) %>%
+  mutate(retained = reciprocal_max / fwd_max) %>%
+  group_by(set, song_type) %>%
+  summarise(median_fwd = median(fwd_max),
+            median_reciprocal = median(reciprocal_max),
+            median_retained = median(retained),
+            frac_same_partner = mean(same_partner), .groups = "drop") %>%
+  arrange(median_retained)
+write_csv(collapse, file.path(out_dir, "reciprocity_collapse.csv"))
+collapse %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+# Figures
+
+```{r fig-fns}
+short = function(x) {
+  if_else(grepl(song_pattern, x),
+          str_replace(x, "^Glut-(DACH2|CACNA1H)-", ""),
+          x %>%
+            str_replace("^Glut-DACH2-", "D2-") %>%
+            str_replace("^Glut-CACNA1H-", "C1H-") %>%
+            str_replace("^Glut-", ""))
+}
+song_position = function(x) case_when(grepl("LMAN", x) ~ "lman",
+                                      grepl("HVC", x)  ~ "hvc",
+                                      grepl("RA", x)   ~ "ra",
+                                      TRUE             ~ NA_character_)
+song_levels = function(x) {
+  u = unique(as.character(x))
+  rev(u[order(match(song_position(u), c("hvc", "lman", "ra")), u)])
+}
+## Reading order top to bottom: D2-1..D2-8 then C1H-1..C1H-4 (the y scale below
+## passes rev() of this, since the discrete scale puts level 1 at the bottom).
+nonsong_levels = function(x) {
+  u = unique(as.character(x))
+  u[order(match(str_extract(u, "CACNA1H|DACH2"), c("DACH2", "CACNA1H")),
+          as.integer(str_extract(u, "[0-9]+$")))]
+}
+
+band_cell_in = 0.1
+
+fig_save_gt = function(gt, path_noext, dpi = 600) {
+  fig_check_font()
+  w = grid::convertWidth(sum(gt$widths), "in", valueOnly = TRUE)
+  h = grid::convertHeight(sum(gt$heights), "in", valueOnly = TRUE)
+  ggsave(paste0(path_noext, ".pdf"), gt, width = w, height = h,
+         device = cairo_pdf, family = FIG_FONT)
+  ggsave(paste0(path_noext, ".png"), gt, width = w, height = h, dpi = dpi,
+         bg = FIG_SURFACE, device = ragg::agg_png)
+  ggsave(paste0(path_noext, ".svg"), gt, width = w, height = h,
+         device = svglite::svglite, bg = FIG_SURFACE)
+  invisible(paste0(path_noext, c(".pdf", ".png", ".svg")))
+}
+```
+
+```{r fig-recip}
+#| fig-width: 2.5
+#| fig-height: 2.5
+#| results: hold
+## Same geometry and Blues ramp as the one-directional panels, so the two can be
+## compared cell for cell; vmax is each panel's own maximum, as in the
+## cross-species heatmaps.
+blues = grDevices::colorRampPalette(RColorBrewer::brewer.pal(9, "Blues"),
+                                    space = "rgb")(256)
+
+score_panel = function(d, value_col, bare = FALSE) {
+  lv_song = song_levels(d$song_type)
+  lv_ns   = nonsong_levels(d$nonsong_type)
+  d = d %>% mutate(song_type = factor(as.character(song_type), levels = lv_song),
+                   nonsong_type = factor(as.character(nonsong_type), levels = lv_ns),
+                   v = .data[[value_col]])
+  song_cols = unname(position_colors[song_position(lv_song)])
+  vmax = max(d$v, na.rm = TRUE)
+  if (!is.finite(vmax) || vmax <= 0) vmax = 1
+
+  p = ggplot(d, aes(song_type, nonsong_type, fill = v)) +
+    geom_tile(colour = "white", linewidth = 0.12) +
+    scale_fill_gradientn(colours = blues, limits = c(0, vmax), name = "score",
+                         guide = guide_colourbar(barwidth = unit(0.06, "in"),
+                                                 barheight = unit(0.45, "in"),
+                                                 title.position = "top")) +
+    scale_x_discrete(labels = short, limits = rev(lv_song), expand = fig_expand(0)) +
+    scale_y_discrete(labels = short, limits = rev(lv_ns), expand = fig_expand(0)) +
+    labs(x = NULL, y = NULL) +
+    theme_fig() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5,
+                                     colour = rev(song_cols)),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "right",
+          legend.margin = margin(0, 0, 0, 0),
+          legend.title = element_text(size = FIG_PT_AXIS_TEXT),
+          plot.margin = margin(1, 1, 1, 1))
+  if (bare) p = p + theme(legend.position = "none")
+
+  egg::set_panel_size(p,
+                      width  = unit(length(lv_song) * band_cell_in, "in"),
+                      height = unit(length(lv_ns) * band_cell_in, "in"))
+}
+
+for (st in sets) {
+  for (rd in reductions) {
+    for (ka in k_anchors) {
+      d = filter(recip, set == st, reduction == rd, k_anchor == ka)
+      if (!nrow(d)) next
+      for (v in c("fwd", "rev", "reciprocal")) {
+        gt = score_panel(d, v)
+        if (v == "reciprocal") plot(gt)
+        stem = sprintf("%s_%s_%s_k%02d", v, tolower(st), rd, ka)
+        fig_save_gt(gt, file.path(out_dir, stem))
+        fig_save_gt(score_panel(d, v, bare = TRUE), file.path(out_dir, paste0(stem, "_bare")))
+      }
+    }
+  }
+}
+```
+
+```{r fig-collapse}
+#| fig-width: 4.5
+#| fig-height: 2.2
+## Forward vs reciprocal for every song type, the cross-species diagnostic.
+p_col = top_recip %>%
+  filter(!rev_degenerate) %>%
+  mutate(song = short(song_type)) %>%
+  select(set, reduction, k_anchor, song, fwd_max, reciprocal_max) %>%
+  pivot_longer(c(fwd_max, reciprocal_max), names_to = "score", values_to = "value") %>%
+  mutate(score = recode(score, fwd_max = "one-directional",
+                        reciprocal_max = "reciprocal")) %>%
+  ggplot(aes(score, value, group = interaction(set, reduction, k_anchor, song),
+             colour = song)) +
+  geom_line(linewidth = 0.3, alpha = 0.7) + geom_point(size = 0.6) +
+  facet_wrap(~set, nrow = 1) +
+  scale_colour_manual(values = setNames(
+    unname(position_colors[song_position(sort(unique(top_recip$song_type)))]),
+    short(sort(unique(top_recip$song_type)))), name = NULL) +
+  scale_y_continuous(limits = c(0, NA), expand = fig_expand()) +
+  labs(x = NULL, y = "best score",
+       title = "Requiring the reverse direction") +
+  theme_fig() +
+  theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+print(p_col)
+fig_save(p_col, file.path(out_dir, "forward_vs_reciprocal"), width = 4.4, height = 1.9)
+```
+
+# Agreement with the one-directional analysis
+
+```{r agreement}
+fwd_tab = read_csv(fwd_only, show_col_types = FALSE) %>%
+  select(set, reduction, k_anchor, song_type, onedir_partner = top_by_score)
+
+cmp = top_recip %>%
+  left_join(fwd_tab, by = c("set", "reduction", "k_anchor", "song_type")) %>%
+  mutate(agrees = top_reciprocal == onedir_partner)
+write_csv(cmp, file.path(out_dir, "comparison_with_onedirectional.csv"))
+
+cmp %>%
+  filter(!rev_degenerate) %>%
+  group_by(set, song_type) %>%
+  summarise(onedir = paste(sort(unique(onedir_partner)), collapse = "/"),
+            reciprocal = paste(sort(unique(top_reciprocal)), collapse = "/"),
+            frac_agreeing = round(mean(agrees), 3), .groups = "drop")
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```
