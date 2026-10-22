@@ -1,0 +1,413 @@
+---
+title: "Integrated embedding of the song / non-song glutamatergic datasets (hybrid labels)"
+format:
+  html:
+    toc: true
+    df-print: paged
+---
+
+The integration in `snrna/integration/song_nonsong_integration_hybrid.qmd` does produce a
+common reduction -- `IntegrateData()` returns a corrected `integrated` assay and that
+notebook runs a PCA on it -- but it uses that space only to count each song cell's nearest
+non-song neighbours, then discards the object. Nothing was saved, so there was no embedding
+to look at.
+
+This notebook regenerates the integration for the requested setting (**`k.anchor = 20`,
+CCA**), runs a UMAP on the common PCA, and saves the coordinates. For reference it also
+embeds the same cells **without** integration, from a PCA on the merged uncorrected SCT data,
+since an integrated UMAP is hard to read without knowing what it started from.
+
+**Embedding parameters.** PCA on the integrated assay, `npcs = 30`; UMAP on
+`dims = 1:30` with Seurat's defaults throughout -- `n.neighbors = 30`, `min.dist = 0.3`,
+`metric = "cosine"`, `spread = 1`, `n.components = 2`, `umap.method = "uwot"`,
+`seed.use = 42`. Nothing is tuned. Those defaults are deliberately smoothing: `min.dist`
+of 0.3 with 30 neighbours will show a cluster split into lobes whenever some
+consistent sub-structure exists, without that split meaning the cells are separate types.
+
+A caution about reading it. The integration removes the dataset-level (song vs non-song)
+offset, so the two datasets will overlap more after correction by construction -- that is
+what was asked of it, not evidence of anything. The interpretable part is *which* non-song
+cell type each song type ends up adjacent to, which is the quantity the anchor and neighbour
+tabulations measure directly and with a null behind them. Treat this embedding as a picture
+of that result rather than as the evidence for it.
+
+```{r setup}
+#| message: false
+library(Seurat)
+library(tidyverse)
+library(qs2)
+library(here)
+set.seed(10)
+
+knitr::opts_chunk$set(dev = "ragg_png", dpi = 200)
+
+source(here::here("config/figure_theme.R"))
+source(file.path(Sys.getenv("COLQUITTLAB_UTILS", "/opt/colquittlab/utils"), "R", "common_aesthetics.R"))
+
+options(future.globals.maxSize = Inf)
+```
+
+# Parameters
+
+```{r params}
+sets        = c("ARCO", "NIDO", "ALL")
+reduction   = "cca"
+k_anchor    = 20
+dims_to_use = 1:30
+norm_method = "SCT"
+
+song_pattern = "HVC|LMAN|-RA$"
+
+parent_dir = here::here("snrna/integration/song_nonsong_integration_hybrid")
+cache_dir  = file.path(parent_dir, "cache")
+
+## Read-only, for the per-cell individual id, which the cached preps do not carry
+obj_fname = here::here("snrna/trees/celltypes_hclust_glut_robustness_hybrid",
+                       "obj_clustered_glutamatergic.qs2")
+
+script_name = "song_nonsong_umap_hybrid"
+out_dir   = here::here("snrna/integration", script_name)
+umap_cache = file.path(out_dir, "cache")
+dir.create(umap_cache, recursive = TRUE, showWarnings = FALSE)
+
+n_threads = min(16L, max(1L, parallel::detectCores() - 4L))
+RhpcBLASctl::blas_set_num_threads(n_threads)
+RcppParallel::setThreadOptions(numThreads = n_threads)
+```
+
+# Embed
+
+The per-dataset SCTransform fits are reused from the parent notebook's cache, so only the
+anchor-finding, correction and embedding are recomputed here.
+
+```{r embed}
+#| message: false
+embed_one = function(set_name) {
+  f = file.path(umap_cache, sprintf("umap_%s_%s_k%02d.qs2", set_name, reduction, k_anchor))
+  if (file.exists(f)) return(qs_read(f))
+  message("== ", set_name)
+
+  prep = qs_read(file.path(cache_dir, sprintf("prep_%s.qs2", set_name)), nthreads = 8)
+  lab  = prep$labels
+
+  ## --- uncorrected reference: the two datasets merged, no anchors ----------
+  mg = merge(prep$list[[1]], prep$list[[2]])
+  DefaultAssay(mg) = "SCT"
+  VariableFeatures(mg) = prep$features
+  mg = mg %>%
+    ScaleData(features = prep$features, verbose = FALSE) %>%
+    RunPCA(features = prep$features, npcs = max(dims_to_use), verbose = FALSE) %>%
+    RunUMAP(dims = dims_to_use, verbose = FALSE)
+  umap_raw = as.data.frame(Embeddings(mg, "umap")) %>%
+    rownames_to_column("cell") %>%
+    setNames(c("cell", "umap_1", "umap_2")) %>%
+    mutate(embedding = "uncorrected")
+  rm(mg); gc()
+
+  ## --- integrated ----------------------------------------------------------
+  anchors = FindIntegrationAnchors(prep$list, anchor.features = prep$features,
+                                   normalization.method = norm_method,
+                                   reduction = reduction, dims = dims_to_use,
+                                   k.anchor = k_anchor, verbose = FALSE)
+  k_weight = min(100, min(vapply(prep$list, ncol, integer(1))) - 1)
+  int = IntegrateData(anchorset = anchors, normalization.method = norm_method,
+                      dims = dims_to_use, k.weight = k_weight, verbose = FALSE)
+  DefaultAssay(int) = "integrated"
+  int = int %>%
+    RunPCA(npcs = max(dims_to_use), verbose = FALSE) %>%
+    RunUMAP(dims = dims_to_use, verbose = FALSE)
+  umap_int = as.data.frame(Embeddings(int, "umap")) %>%
+    rownames_to_column("cell") %>%
+    setNames(c("cell", "umap_1", "umap_2")) %>%
+    mutate(embedding = "integrated")
+
+  res = bind_rows(umap_raw, umap_int) %>%
+    mutate(set = set_name,
+           label = unname(lab[cell]),
+           dataset = if_else(grepl(song_pattern, label), "song", "non-song"),
+           library = unname(prep$libs[cell]))
+  qs_save(res, f, nthreads = 4)
+  rm(int, anchors); gc()
+  res
+}
+
+## Per-cell individual (souporcell `assignment`). Cached as a small table so the
+## multi-GB object is read once.
+##
+## IMPORTANT: `assignment` indexes birds WITHIN a library and is not comparable
+## across libraries -- assignment 0 in ra_run1 is a different bird from
+## assignment 0 in arco_run1. Any figure coloured by it therefore has to be read
+## within a library, which is why the panels below facet on library rather than
+## pooling the three colours across all of them.
+ind_fname = file.path(umap_cache, "cell_individual.qs2")
+if (file.exists(ind_fname)) {
+  individuals = qs_read(ind_fname)
+} else {
+  o = qs_read(obj_fname, nthreads = 8)
+  individuals = tibble(cell = colnames(o),
+                       assignment = as.character(o$assignment),
+                       individual = paste(o$sample_name, o$assignment, sep = "_"))
+  qs_save(individuals, ind_fname, nthreads = 4)
+  rm(o); gc()
+}
+
+umap = map_dfr(sets, embed_one) %>%
+  mutate(embedding = factor(embedding, levels = c("uncorrected", "integrated"))) %>%
+  left_join(individuals, by = "cell")
+write_csv(umap, file.path(out_dir, "umap_coordinates.csv.gz"))
+count(umap, set, embedding, dataset)
+```
+
+# Figures
+
+```{r fig-fns}
+## Song types drop the division prefix (they are identified by nucleus); non-song
+## types keep it in abbreviated form, since a bare number would not say which
+## division a partner belongs to.
+short = function(x) {
+  if_else(grepl(song_pattern, x),
+          str_replace(x, "^Glut-(DACH2|CACNA1H)-", ""),
+          x %>%
+            str_replace("^Glut-DACH2-", "D2-") %>%
+            str_replace("^Glut-CACNA1H-", "C1H-") %>%
+            str_replace("^Glut-", ""))
+}
+
+song_position = function(x) case_when(grepl("LMAN", x) ~ "lman",
+                                      grepl("HVC", x)  ~ "hvc",
+                                      grepl("RA", x)   ~ "ra",
+                                      TRUE             ~ NA_character_)
+
+## Song types in the standard position colours, every non-song type in grey.
+## Identity is carried by the direct labels at each type's centroid, not by the
+## colour alone -- with a dozen types no categorical palette would separate them.
+type_colour = function(labels) {
+  u = unique(labels)
+  cols = if_else(grepl(song_pattern, u),
+                 unname(position_colors[song_position(u)]),
+                 FIG_INK_MUTED)
+  setNames(cols, u)
+}
+
+## Points are rasterised and everything else stays vector: these panels carry
+## thousands of cells each, and a fully vector UMAP makes an unwieldy PDF that
+## some layout programs choke on. Text, axes and tiles remain editable.
+raster_points = function(...) ggrastr::rasterise(geom_point(...), dpi = 600, dev = "ragg")
+
+centroids = function(d) {
+  d %>% group_by(label) %>%
+    summarise(umap_1 = median(umap_1), umap_2 = median(umap_2), .groups = "drop") %>%
+    mutate(lab = short(label))
+}
+```
+
+```{r fig-umap-type}
+#| fig-width: 5
+#| fig-height: 2.6
+#| results: hold
+## Panels are pinned to a fixed physical size rather than the page being sized:
+## these are destined for a composed figure, where what has to be exact is the
+## panel, not the margins around it.
+panel_in = 1.4
+
+## `label_which`: "all" labels every type; "song" labels only the song nuclei,
+## which is what fits once the panel is down at 1.4 in with 17 types in it.
+## `bare` strips the titles, axis titles and legend for drop-in use in a layout.
+umap_plot = function(d, ttl, label_which = "all", bare = FALSE) {
+  cols = type_colour(unique(d$label))
+  lab_d = d %>% group_by(embedding) %>% group_modify(~ centroids(.x)) %>% ungroup()
+  if (label_which == "song") lab_d = filter(lab_d, grepl(song_pattern, label))
+
+  p = ggplot(d, aes(umap_1, umap_2)) +
+    raster_points(aes(colour = label), size = 0.12, stroke = 0, alpha = 0.55,
+                  show.legend = FALSE) +
+    ggrepel::geom_text_repel(data = lab_d, aes(label = lab), size = fig_pt(5), family = FIG_FONT,
+                             colour = FIG_INK_PRIMARY, segment.size = 0.15,
+                             segment.colour = FIG_INK_MUTED, min.segment.length = 0.1,
+                             max.overlaps = Inf, box.padding = 0.1, seed = 1) +
+    facet_wrap(~embedding, nrow = 1) +
+    scale_colour_manual(values = cols) +
+    scale_x_continuous(expand = fig_expand()) +
+    scale_y_continuous(expand = fig_expand()) +
+    theme_fig() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+
+  p = if (bare) {
+    p + labs(x = NULL, y = NULL) +
+      theme(strip.text = element_blank(), plot.margin = margin(1, 1, 1, 1))
+  } else {
+    p + labs(x = "UMAP 1", y = "UMAP 2", title = ttl,
+             subtitle = sprintf("%s, k.anchor = %d | song types coloured, non-song grey",
+                                toupper(reduction), k_anchor))
+  }
+  egg::set_panel_size(p, width = unit(panel_in, "in"), height = unit(panel_in, "in"))
+}
+
+## Writes PDF, PNG and SVG from one call.
+##
+## The SVG exists because of how cairo_pdf emits text: it coalesces consecutive
+## labels sharing a font into a single BT...ET block, moving between them with
+## Td, so Illustrator imports several labels as ONE text object. svglite writes
+## one <text> element per label, which imports as separate, editable text boxes.
+## Use the SVG for figure assembly and the PDF for the record.
+fig_save_gt = function(gt, path_noext, dpi = 600) {
+  fig_check_font()
+  w = grid::convertWidth(sum(gt$widths), "in", valueOnly = TRUE)
+  h = grid::convertHeight(sum(gt$heights), "in", valueOnly = TRUE)
+  ggsave(paste0(path_noext, ".pdf"), gt, width = w, height = h,
+         device = cairo_pdf, family = FIG_FONT)
+  ## ragg's default family is "sans"; name Arial explicitly so the PNG matches
+  ## the PDF for any text that does not carry its own family
+  ggsave(paste0(path_noext, ".png"), gt, width = w, height = h, dpi = dpi,
+         bg = FIG_SURFACE, device = ragg::agg_png)
+  ggsave(paste0(path_noext, ".svg"), gt, width = w, height = h,
+         device = svglite::svglite, bg = FIG_SURFACE)
+  invisible(paste0(path_noext, c(".pdf", ".png", ".svg")))
+}
+
+for (st in sets) {
+  d = filter(umap, set == st)
+  gt = umap_plot(d, sprintf("%s glutamatergic types", st))
+  plot(gt)
+  fig_save_gt(gt, file.path(out_dir, sprintf("umap_%s_by_type", tolower(st))))
+  ## drop-in variants for a composed figure: song labels only, and no chrome
+  fig_save_gt(umap_plot(d, NULL, label_which = "song"),
+              file.path(out_dir, sprintf("umap_%s_by_type_songlabels", tolower(st))))
+  fig_save_gt(umap_plot(d, NULL, label_which = "song", bare = TRUE),
+              file.path(out_dir, sprintf("umap_%s_by_type_bare", tolower(st))))
+}
+```
+
+```{r fig-umap-dataset}
+#| fig-width: 6
+#| fig-height: 3.2
+#| results: hold
+## The same embeddings coloured by dataset, which is what the integration acted
+## on: it should pull the two together between the left and right panels.
+for (st in sets) {
+  d = filter(umap, set == st)
+  p = ggplot(d, aes(umap_1, umap_2, colour = dataset)) +
+    raster_points(size = 0.12, stroke = 0, alpha = 0.55) +
+    facet_wrap(~embedding, nrow = 1) +
+    scale_colour_manual(values = c(song = FIG_PAL[2], `non-song` = FIG_INK_MUTED),
+                        name = NULL) +
+    scale_x_continuous(expand = fig_expand()) +
+    scale_y_continuous(expand = fig_expand()) +
+    guides(colour = guide_legend(override.aes = list(size = 1.2, alpha = 1))) +
+    labs(x = "UMAP 1", y = "UMAP 2", title = sprintf("%s, by dataset", st),
+         subtitle = sprintf("%s, k.anchor = %d", toupper(reduction), k_anchor)) +
+    theme_fig() +
+    ## theme_fig() sets panel.grid.major explicitly, and a specific element
+    ## beats the panel.grid parent, so both children have to be blanked
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+  print(p)
+  fig_save(p, file.path(out_dir, sprintf("umap_%s_by_dataset", tolower(st))),
+           width = 5.2, height = 2.6)
+}
+```
+
+```{r fig-umap-library}
+#| fig-width: 6
+#| fig-height: 3.2
+#| results: hold
+## Coloured by dissection library, the confound the permutation notebook
+## conditions on.
+for (st in sets) {
+  d = filter(umap, set == st)
+  libs = sort(unique(d$library))
+  p = ggplot(d, aes(umap_1, umap_2, colour = library)) +
+    raster_points(size = 0.12, stroke = 0, alpha = 0.55) +
+    facet_wrap(~embedding, nrow = 1) +
+    scale_colour_manual(values = setNames(FIG_PAL[seq_along(libs)], libs), name = NULL) +
+    scale_x_continuous(expand = fig_expand()) +
+    scale_y_continuous(expand = fig_expand()) +
+    guides(colour = guide_legend(override.aes = list(size = 1.2, alpha = 1))) +
+    labs(x = "UMAP 1", y = "UMAP 2", title = sprintf("%s, by dissection library", st),
+         subtitle = sprintf("%s, k.anchor = %d", toupper(reduction), k_anchor)) +
+    theme_fig() +
+    ## theme_fig() sets panel.grid.major explicitly, and a specific element
+    ## beats the panel.grid parent, so both children have to be blanked
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+  print(p)
+  fig_save(p, file.path(out_dir, sprintf("umap_%s_by_library", tolower(st))),
+           width = 5.2, height = 2.6)
+}
+```
+
+```{r fig-umap-assignment}
+#| fig-width: 7
+#| fig-height: 3.4
+#| results: hold
+## Coloured by individual bird. Faceted by library because `assignment` only
+## identifies a bird within its own library; the same three colours in two
+## different library panels are six different birds.
+##
+## This is the panel to check when a cluster looks split: if the lobes separate
+## by colour within a library panel, the split is inter-individual rather than
+## a cell-type distinction.
+for (st in sets) {
+  ## libraries contributing only a handful of cells to this analysis would take a
+  ## full panel to show nothing (ARCO has one lman cell), so drop them
+  keep_lib = umap %>% filter(set == st) %>% count(library) %>%
+    filter(n >= 20 * 2) %>% pull(library)   # x2: each cell appears in both embeddings
+  d = filter(umap, set == st, library %in% keep_lib)
+  p = ggplot(d, aes(umap_1, umap_2, colour = assignment)) +
+    raster_points(size = 0.3, stroke = 0, alpha = 0.75) +
+    facet_grid(embedding ~ library) +
+    scale_colour_manual(values = setNames(FIG_PAL[1:3], c("0", "1", "2")),
+                        name = "bird (within library)") +
+    scale_x_continuous(expand = fig_expand()) +
+    scale_y_continuous(expand = fig_expand()) +
+    guides(colour = guide_legend(override.aes = list(size = 1.2, alpha = 1))) +
+    labs(x = "UMAP 1", y = "UMAP 2",
+         title = sprintf("%s, by individual", st),
+         subtitle = sprintf("%s, k.anchor = %d\nassignment indexes birds within a library: the same colour in two panels is two different birds",
+                            toupper(reduction), k_anchor)) +
+    theme_fig() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY))
+  print(p)
+  fig_save(p, file.path(out_dir, sprintf("umap_%s_by_individual", tolower(st))),
+           width = 1.3 + 1.35 * length(keep_lib), height = 3.2)
+}
+```
+
+```{r individual-mixing}
+## How much of each cell type's spread is between birds? For every type, the
+## share of its cells contributed by each bird of each library -- a type whose
+## cells come overwhelmingly from one bird is a type whose apparent structure
+## could be individual variation.
+ind_share = umap %>%
+  filter(embedding == "integrated") %>%
+  distinct(set, cell, label, library, assignment, individual) %>%
+  count(set, label, individual) %>%
+  group_by(set, label) %>%
+  mutate(share = n / sum(n)) %>%
+  slice_max(share, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  rename(top_individual = individual, top_individual_share = share) %>%
+  arrange(desc(top_individual_share))
+write_csv(ind_share, file.path(out_dir, "top_individual_share_by_type.csv"))
+ind_share %>% filter(set != "ALL") %>% mutate(top_individual_share = round(top_individual_share, 3))
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```
