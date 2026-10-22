@@ -429,7 +429,7 @@ for (tp in intersect(Features(obj_glut_umap), to_plot)) {
                               reduction = reduction_cur) + 
     annotate("text", x = Inf, y = Inf, label = tp, size = 3, hjust = 1, vjust = 1) +
     theme_nothing()
-  save_plot(file.path(out_dir, str_interp("${tp}_density.pdf")), gg, base_width=1.5, base_height=1.5)
+  save_plot(file.path(out_dir, str_interp("${tp}_density.pdf")), gg, base_width=1.2, base_height=1.2)
 }
 ```
 
