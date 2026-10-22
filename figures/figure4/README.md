@@ -1,6 +1,6 @@
 # Figure 4 — standalone panel scripts
 
-One script per panel of Figure 4 (`fig4_scenicplus_v9.svg`). Each regenerates its panel from the outputs of the upstream pipelines, without running
+One script per panel of Figure 4 (`fig4_scenicplus_v10.svg`). Each regenerates its panel from the outputs of the upstream pipelines, without running
 any other panel or notebook. Shared input paths and helpers are in `common.R`, which every R panel script sources; it in turn sources the repository's
 `config/paths.R` and `config/figure_theme.R`. Panels are written to `figures/figure4/output/`, which is not tracked; set `FIG4_OUT` to write elsewhere.
 
@@ -8,7 +8,7 @@ any other panel or notebook. Shared input paths and helpers are in `common.R`, w
 |---|---|---|---|
 | A | GRN activity (+/+ eRegulon target-gene AUC) per TF and cell type | `panel_A_grn_activity_heatmap.R` | `panel_A_positive_gene_auc_heatmap_names.pdf` (+ `_no-names.pdf`) |
 | B | GRNs with differential activity between song and matched non-song neurons; MAFB module | `panel_B_grn_contrast_modules.R` | `panel_B_gene_auc_contrast_modules.{svg,pdf,png}`, `..._legend.*`, `.csv` |
-| C | MAFB expression density on the UMAP | `panel_C_mafb_umap_density.R` | `panel_C_MAFB_density.pdf` |
+| C | MAFB expression on the UMAP (expressing cells drawn on top) | `panel_C_mafb_umap.R` | `panel_C_MAFB_umap.{pdf,png,svg}` |
 | D | *In situ* hybridization (SLC17A6, MAFB, GAD1) in RA and arcopallium | — (microscopy; see below) | — |
 | E | Chromatin accessibility at the KCNC1 locus: MAFB cistrome track and KCNC1 expression bars | `panel_E_kcnc1_track_annotations.R` | `panel_E_MAFB_cistrome_regions.bed`, `panel_E_kcnc1_expression_bars_no_points.svg` |
 | F | Expression of predicted MAFB targets: RA vs C1H-1 against PVALB-1 vs LGE-1 | `panel_F_mafb_target_scatter.R` | `panel_F_mafb_onoff_scatter_PVALB1_vs_LGE1_absLFC1.{pdf,png,svg}` |
@@ -22,8 +22,8 @@ Rscript figures/figure4/panel_A_grn_activity_heatmap.R        # R panels: run fr
 python figures/figure4/panel_H_mafb_perturbation.py           # panel H: in the scenicplus conda environment
 ```
 
-R ≥ 4.3 with the packages in `renv.lock` (Seurat 5, ComplexHeatmap, DESeq2, rhdf5, ArchR/SummarizedExperiment for the marker tables, Nebulosa,
-scCustomize, ggrepel, egg, svglite). Panel B also needs Inkscape and Python 3 with lxml (`scripts/crop_svg.py` crops it to the drawing). Run times on
+R ≥ 4.3 with the packages in `renv.lock` (Seurat 5, ComplexHeatmap, DESeq2, rhdf5, ArchR/SummarizedExperiment for the marker tables, ggrastr,
+ggrepel, egg, svglite). Panel B also needs Inkscape and Python 3 with lxml (`scripts/crop_svg.py` crops it to the drawing). Run times on
 the lab server: A, B 3–5 min (reading the SCENIC+ MuData); C 2 min; E 2 min; F 5 min; G 10 min (DESeq2 + permutations); H ~25 min with its caches.
 
 ## Inputs (upstream pipelines)
@@ -45,7 +45,9 @@ All paths are set in `common.R` (R panels) or at the top of `panel_H_mafb_pertur
 - **B.** Same as `grn/analysis/scenicplus_gene_auc_cluster_means.R` + `scenicplus_gene_auc_contrast_clusters.R`. A contrast (HVCra vs D2-1, HVCx vs D2-4,
   RA vs C1H-1) is called when the per-bird mean difference in scaled AUC is ≥ 0.15, positive in ≥ 80 % of the paired birds, and the song neuron's
   scaled AUC is ≥ 0.4. This is an effect-size rule, not a test. The legend is written separately (`..._legend`).
-- **C.** Same call as `plot_eregulon_umaps()` in the template (Nebulosa density, SCT data, reduction `dims25nn30mindist0.3`).
+- **C.** Each cell on the UMAP (reduction `dims25nn30mindist0.3`); cells without MAFB light gray, cells with MAFB drawn on top in order of expression
+  (SCT log-normalized, single-hue scale capped at the 99th percentile of the expressing cells; MAFB is in ~10 % of cells). This replaced the Nebulosa
+  density plot of earlier versions (`plot_eregulon_umaps()` in the template), which spread the sparse signal and gave little contrast.
 - **D.** Fluorescent *in situ* hybridization images (`/nest/bcolquit/ish/231001_slc17a6_mafb_gad1/`); acquisition and display settings only, no analysis script.
 - **E.** The accessibility tracks (pseudobulk ATAC coverage per cell type at the KCNC1 locus) are a genome-browser export, not scripted; the export
   (`genome_browser/KCNC1/kcnc1_overview.pdf`) was converted to a lean SVG with `scripts/browser_pdf_to_svg.py` (track bars merged, clipped copies
@@ -64,13 +66,13 @@ All paths are set in `common.R` (R panels) or at the top of `panel_H_mafb_pertur
 
 ## Check against the figure files
 
-Each script was run and its output compared with the file placed in `fig4_scenicplus_v9.svg` (text labels extracted from the PDFs; renderings compared pixel by pixel at 100 dpi):
+Each script was run and its output compared with the file placed in the figure (`fig4_scenicplus_v9.svg`; panel C: `v10`) (text labels extracted from the PDFs; renderings compared pixel by pixel at 100 dpi):
 
 | Panel | Result |
 |---|---|
 | A | Same TF and cell-type order; only the legend title differs (see above) |
 | B | Identical labels; same groups; same size (2.58 × 2.94 in) |
-| C | Pixel-identical |
+| C | Pixel-identical to the version placed in v10, apart from the comparison-sheet title (removed) and the color-bar tick labels (0, 1, 2; missing in that version) |
 | E | Cistrome BED identical (2,636 regions, same scores); expression-bar SVGs byte-identical |
 | F | Same genes, statistics (n = 219, r = 0.12, ρ = 0.08) and labels; only the drawing order of overlapping points differs |
 | G | Identical per-eRegulon share, n and p-value (166 rows); pixel-identical |
