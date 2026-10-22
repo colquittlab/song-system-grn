@@ -14,7 +14,7 @@
 #            Reciprocal score S[song, non-song] = sqrt(fwd[song, non-song] x rev[non-song, song]); high only if each type's cells vote for
 #            the other. Colour scale from 0 to the panel's maximum.
 #
-# This is the only tracked copy of this code. It reproduces three notebooks that are not in the repository:
+# It reproduces, in one script, three notebooks of the repository:
 #   snrna/integration/song_nonsong_integration_hybrid.qmd          per-dataset SCTransform preps (cache/prep_ALL.qs2)
 #   snrna/integration/song_nonsong_umap_hybrid.qmd                 -> song_nonsong_umap_hybrid/umap_all_by_type_bare.pdf      (UMAPs)
 #   snrna/integration/song_nonsong_reciprocal_transfer_hybrid.qmd  -> song_nonsong_reciprocal_transfer_hybrid/reciprocal_all_cca_k20_bare.pdf

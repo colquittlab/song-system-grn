@@ -7,8 +7,8 @@ Glut-DACH2-HVCra-Int left out; chicken Ex_Pre_KCNH7 and Ex_Pre_SATB2 removed). R
 grouped by the marker in their name (DACH2, TSHZ2, CACNA1H, SATB2, KIAA1217, BCL6; alphabetical within a group,
 common.chicken_col_order). Colour scale from 0 to the matrix maximum.
 Same computation and drawing as the plusSATB2_noPre, k.anchor = 20 call of
-snrna/integration/gg_glutonly_hybrid/rpca/plot_transfer_heatmap_plusSATB2.py -- the version with the fixed chicken-column order
-(main checkout working copy, Sep 25 2026; the committed version orders the columns by hierarchical clustering instead), which wrote
+snrna/integration/gg_glutonly_hybrid/rpca/plot_transfer_heatmap_plusSATB2.py (with the fixed chicken-column order of
+snrna/integration/position_palette.py; earlier versions ordered the columns by hierarchical clustering), which wrote
   snrna/integration/gg_glutonly_hybrid/rpca/results/gg_glutonly_hybrid/transfer_heatmap_plusSATB2_noPre_ka20_kf200_d40_SCT.{pdf,png}
 In the figure the finch row labels are dropped (they are shared with panel E) and the legend restyled.
 

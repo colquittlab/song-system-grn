@@ -69,8 +69,8 @@ All paths are set in `common.R` / `common.py` or at the top of the panel script;
   - Heatmap (`song_nonsong_reciprocal_transfer_hybrid.qmd`): label transfer in both directions (CCA, k.anchor 20, k.weight 50). In each direction,
     the score is the share of one type's cells assigned to the other type × their mean prediction score. The reciprocal score is the square root of
     forward × reverse, so it is high only when each type's cells vote for the other.
-  - None of the three notebooks is tracked in the repository, so this script is the only tracked copy of this code. It starts from the
-    glutamatergic object and reproduces the notebooks' saved prep, UMAP coordinates and scores exactly.
+  - The script combines the three notebooks. It starts from the glutamatergic object and reproduces the notebooks' saved prep, UMAP coordinates
+    and scores exactly.
   - Labels on the UMAPs and the heatmap's colour key were restyled by hand.
 - **C.** Same as the "every cell call in the taxonomy (gte400)" section of `xenium/label_transfer/proseg_spatial_maps_hybrid.qmd`. Confident RCTD
   calls (singlet or confident doublet) with ≥ 400 transcripts are shown in black over all cells in grey. Each section is rotated/flipped to
@@ -86,7 +86,8 @@ All paths are set in `common.R` / `common.py` or at the top of the panel script;
 - **F.** The full finch × chicken reciprocal-score matrix at k.anchor 20. Rows are in panel E's order; chicken columns are grouped by name marker
   (DACH2, TSHZ2, CACNA1H, SATB2, KIAA1217, BCL6).
   - Same as `snrna/integration/gg_glutonly_hybrid/rpca/plot_transfer_heatmap_plusSATB2.py` in its fixed-column-order version.
-  - That version is an uncommitted working copy; the committed script orders the columns by clustering.
+  - The column order is `chicken_col_order()` of `snrna/integration/position_palette.py`; earlier versions of the script ordered the columns by
+    clustering.
   - Row labels were dropped in the figure.
 - **G.** UMAP of the k.anchor 20 RPCA joint embedding. Left: finch cells by the dissected region of their type, chicken cells grey. Right: chicken
   cells by name-marker family, finch cells grey.
@@ -114,7 +115,8 @@ Each output also matches its panel in `fig2_snrna_glut_v10.svg` by eye. The hand
 
 - **E** was made by `plot_sweep_heatmap_satb2_tests.py`, not `plot_sweep_heatmap_glutonly_hybrid_sct.py`. The latter draws the subset without
   Glut-SATB2-1, at k.filter 50.
-- **F** uses the fixed chicken-column order, which exists only in uncommitted working copies of `plot_transfer_heatmap_plusSATB2.py` and
-  `snrna/integration/position_palette.py`.
+- **F** uses the fixed chicken-column order of `plot_transfer_heatmap_plusSATB2.py` and `snrna/integration/position_palette.py` as committed with
+  this directory; earlier committed versions ordered the columns by clustering.
 - **G** was made by `plot_rpca_umap_satb2_tests.py`, not `plot_rpca_umap.py`.
-- **B** also contains the "integration partner" heatmap, `song_nonsong_reciprocal_transfer_hybrid/reciprocal_all_cca_k20_bare.pdf`.
+- **B** also contains the "integration partner" heatmap, `song_nonsong_reciprocal_transfer_hybrid/reciprocal_all_cca_k20_bare.pdf`. Its three
+  notebooks (`snrna/integration/song_nonsong_{integration,umap,reciprocal_transfer}_hybrid.qmd`) are committed with this directory.
