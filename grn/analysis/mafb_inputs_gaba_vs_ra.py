@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inputs to MAFB (the TFs and regions that regulate it) in GABAergic neurons versus Glut-CACNA1H-RA / Glut-CACNA1H-1.
+"""Inputs to MAFB (the TFs and regions that regulate it) in GABAergic neurons versus Glut-CACNA1H-RA / Glut-CACNA1H-1, and in the all-CACNA1H run.
 
 "Inputs to MAFB" = the eRegulon rows whose target gene is MAFB: for each row, the regulating TF, the region it acts through, and the
 TF->gene / region->gene evidence. Read from the small outputs of the three subset runs (results/config1 and config2, direct + extended):
@@ -7,6 +7,7 @@ TF->gene / region->gene evidence. Read from the small outputs of the three subse
     GABA     ra-arco-hvc-nc_gaba_hybrid                (3,275 cells)
     RA_run2  glut-ra_glut-c1h-1_hybrid                 (745 cells; run3 samples excluded, as in the earlier run)
     RA_all   glut-ra_glut-c1h-1_allruns_hybrid         (1,966 cells; run3 included)
+    CACNA1H  glut-cacna1h_hybrid                       (3,399 cells: Glut-CACNA1H-RA, -1 and -2)
 
 MAFB listed as a target of MAFB (TF2G correlation exactly 1.000) is the TF->gene self-link, not autoregulation, and is dropped (the perturbation notebook
 drops it too). Outputs: two small CSVs next to this script, and mafb_inputs_gaba_vs_ra.{pdf,png} in OUT_DIR.
@@ -32,8 +33,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HB = "/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/motor-pathway_multiome_seurat_cellbender.0.05_preprocess_cr/"
 OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/ssd/rstudio/multiome/motor-pathway/scenicplus/mafb_inputs")
 os.makedirs(OUT_DIR, exist_ok=True)
-DATASETS = {"GABA": "ra-arco-hvc-nc_gaba_hybrid", "RA_run2": "glut-ra_glut-c1h-1_hybrid", "RA_all": "glut-ra_glut-c1h-1_allruns_hybrid"}
-LABEL = {"GABA": "GABA", "RA_run2": "RA vs C1H-1\n(run3 excl.)", "RA_all": "RA vs C1H-1\n(all runs)"}
+DATASETS = {"GABA": "ra-arco-hvc-nc_gaba_hybrid", "RA_run2": "glut-ra_glut-c1h-1_hybrid", "RA_all": "glut-ra_glut-c1h-1_allruns_hybrid", "CACNA1H": "glut-cacna1h_hybrid"}
+LABEL = {"GABA": "GABA", "RA_run2": "RA vs C1H-1\n(run3 excl.)", "RA_all": "RA vs C1H-1\n(all runs)", "CACNA1H": "RA/C1H-1/C1H-2\n(CACNA1H)"}
 # repo figure colours (config/figure_theme.R)
 BLUE, RED, MID, GRID, INK2, MUTED = "#2a78d6", "#e34948", "#f0efec", "#e1e0d9", "#52514e", "#898781"
 
@@ -72,7 +73,7 @@ R["shared_with"] = R.apply(lambda x: ",".join(sorted(set(R[(R.region == x.region
 R.sort_values(["ds", "offset_from_TSS_bp"]).round(3).to_csv(f"{HERE}/mafb_inputs_regions.csv", index=False)
 
 # ---- figure
-fig = plt.figure(figsize=(6.4, 6.6))
+fig = plt.figure(figsize=(6.4, 7.4))
 gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.9], hspace=0.38)
 ax = fig.add_subplot(gs[0])
 ax.set_xscale("symlog", linthresh=15, linscale=1.0)
@@ -118,7 +119,7 @@ ax2.set_xticks(range(len(colspec)))
 ax2.set_xticklabels([f"config{n}" for _, n in colspec], fontsize=5, rotation=0)
 ax2.set_yticks(range(len(order))); ax2.set_yticklabels(order, fontsize=5)
 for k, ds in enumerate(DATASETS):
-    ax2.text(2 * k + 0.5, -1.6, LABEL[ds].replace("\n", " "), ha="center", fontsize=6, fontweight="bold", color=INK2)
+    ax2.text(2 * k + 0.5, -1.6, LABEL[ds].replace("\n", " ").replace(" (", "\n("), ha="center", fontsize=6, fontweight="bold", color=INK2)
     if k:
         ax2.axvline(2 * k - 0.5, color="white", linewidth=2)
 ax2.set_xticks(np.arange(-0.5, len(colspec), 1), minor=True); ax2.set_yticks(np.arange(-0.5, len(order), 1), minor=True)
@@ -127,7 +128,7 @@ for sp in ax2.spines.values():
     sp.set_visible(False)
 cb = fig.colorbar(im, ax=ax2, fraction=0.025, pad=0.02)
 cb.set_label("TF-MAFB expression correlation (rho)", fontsize=5); cb.ax.tick_params(labelsize=5, length=2)
-ax2.set_title("TFs regulating MAFB (blank = not an input in that config)", fontsize=7, fontweight="bold", loc="left", pad=16)
+ax2.set_title("TFs regulating MAFB (blank = not an input in that config)", fontsize=7, fontweight="bold", loc="left", pad=34)
 fig.savefig(f"{OUT_DIR}/mafb_inputs_gaba_vs_ra.pdf", bbox_inches="tight")
 fig.savefig(f"{OUT_DIR}/mafb_inputs_gaba_vs_ra.png", dpi=300, bbox_inches="tight")
 print("wrote", OUT_DIR, "| TFs:", {ds: tf_tab[tf_tab.ds == ds].TF.nunique() for ds in DATASETS}, "| regions:", R.groupby("ds").size().to_dict())
