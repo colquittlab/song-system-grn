@@ -25,7 +25,64 @@ SONG_PAIRS <- tribble(~cluster, ~label, ~color,
                       "Glut-DACH2-HVCx",  "HVCx",  "#ff7f00",
                       "Glut-DACH2-4",     "D2-4",  "#fdbf6f")
 
-# ---- expression ------------------------------------------------------------------------------------------------------------------------------------
+# ---- ArchR (panels D, E) ------------------------------------------------------------------------------------------------------------------------------
+# Panel scripts attach ArchR themselves; it attaches plyr after the tidyverse, so they rebind the masked dplyr verbs after loading it.
+# list(ra, hvc_1, hvc_2) of getMarkerFeatures() results, saved by multiome/archr/peaks_glut.qmd ("Find DARs"). When the file is absent the three tests
+# are recomputed exactly as there and cached in FIG3_CACHE (song_pair_markers()).
+DAR_MARKERS <- Sys.getenv("FIG3_DAR_MARKERS", here::here("multiome/archr/peaks_glut_hybrid/peaks_nonsong_glut_se.rds"))
+# scratch for the values computed from the shared ArchR project (the project itself is only read, never saved)
+FIG3_CACHE <- Sys.getenv("FIG3_CACHE", file.path(FIG3_OUT, "cache"))
+dir.create(FIG3_CACHE, showWarnings = FALSE, recursive = TRUE)
+
+# ArchR writes its logs (ArchRLogs/) and temporary files under the working directory: run its calls from the cache
+in_cache <- function(expr) { wd <- setwd(FIG3_CACHE); on.exit(setwd(wd)); expr }
+# The shared project with the hybrid labels added in memory (multiome/archr/hybrid_labels.R), loaded only when a cached value is missing.
+# addArchRThreads(threads > 1) also switches R to the L'Ecuyer-CMRG generator, as in the notebook, whose results depend on it.
+.proj <- NULL
+archr_hybrid <- function() {
+  if (is.null(.proj)) {
+    source(here::here("multiome/archr/hybrid_labels.R"))
+    addArchRThreads(threads = 16)
+    .proj <<- in_cache(add_cluster_hybrid(loadArchRProject(ARCHR_PROJ_DIR, showLogo = FALSE)))
+  }
+  .proj
+}
+#' The three song vs. non-song marker tests on the PeakMatrix (bias-matched Wilcoxon; ArchR seeds its bias matching with seed 1)
+song_pair_markers <- function() {
+  if (file.exists(DAR_MARKERS)) return(readRDS(DAR_MARKERS))
+  f <- file.path(FIG3_CACHE, "peaks_nonsong_glut_se.rds")
+  if (!file.exists(f)) {
+    message(DAR_MARKERS, " not found: recomputing the marker tests into ", f)
+    proj <- archr_hybrid()
+    m <- in_cache(map(hybrid_pairs_glut, \(p) getMarkerFeatures(ArchRProj = proj, useMatrix = "PeakMatrix", groupBy = "cluster_hybrid", useGroups = p[[1]],
+                                                                 bgdGroups = p[[2]], bias = c("TSSEnrichment", "log10(nFrags)"), testMethod = "wilcoxon")))
+    saveRDS(m, f)
+  }
+  readRDS(f)
+}
+
+# ---- song vs. non-song expression of TF families (panels G, H) --------------------------------------------------------------------------------------
+# Pseudobulk DESeq2 table of multiome/seurat/deg/song-surround_deg_glut.qmd, and the hybrid-labeled object chromvar.qmd took its gene names from
+DEG_TABLE <- Sys.getenv("FIG3_DEG_TABLE", file.path(MULTIOME_SEURAT_DIR, "deg/song-surround_deg_glut/marker_genes_cluster_SCT.rds"))
+HYBRID_LABEL_OBJ <- Sys.getenv("FIG3_HYBRID_LABEL_OBJ", here::here("multiome/seurat/label_transfer_hybrid/obj_clustered_hybrid.qs2"))
+# TF-family patterns of chromvar.qmd (the list in force when the points_deg and heatmap_deg files were written)
+TF_TERMS <- list(AP1 = c("^SMARCC", "^JUN", "^FOS", "^JDP"), NFI = c("^NFI"), IRF = c("^IRF[0-9]+$"), MAF = c("^MAF[^0-9]", "^MAF$"), NR3 = c("^NR3C"),
+                 CIC = "^CIC", BACH = "^BACH", BATF = "^BATF", BHLH = "^BHLH", OLIG = "^OLIG", NEURO = "^NEURO", ATOH = "^ATOH", TAL = "^TAL[0-9]+$",
+                 MEF2 = "^MEF2", PPAR = "^PPAR", SIX = "^SIX", TCF = c("^TCF[0-9]+", "^TCFL[0-9]+"), AR = "^AR$", PGR = "^PGR$", ARID = "^ARID",
+                 EMX = "^EMX", RFX = "^RFX[0-9]+")
+#' The DEG table (computed under the pre-hybrid labels), its `compare` column carried over to the hybrid names as in the notebook
+read_song_deg <- function() {
+  source(here::here("multiome/archr/hybrid_labels.R"))
+  deg <- readRDS(DEG_TABLE)
+  deg$compare <- unname(hybrid_cluster_map()[as.character(deg$compare)])
+  stopifnot(!anyNA(deg$compare))
+  deg
+}
+#' Gene names of the object (Features(obj_glut) in the notebook: the default assay's genes)
+hybrid_features <- function() { f <- rownames(qs2::qs_read(HYBRID_LABEL_OBJ, nthreads = 8)); invisible(gc()); f }
+
+# ---- expression (panel C) --------------------------------------------------------------------------------------------------------------------------
+
 #' SCT log-normalized expression of one gene per cell type: mean of per-bird means (a bird = one souporcell assignment within one library, kept when it
 #' has >= min_cells cells of that type), with the spread across birds and the per-cell fraction expressing. Returns list(summary, per_bird).
 gene_expression_by_bird <- function(obj, gene, clusters, min_cells = 10) {
