@@ -249,9 +249,7 @@ def trim_clipped_copies(root):
                 removed.append(el)
                 return
             for o, m in here:
-                if o.el is el:
-                    continue
-                if bb is not None:
+                if bb is not None:                             # also for a path carrying its own clip: it may reach past its window
                     b = bbox_transformed(bb, m)
                     if not (b[0] >= o.box[0] - EPS and b[1] >= o.box[1] - EPS and b[2] <= o.box[2] + EPS and b[3] <= o.box[3] + EPS):
                         o.n_boundary += 1
@@ -260,8 +258,7 @@ def trim_clipped_copies(root):
             return
         if tag in GRAPHIC_OTHER:
             for o, m in here:
-                if o.el is not el:
-                    o.other = True
+                o.other = True                                 # includes el's own clip: a rect/text/image clipped by itself must keep that clip
             return
         for ch in el:
             visit(ch, here)
