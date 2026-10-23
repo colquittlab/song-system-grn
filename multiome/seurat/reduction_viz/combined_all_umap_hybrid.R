@@ -35,9 +35,9 @@ data_out_obj_fname = file.path(out_dir, "obj_clustered.qs2")
 
 res_to_use = "cluster_hybrid"
 
-dims_list = seq(30,50,10)
-n.neighbors_list = c(30,40,50)
-min.dist_list = c(0.1, 0.3, 0.5)
+dims_list = c(15,20,25,30)
+n.neighbors_list = c(30)
+min.dist_list = c(0.3)
 
 params = expand_grid(dims_list, n.neighbors_list, min.dist_list)
 
