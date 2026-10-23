@@ -133,6 +133,8 @@ compared pixel by pixel with `compare -metric AE`, text extracted with pdftotext
 
 ### Differences from the manifest
 
+Found in the manifest of 2026-10-23 (beside the figure file) and corrected there the same day, which now also names each panel's standalone script:
+
 - **B** names `umap_dims25nn30mindist0.3_cluster_hybrid_no-label.png`; the figure uses the vector `.pdf` of the same name. The reduction comes from
   the dims 15–30 sweep of `combined_all_umap_hybrid.R`, which was uncommitted until 2026-10-23 (the committed sweep could not produce it).
 - **C** is listed as "schematic"; it is the genome-browser export plus `panel_C_six2_expression_bars.R`.
