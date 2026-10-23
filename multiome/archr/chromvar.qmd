@@ -1422,14 +1422,16 @@ for (to_plot in to_plot_list) {
     theme_bw() + 
     theme(axis.title = element_text(size=7),
           axis.text = element_text(size=6))
+  gg = annotate_pearson(gg, deg_filt_mat, to_plot[1], to_plot[2])
     save_plot(file.path(out_dir, sprintf("points_deg_%s_vs_%s.pdf", to_plot[1], to_plot[2])), gg, base_height=1.5, base_asp=1)
     
   gg = ggplot(deg_filt_mat, aes(.data[[to_plot[1]]], .data[[to_plot[2]]])) + 
     geom_hline(yintercept=0, linetype=2) + 
     geom_vline(xintercept=0, linetype=2) + 
     geom_point(size=0.5) + 
-    ggrepel::geom_label_repel(aes(label=gene), force = 5) + 
+    ggrepel::geom_label_repel(aes(label=gene), force = 5) +
     theme_bw()
+  gg = annotate_pearson(gg, deg_filt_mat, to_plot[1], to_plot[2], size_pt = 14)
   print(gg)
   save_plot(file.path(out_dir, sprintf("points_deg_%s_vs_%s_big.pdf", to_plot[1], to_plot[2])), gg, base_height=10, base_asp=1)
 }  
