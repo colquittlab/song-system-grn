@@ -19,6 +19,7 @@ Nothing else is changed: text, images, groups and transforms stay as they were. 
     python scripts/browser_pdf_to_svg.py tracks.pdf -o out.svg --converter pdftocairo
     python scripts/browser_pdf_to_svg.py overview.svg -o overview_merged.svg   # clean up an existing SVG (e.g. one saved from Inkscape)
     python scripts/browser_pdf_to_svg.py tracks.pdf --no-trim          # merge only; keep every clipped copy as is
+    python scripts/browser_pdf_to_svg.py figure.svg -o figure_v2.svg --within layer2   # only inside one group (e.g. one panel's layer) of a composite
 
 Check the result against the source after any change (render both, e.g. `inkscape f.svg --export-type=png`, and compare).
 """
@@ -208,8 +209,9 @@ class Owner:
         self.stroked = False
 
 
-def trim_clipped_copies(root):
-    ids = {e.get("id"): e for e in root.iter() if isinstance(e.tag, str) and e.get("id")}
+def trim_clipped_copies(root, doc=None):
+    """Trim below `root`; clipPath ids are looked up in `doc` (the whole document; default: root itself)."""
+    ids = {e.get("id"): e for e in (root if doc is None else doc).iter() if isinstance(e.tag, str) and e.get("id")}
     owners, removed, emptied = [], [], set()
 
     def visit(el, active):
@@ -450,6 +452,7 @@ def main():
     ap.add_argument("--converter", choices=["inkscape", "pdftocairo"], default="inkscape", help="PDF -> SVG converter (default: inkscape; keeps text as text)")
     ap.add_argument("--page", type=int, default=1, help="PDF page to convert (default 1)")
     ap.add_argument("--no-trim", action="store_true", help="do not drop paths outside their clip window")
+    ap.add_argument("--within", metavar="ID", help="only trim and merge inside the element with this id (e.g. one panel's layer of a composite); the rest is left as is")
     ap.add_argument("--min-run", type=int, default=2, help="merge runs of at least this many identical consecutive paths (default 2)")
     a = ap.parse_args()
     src = a.input
@@ -465,14 +468,24 @@ def main():
         svg_path = src
     tree = etree.parse(str(svg_path), etree.XMLParser(huge_tree=True))
     root = tree.getroot()
+    work = root
+    if a.within:
+        hits = [e for e in root.iter() if isinstance(e.tag, str) and e.get("id") == a.within]
+        if not hits:
+            sys.exit("no element with id " + a.within)
+        work = hits[0]
     p0, c0 = count(root)
+    w0, _ = count(work)
     n_removed = n_clip_dropped = 0
     if not a.no_trim:
-        n_removed, n_clip_dropped = trim_clipped_copies(root)
-    n_seg = merge_segments(root, a.min_run)
-    mb, ma = merge_runs(root, a.min_run)
+        # clip windows and paths are compared inside the subtree, so the transforms of its ancestors (shared by both) do not matter
+        n_removed, n_clip_dropped = trim_clipped_copies(work, root)
+    n_seg = merge_segments(work, a.min_run)
+    mb, ma = merge_runs(work, a.min_run)
     n_cp = drop_unused_clippaths(root)
     p1, c1 = count(root)
+    if a.within:
+        print(f"  within #{a.within}: paths {w0:,} -> {count(work)[0]:,}")
     tree.write(str(out), xml_declaration=True, encoding="UTF-8")
     print(f"{src.name} -> {out.name}")
     print(f"  paths {p0:,} -> {p1:,}  (outside a clip window: -{n_removed:,}; merged across interleaved fills: -{n_seg:,}; consecutive runs merged: {mb:,} -> {ma:,})")
