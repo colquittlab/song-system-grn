@@ -1,0 +1,10 @@
+config,band,region_gene_links_pp,fraction
+config2,<=150 kb,48885,0.9987
+config2,150-250 kb,64,0.0013
+config2,250-500 kb,0,0.0
+config3,<=150 kb,56060,0.685
+config3,150-250 kb,25707,0.3141
+config3,250-500 kb,69,0.0008
+config4,<=150 kb,75464,0.3773
+config4,150-250 kb,36408,0.182
+config4,250-500 kb,88072,0.4403

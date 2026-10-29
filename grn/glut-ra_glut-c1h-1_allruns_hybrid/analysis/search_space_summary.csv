@@ -1,0 +1,4 @@
+config,search_space_kb,search_space_pairs,search_space_<=150 kb,search_space_150-250 kb,search_space_250-500 kb,region_to_gene_pairs,eRegulons_all,eRegulons_pp,eRegulons_pp_direct,TFs_pp,TF_gene_links_pp,TF_region_links_pp,region_gene_links_pp,median_genes_per_eRegulon_pp
+config2,150,2807339,2803282,4057,0,2807339,99,65,35,51,30046,53926,48949,154.0
+config3,250,4406047,2803282,1598788,3977,4406047,126,73,41,56,37654,74076,81836,188.0
+config4,500,8228516,2803282,1598788,3822755,8228516,169,88,46,66,54487,111055,200018,219.0
