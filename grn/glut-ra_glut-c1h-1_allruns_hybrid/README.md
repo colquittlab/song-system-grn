@@ -19,6 +19,10 @@ SCENIC+ on **Glut-CACNA1H-RA vs Glut-CACNA1H-1, all runs (the hybrid labels of G
 3. `scenicplus/make_configs.py` -> config1 and config2, **both on the hybrid cisTarget database** (`ra-arco-hvc-nc_hybrid`, built on the cisTopic object's own
    consensus regions; there is no config on the older shared database here). Config2 reuses config1's accessibility+expression object, search space and
    region-to-gene fit: run `scenicplus/submit_all.sh 1` on prism, then `scenicplus/prepare_shared_upstream.sh`, then `scenicplus/submit_all.sh 2`.
+   **Configs 3 and 4** test the region-to-gene search space: config2 with up to 250 kb (config3) or 500 kb (config4) upstream and downstream of each
+   gene, instead of the default 150 kb. They reuse only config1's accessibility+expression object (`shared/outs/ACC_GEX.h5mu`) and compute their own
+   search space, region-to-gene fit and everything after it (12 h and 24 h job limits; the fit grows with the search-space width). With `shared/outs`
+   in place on prism: `scenicplus/submit_all.sh 3 4`. Compare 2 -> 3 -> 4 for the effect of the search space alone.
    Helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) are the glut run's with this root.
 
 Data live under `/hdd/jupyter/brad/scenicplus/motor-pathway_multiome/.../glut-ra_glut-c1h-1_allruns_hybrid/`, outside git. Analysis templates are not made yet (they need results).
