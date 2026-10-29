@@ -9,7 +9,14 @@ Derived from ../../ra-arco-hvc-nc_glut_hybrid/scenicplus/make_configs.py by ../.
              20 topics, raw counts in .raw.
     config2  the all-cell hybrid run's strict config1 thresholds (base parameters; = the all-cell config37's), reusing config1's accessibility +
              expression object, search space and region-to-gene fit (none depends on the motif database): see prepare_shared_upstream.sh.
-    Both use the hybrid cisTarget database (cistarget/ra-arco-hvc-nc_hybrid), built on the consensus regions; its region list is identical to the
+    config3  config2 with a larger region-to-gene search space: up to 250 kb upstream and downstream of each gene (search_space_upstream /
+             search_space_downstream "1000 250000"; config1/2 use "1000 150000", the SCENIC+ default).
+    config4  the same at 500 kb ("1000 500000").
+             The search space changes the search-space table, the region-to-gene fit and everything after it, so 3 and 4 compute their own; they
+             reuse only config1's accessibility + expression object (ACC_GEX.h5mu in shared/outs, which does not depend on the search space).
+             Motif enrichment and TF-to-gene are recomputed as in config2 (they do not depend on the search space either, but the workflow has no
+             switch to share them). Compare 2 -> 3 -> 4 for the effect of the search space alone.
+    All use the hybrid cisTarget database (cistarget/ra-arco-hvc-nc_hybrid), built on the consensus regions; its region list is identical to the
     cisTopic object's 499,348 regions, so no region is dropped or shifted by the 40 % overlap match the older shared database needs.
 
     python make_configs.py
@@ -33,7 +40,17 @@ base.N_CPU_MOTIF = {}
 base.cistopic_obj_name = lambda n: "cistopic_obj_gaba.pkl"   # the all-cell script names it cistopic_obj_glut.pkl
 
 SPEC = {'params_motif_enrichment': {'motif_similarity_fdr': 0.01, 'dem_adj_pval_thr': 0.05, 'dem_log2fc_thr': 1.0, 'ctx_auc_threshold': 0.01, 'ctx_nes_threshold': 2.0, 'ctx_rank_threshold': 0.1}}
+SEARCH_SPACE = {3: "1000 250000", 4: "1000 500000"}
 CONFIGS = {1: SPEC, 2: {}}
+CONFIGS.update({n: {"params_data_preparation": {"search_space_upstream": ss, "search_space_downstream": ss}} for n, ss in SEARCH_SPACE.items()})
+# configs that take only ACC_GEX.h5mu from shared/outs (not the search space or the region-to-gene fit)
+SHARED_ACC_GEX_ONLY = set(SEARCH_SPACE)
+# wall time: the region-to-gene GBM grows with the number of candidate regions per gene, roughly with the search-space width (not measured here)
+TIME = {1: "12:00:00", 2: "08:00:00", 3: "12:00:00", 4: "24:00:00"}
+SHARED_ACC_GEX_PRECHECK = """# ACC_GEX.h5mu comes from config1 via prepare_shared_upstream.sh (the search space and region-to-gene fit are this config's own);
+# without it Snakemake would silently rebuild the accessibility + expression object.
+test -s {shared}/ACC_GEX.h5mu || {{ echo "missing shared input {shared}/ACC_GEX.h5mu -- run prepare_shared_upstream.sh first" >&2; exit 1; }}
+"""
 
 HYBRID_DB = ("/private/groups/colquittlab/scenicplus/cistarget/ra-arco-hvc-nc_hybrid", "ra-arco-hvc-nc_hybrid")
 CONFIG_DB = {n: HYBRID_DB for n in CONFIGS}   # every config here uses the hybrid cisTarget database
@@ -48,13 +65,34 @@ def write_parameter_table():
         for section in base.BASE_PARAMS:
             row.update(p[section])
         row.update(gex_anndata=base.GEX_DEFAULT, n_topics=20, region_sets="region_sets", cistarget_db=CONFIG_DB[n][1],
-                   shared_upstream="yes" if n in base.SHARED_UPSTREAM else "no")
+                   shared_upstream="yes" if n in base.SHARED_UPSTREAM else ("ACC_GEX only" if n in SHARED_ACC_GEX_ONLY else "no"))
         row["changed_from_hybrid_all_config1"] = ",".join(
             k for s in base.BASE_PARAMS for k, v in p[s].items() if v != ref[s][k]) or "-"
         rows.append(row)
     cols = list(rows[0])
     (HERE / "config_parameters.tsv").write_text(
         "\t".join(cols) + "\n" + "".join("\t".join(str(r[c]) for c in cols) + "\n" for r in rows))
+
+
+def render(n, overrides):
+    """base.render(), with ACC_GEX.h5mu taken from shared/outs (and no full MuData, as in config2) for the configs in SHARED_ACC_GEX_ONLY."""
+    y = base.render(n, overrides)
+    if n in SHARED_ACC_GEX_ONLY:
+        own = f'combined_GEX_ACC_mudata: "{base.PRISM_ROOT}/scenicplus/config{n}/outs/ACC_GEX.h5mu"'
+        assert own in y, "ACC_GEX path not found in the rendered config"
+        y = y.replace(own, f'combined_GEX_ACC_mudata: "{base.shared_outs(n)}/ACC_GEX.h5mu"')
+        assert "build_scplus_mudata" not in y
+        y = y.replace("  seed: 666", "  seed: 666\n  build_scplus_mudata: False", 1)
+    return y
+
+
+def precheck(n):
+    shared = base.shared_outs(n)
+    if n in base.SHARED_UPSTREAM:
+        return base.SHARED_PRECHECK.format(shared=shared, args="")
+    if n in SHARED_ACC_GEX_ONLY:
+        return SHARED_ACC_GEX_PRECHECK.format(shared=shared)
+    return ""
 
 
 def main():
@@ -65,13 +103,11 @@ def main():
         (d / "Snakemake" / "config").mkdir(parents=True, exist_ok=True)
         (d / "Snakemake" / "workflow").mkdir(parents=True, exist_ok=True)
         base.CISTARGET_DIR, base.CISTARGET_PREFIX = CONFIG_DB[n]   # render() reads these module globals
-        (d / "Snakemake" / "config" / "config.yaml").write_text(base.render(n, overrides))
+        (d / "Snakemake" / "config" / "config.yaml").write_text(render(n, overrides))
         shutil.copy(src_snakefile, d / "Snakemake" / "workflow" / "Snakefile")
         (d / "run_snakemake.sbatch").write_text(
-            base.SBATCH.format(n=n, cpus=base.N_CPU, prism_cfg=f"{base.PRISM_ROOT}/scenicplus/config{n}",
-                               time="08:00:00" if n in base.SHARED_UPSTREAM else "12:00:00",
-                               precheck=base.SHARED_PRECHECK.format(shared=f"{base.PRISM_ROOT}/scenicplus/shared/outs")
-                               if n in base.SHARED_UPSTREAM else "").replace("scenicplus_hybrid_config", "scenicplus_gaba_hybrid_config"))
+            base.SBATCH.format(n=n, cpus=base.N_CPU, prism_cfg=f"{base.PRISM_ROOT}/scenicplus/config{n}", time=TIME[n],
+                               precheck=precheck(n)).replace("scenicplus_hybrid_config", "scenicplus_gaba_hybrid_config"))
         print("wrote", d)
 
 
