@@ -1,0 +1,13 @@
+---
+title: "SCENIC+ Analysis - config37 (hybrid labels)"
+format: html
+params:
+  working_dir: "/ra-arco-hvc-nc_hybrid"
+  out_dir_base: "~/ssd/rstudio/multiome/motor-pathway/scenicplus/motor-pathway_scenicplus_v2_hybrid_config37"
+  obj_fname: "/ssd/brad/rstudio/multiome/song-system-grn/multiome/seurat/reduction_viz/combined_all_umap_hybrid/obj_clustered.qs2"
+  configs: ["config37"]    # single-config report; the sweep wrappers (all.qmd, glut.qmd) live on grn-dev
+  tf_umaps: false
+---
+
+```{r child='scenicplus_hybrid_all_template.qmd'}
+```

@@ -1,0 +1,7 @@
+dataset,config,kind,n_regions,n_TF,AR_cistrome,NR3C2_cistrome,shared,pct_of_AR_in_NR3C2,jaccard,rank_of_NR3C2_by_jaccard,median_jaccard_AR_vs_all,top5_similar_to_AR,MAFB_regions,MAFB_regions_in_AR_cistrome,MAFB_regions_in_NR3C2_cistrome,NR3C2toMAFB_regions,NR3C2toMAFB_in_AR_cistrome
+RA_run2,1,direct,157899,390,3884,3884,3884,100.0,1.0,4/389,0.0023,"VDR,NR1I2,NR3C2,ZNF626,PGR",7,0,0,2,0
+RA_run2,1,extended,141078,568,6606,6606,6606,100.0,1.0,2/567,0.0039,"NR3C2,VDR,NANOG,ESR1,ESR2",7,2,2,2,2
+RA_run2,2,direct,234757,390,9698,9698,9698,100.0,1.0,4/389,0.0069,"ZNF626,NR1I2,NR3C2,VDR,PGR",7,2,2,2,2
+RA_all,1,direct,150368,459,3514,3514,3514,100.0,1.0,4/458,0.0023,"ZNF626,NR1I2,NR3C2,VDR,PGR",5,0,0,0,0
+RA_all,1,extended,140681,639,6177,4858,4858,78.6,0.786,2/638,0.0047,"NR3C2,ESR2,NANOG,VDR,GFI1",5,0,0,0,0
+RA_all,2,direct,219566,459,8775,8775,8775,100.0,1.0,3/458,0.006,"VDR,NR3C2,NR1I2,ZNF626,PGR",6,1,1,1,1

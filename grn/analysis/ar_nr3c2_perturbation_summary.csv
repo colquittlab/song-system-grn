@@ -1,0 +1,17 @@
+TF,mode,cluster,n_targets,n_targets_scored,MAFB_log2FC,own_targets_median_log2FC,own_targets_pct_changed_gt0p1,own_targets_max_abs,kind,near,n_arrows,cos_with_RA_to_C1H1_axis
+AR,KD,Glut-CACNA1H-RA,265.0,249.0,-0.0,-0.1601,70.6,0.992,effect,,,
+AR,KD,Glut-CACNA1H-1,265.0,182.0,0.0,-0.041,10.6,0.283,effect,,,
+AR,OE,Glut-CACNA1H-RA,265.0,235.0,0.001,0.889,85.7,7.562,effect,,,
+AR,OE,Glut-CACNA1H-1,265.0,173.0,0.0,1.237,63.8,7.163,effect,,,
+NR3C2,KD,Glut-CACNA1H-RA,1024.0,1011.0,-0.1,-0.2954,93.2,2.407,effect,,,
+NR3C2,KD,Glut-CACNA1H-1,1024.0,943.0,-0.012,-0.1573,69.2,1.361,effect,,,
+NR3C2,OE,Glut-CACNA1H-RA,1024.0,1008.0,0.119,0.7889,96.0,5.607,effect,,,
+NR3C2,OE,Glut-CACNA1H-1,1024.0,943.0,0.297,1.0443,90.2,6.903,effect,,,
+AR,KD,,,,,,,,flow,RA,101.0,0.46
+AR,KD,,,,,,,,flow,C1H-1,85.0,0.92
+AR,OE,,,,,,,,flow,RA,101.0,0.39
+AR,OE,,,,,,,,flow,C1H-1,116.0,-0.24
+NR3C2,KD,,,,,,,,flow,RA,102.0,0.46
+NR3C2,KD,,,,,,,,flow,C1H-1,120.0,0.29
+NR3C2,OE,,,,,,,,flow,RA,98.0,-0.48
+NR3C2,OE,,,,,,,,flow,C1H-1,122.0,-0.56
