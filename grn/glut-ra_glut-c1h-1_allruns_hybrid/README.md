@@ -21,7 +21,7 @@ SCENIC+ on **Glut-CACNA1H-RA vs Glut-CACNA1H-1, all runs (the hybrid labels of G
    region-to-gene fit: run `scenicplus/submit_all.sh 1` on prism, then `scenicplus/prepare_shared_upstream.sh`, then `scenicplus/submit_all.sh 2`.
    **Configs 3 and 4** test the region-to-gene search space: config2 with up to 250 kb (config3) or 500 kb (config4) upstream and downstream of each
    gene, instead of the default 150 kb. They reuse only config1's accessibility+expression object (`shared/outs/ACC_GEX.h5mu`) and compute their own
-   search space, region-to-gene fit and everything after it (12 h and 24 h job limits; the fit grows with the search-space width). With `shared/outs`
+   search space, region-to-gene fit and everything after it (12 h job limits, the medium partition's maximum; each took ~75 min, the region-to-gene fit ~21 min). With `shared/outs`
    in place on prism: `scenicplus/submit_all.sh 3 4`. Compare 2 -> 3 -> 4 for the effect of the search space alone.
    Helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) are the glut run's with this root.
 

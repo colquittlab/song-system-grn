@@ -3,7 +3,7 @@
 #SBATCH --partition=medium
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=600G
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=logs/scenicplus_config4_%j.out
 #SBATCH --error=logs/scenicplus_config4_%j.err
 # No --account: prism doesn't need one here. --mem/--time are set by hand, not measured; tf_to_gene and

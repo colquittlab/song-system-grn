@@ -21,7 +21,7 @@ SCENIC+ on **GABAergic neurons**, hybrid labels (`cluster_hybrid`). Derived from
    region-to-gene fit: run `scenicplus/submit_all.sh 1` on prism, then `scenicplus/prepare_shared_upstream.sh`, then `scenicplus/submit_all.sh 2`.
    **Configs 3 and 4** test the region-to-gene search space: config2 with up to 250 kb (config3) or 500 kb (config4) upstream and downstream of each
    gene, instead of the default 150 kb. They reuse only config1's accessibility+expression object (`shared/outs/ACC_GEX.h5mu`) and compute their own
-   search space, region-to-gene fit and everything after it (12 h and 24 h job limits). With `shared/outs` in place on prism:
+   search space, region-to-gene fit and everything after it (12 h job limits, the medium partition's maximum). With `shared/outs` in place on prism:
    `scenicplus/submit_all.sh 3 4`. Same design as `glut-ra_glut-c1h-1_allruns_hybrid` configs 3-4; compare 2 -> 3 -> 4.
    Helpers (`submit_all.sh`, `link_results_to_hdd.sh`, `prepare_shared_upstream.sh`) are the glut run's with this root.
 

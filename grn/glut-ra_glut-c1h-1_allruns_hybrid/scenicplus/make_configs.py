@@ -46,7 +46,7 @@ CONFIGS.update({n: {"params_data_preparation": {"search_space_upstream": ss, "se
 # configs that take only ACC_GEX.h5mu from shared/outs (not the search space or the region-to-gene fit)
 SHARED_ACC_GEX_ONLY = set(SEARCH_SPACE)
 # wall time: the region-to-gene GBM grows with the number of candidate regions per gene, roughly with the search-space width (not measured here)
-TIME = {1: "12:00:00", 2: "08:00:00", 3: "12:00:00", 4: "24:00:00"}
+TIME = {1: "12:00:00", 2: "08:00:00", 3: "12:00:00", 4: "12:00:00"}   # the medium partition allows at most 12 h
 SHARED_ACC_GEX_PRECHECK = """# ACC_GEX.h5mu comes from config1 via prepare_shared_upstream.sh (the search space and region-to-gene fit are this config's own);
 # without it Snakemake would silently rebuild the accessibility + expression object.
 test -s {shared}/ACC_GEX.h5mu || {{ echo "missing shared input {shared}/ACC_GEX.h5mu -- run prepare_shared_upstream.sh first" >&2; exit 1; }}
