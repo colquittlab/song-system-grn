@@ -1,0 +1,4 @@
+lib,dox,tf,cells,plasmid_pos,mean_umi_in_pos,rate_per_10k_umi,p_miss_median_glut,expected_ambient_pos,ambient_pos_frac,glut_obs_pos_frac,glut_implied_true_frac,glut_neg_contamination
+EMX2p,plus,EMX2,1395,70,1.66,1.85,0.569,31,0.443,0.0535,0.12,0.0705
+MAFBn,minus,MAFB,871,52,1.83,2.22,0.35,18.6,0.357,0.0673,0.108,0.0434
+MAFBp,plus,MAFB,1121,64,1.31,0.895,0.564,6.48,0.101,0.0947,0.232,0.152

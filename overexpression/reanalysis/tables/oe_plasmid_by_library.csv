@@ -1,0 +1,4 @@
+lib,dox,tf,cells,median_umi,pct_mNG,pct_tf_tg,pct_mScarlet,tf_tg_umi_per_10k,mScarlet_umi_per_10k,mNG_umi_per_10k,tf_tg_umi_per_pos_cell,inducible_among_mNG
+EMX2p,plus,EMX2,1395,2684,0.358,2.724,2.509,0.093,0.128,0.014,1.211,0.4
+MAFBn,minus,MAFB,871,4385,1.378,3.444,1.607,0.151,0.042,0.031,2.133,0.083
+MAFBp,plus,MAFB,1121,4877,0.268,4.46,1.07,0.117,0.021,0.007,1.36,0

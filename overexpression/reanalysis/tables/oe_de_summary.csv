@@ -1,0 +1,8 @@
+contrast,genes,padj_lt_0.05,padj_lt_0.1,pvalue_lt_0.001,transgene_tf_lfc
+within_EMX2p,7515,2,2,3,-0.106
+within_MAFBn,8249,0,0,1,-1.067
+within_MAFBp,8364,1,1,4,0.457
+mafb_dox_did,10210,0,0,4,1.48
+mafb_plus_within_nested,10210,1,1,4,0.513
+mafb_minus_within_nested,10210,0,0,2,-0.966
+mafb_dox_all,10420,14,18,28,0.186
