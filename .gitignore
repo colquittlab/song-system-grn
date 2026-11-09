@@ -50,3 +50,6 @@ ArchRLogs/
 # Figure panel scripts (figures/<figure>/): regenerated outputs, not tracked
 figures/*/output/
 __pycache__/
+
+# Supplementary table workbooks (regenerate with tables/export_supplementary_tables.py)
+tables/output/
