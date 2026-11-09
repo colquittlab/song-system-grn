@@ -1,15 +1,19 @@
 # Supplementary tables
 
-`export_supplementary_tables.py` writes one `.xlsx` workbook per supplementary table listed in
-the Google Sheet "adult-multiome_science_tables". Each workbook opens with a README sheet that
-records its source files, method, thresholds and the commit that produced it.
+`export_supplementary_tables.py` exports each supplementary table listed in the Google Sheet
+"adult-multiome_science_tables". By default (as Science requires) each table is a folder of CSV
+files, one per component, with a `README.txt` recording its source files, method, thresholds and the
+commit that produced it. `--format xlsx` instead writes one workbook per table (README sheet first);
+`--format both` writes both.
 
 ```bash
-conda run -n cpdb python tables/export_supplementary_tables.py            # all nine
-conda run -n cpdb python tables/export_supplementary_tables.py --only 07  # one table
+conda run -n cpdb python tables/export_supplementary_tables.py                  # all nine, CSV
+conda run -n cpdb python tables/export_supplementary_tables.py --only 07        # one table
+conda run -n cpdb python tables/export_supplementary_tables.py --format xlsx    # workbooks
 ```
 
-Output goes to `<SSG_DATA_ROOT>/tables/output/` (gitignored); override with `--out` or `SSG_TABLE_OUT`.
+Output goes to `<SSG_DATA_ROOT>/tables/output/` (CSV under `csv/`; gitignored); override with
+`--out` or `SSG_TABLE_OUT`. CSVs are UTF-8 with a header row; missing values are empty fields.
 Inputs are read from `SSG_DATA_ROOT` (default: the main checkout, because most inputs are
 gitignored or untracked analysis outputs that exist only there) and `SSG_SCENICPLUS_ROOT`.
 

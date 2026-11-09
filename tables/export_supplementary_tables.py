@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-"""Export the paper's supplementary tables, one .xlsx workbook per table.
+"""Export the paper's supplementary tables as CSV (default) or one .xlsx workbook per table.
 
-The table list follows the Google Sheet "adult-multiome_science_tables". Each
+The table list follows the Google Sheet "adult-multiome_science_tables". CSV output is a
+folder per table with one CSV per sheet and a README.txt. Each
 workbook opens with a README sheet giving the source files, the method and
 thresholds, and the git commit of this script, followed by one or more data
 sheets.
@@ -10,7 +11,7 @@ Inputs are read read-only. Most of them are gitignored or untracked analysis
 outputs that exist only in the main working tree, so paths resolve against
 DATA_ROOT (the main checkout by default), not the checkout this script runs from.
 
-    python tables/export_supplementary_tables.py [--out DIR] [--only 01,07]
+    python tables/export_supplementary_tables.py [--format csv|xlsx|both] [--out DIR] [--only 01,07]
 
 Environment overrides: SSG_DATA_ROOT, SSG_SCENICPLUS_ROOT, SSG_TABLE_OUT.
 Requires pandas and xlsxwriter (the `cpdb` conda env has both).
@@ -97,7 +98,7 @@ def need(*paths):
     return paths
 
 
-class Book:
+class XlsxBook:
     """One workbook: README first, then data sheets written row by row."""
 
     def __init__(self, path, title, description, sources, notes=()):
@@ -156,6 +157,48 @@ class Book:
         self.wb.close()
         print(f"wrote {self.path} ({self.path.stat().st_size / 1e6:.1f} MB): "
               + ", ".join(f"{n}={r}" for n, r, _, _ in self._sheets))
+
+
+class CsvBook:
+    """Same interface as XlsxBook: a folder per table, one UTF-8 CSV per sheet, README.txt."""
+
+    def __init__(self, path, title, description, sources, notes=()):
+        self.dir = path.with_suffix("")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        for old in self.dir.glob("*.csv"):
+            old.unlink()
+        self.lines = [title, "=" * len(title), "", description, ""]
+        self._block("Sources", [str(s) for s in sources])
+        self._block("Notes", list(notes))
+        self._sheets = []
+
+    def _block(self, label, lines):
+        if lines:
+            self.lines += [label + ":"] + [f"  - {l}" for l in lines] + [""]
+
+    def sheet(self, name, df, description=""):
+        f = self.dir / f"{name}.csv"
+        df.to_csv(f, index=False, na_rep="", encoding="utf-8")
+        self._sheets.append((f.name, len(df), len(df.columns), description))
+
+    def close(self):
+        self._block("Files", [f"{n}: {r:,} rows x {c} columns" + (f". {d}" if d else "")
+                              for n, r, c, d in self._sheets])
+        self._block("Provenance", [
+            f"Generated {datetime.date.today().isoformat()} by tables/export_supplementary_tables.py "
+            f"(song-system-grn, commit {git_commit()}).",
+            "Missing values are empty fields."])
+        (self.dir / "README.txt").write_text("\n".join(self.lines), encoding="utf-8")
+        size = sum(p.stat().st_size for p in self.dir.iterdir()) / 1e6
+        print(f"wrote {self.dir}/ ({size:.1f} MB): "
+              + ", ".join(f"{n}={r}" for n, r, _, _ in self._sheets))
+
+
+BOOK_CLASS = CsvBook
+
+
+def Book(*args, **kwargs):
+    return BOOK_CLASS(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------- tables
@@ -233,7 +276,7 @@ def deg_book(out):
              [src, DEG_DIR.parent / "song-surround_deg_glut_hybrid.qmd"],
              ["Significance threshold used in the paper: p_val_adj < 0.1 (heatmaps additionally "
               "require |avg_log2FC| >= 1).",
-              "All tested genes are included; one sheet per song/non-song pair."]
+              "All tested genes are included; one table (CSV file or workbook sheet) per song/non-song pair."]
              + [f"{s} vs {n}" for s, n in SONG_PAIRS.items()])
     for song, non in SONG_PAIRS.items():
         sub = (df[df["compare"] == song].drop(columns="compare")
@@ -280,7 +323,7 @@ def dar_book(out):
              "DARs are FDR < 0.01 and |Log2FC| >= 0.6. Coordinates are 0-based, half-open (BED) on "
              "the zebra finch genome used for the multiome analysis.",
              [*[f for *_, f in files], inter, DATA_ROOT / "multiome/archr/peaks_glut.qmd"],
-             ["One sheet per pair and direction: _up = more accessible in the song type, _down = less.",
+             ["One table (CSV file or workbook sheet) per pair and direction: _up = more accessible in the song type, _down = less.",
               "Log2FC is song type / non-song type.",
               "intersect: regions shared across the three song types' DAR sets (both directions).",
               "The repository's *_union.bed is a plain concatenation of the six pair files and is "
@@ -366,12 +409,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--only", default="", help="comma-separated table numbers, e.g. 01,07")
+    ap.add_argument("--format", choices=["csv", "xlsx", "both"], default="csv",
+                    help="csv: <out>/csv/<table>/<sheet>.csv + README.txt (default); "
+                         "xlsx: <out>/<table>.xlsx")
     a = ap.parse_args()
-    a.out.mkdir(parents=True, exist_ok=True)
     keys = a.only.split(",") if a.only else list(TABLES)
-    for k in keys:
-        fname, fn = TABLES[k]
-        fn(a.out / fname)
+    global BOOK_CLASS
+    for fmt in (["csv", "xlsx"] if a.format == "both" else [a.format]):
+        BOOK_CLASS = CsvBook if fmt == "csv" else XlsxBook
+        out = a.out / "csv" if fmt == "csv" else a.out
+        out.mkdir(parents=True, exist_ok=True)
+        for k in keys:
+            fname, fn = TABLES[k]
+            fn(out / fname)
 
 
 if __name__ == "__main__":
