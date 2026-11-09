@@ -38,8 +38,6 @@ DEFAULT_OUT = Path(os.environ.get("SSG_TABLE_OUT", DATA_ROOT / "tables" / "outpu
 INTEG = DATA_ROOT / "snrna/integration"
 COMPOSITE = INTEG / "composite_scoring/results"
 GLUT_COMPOSITE = INTEG / "gg_glutonly_hybrid/composite/results/composite_plusSATB2_noPre"
-GLUT_SONG_STATS = (INTEG / "gg_glutonly_hybrid/song_vs_nonsong_plusSATB2_noPre/"
-                   "song_vs_nonsong_plusSATB2_noPre_stats.csv")
 LABEL_LOOKUP = DATA_ROOT / "snrna/naming/hybrid_division_naming/hybrid_label_lookup.csv"
 DEG_DIR = DATA_ROOT / "snrna/deg/song-surround_deg_glut_hybrid"
 DAR_BEDS = DATA_ROOT / "multiome/archr/peaks_glut_hybrid/beds"
@@ -81,14 +79,6 @@ def relabel(names):
     if dup:
         raise ValueError(f"relabeling produced duplicate finch clusters: {dup}")
     return out
-
-
-def read_matrix(path, relabel_rows=False):
-    df = pd.read_csv(path, index_col=0)
-    if relabel_rows:
-        df.index = relabel(df.index)
-    df.index.name = "finch_cluster"
-    return df.reset_index()
 
 
 def need(*paths):
@@ -227,26 +217,14 @@ def integration_book(out, key, species, ref, figure):
 
 
 def glut_integration_book(out):
-    calls, conf, agree, per = need(GLUT_COMPOSITE / "composite_calls_summary.csv",
-                                   GLUT_COMPOSITE / "composite_confidence_matrix.csv",
-                                   GLUT_COMPOSITE / "composite_agreement_count_top2_matrix.csv",
-                                   GLUT_COMPOSITE / "per_method_top_calls.csv")
-    (stats,) = need(GLUT_SONG_STATS)
+    (calls,) = need(GLUT_COMPOSITE / "composite_calls_summary.csv")
     b = Book(out, "Glutamatergic finch-chicken label transfers",
              "Correspondence of finch glutamatergic neuron types with chicken (Zaremba et al. 2025) "
              "excitatory types (fig2-s3). Composite of GSI, SAMap (SCT) and Seurat RPCA label transfer "
              "on the plusSATB2_noPre glutamatergic subset (Glut-DACH2-HVCra-Int excluded).",
-             [calls, conf, agree, per, stats],
-             [CALLS_NOTE + " group marks song vs non-song finch types.",
-              "agreement_top2_matrix: number of methods placing the pair in their reciprocal top 2 "
-              "(heatmap dots).",
-              "song_vs_nonsong: per method, best-match confidence of song vs non-song types; "
-              "Mann-Whitney U test with Cliff's delta. RPCA rows are by k.anchor."])
+             [calls],
+             [CALLS_NOTE + " group marks song vs non-song finch types."])
     b.sheet("composite_calls", pd.read_csv(calls).rename(columns={"query": "finch_cluster"}))
-    b.sheet("confidence_matrix", read_matrix(conf), "Finch types (rows) x chicken types (columns)")
-    b.sheet("agreement_top2_matrix", read_matrix(agree))
-    b.sheet("per_method_top_calls", pd.read_csv(per))
-    b.sheet("song_vs_nonsong", pd.read_csv(stats))
     b.close()
 
 
