@@ -262,15 +262,16 @@ def deg_book(out):
              [src, DEG_DIR.parent / "song-surround_deg_glut_hybrid.qmd"],
              ["Significance threshold used in the paper: p_val_adj < 0.1 (heatmaps additionally "
               "require |avg_log2FC| >= 1).",
-              "All tested genes are included; one table (CSV file or workbook sheet) per song/non-song pair."]
+              "All tested genes are included, in a single table. contrast names the song type "
+              "and the non-song type it was tested against (song vs non-song); rows are grouped "
+              "by contrast and sorted by p_val_adj within each. The five contrasts are:"]
              + [f"{s} vs {n}" for s, n in SONG_PAIRS.items()])
-    for song, non in SONG_PAIRS.items():
-        sub = (df[df["compare"] == song].drop(columns="compare")
-               .assign(song_type=song, nonsong_type=non)
-               .sort_values("p_val_adj", na_position="last"))
-        sub = sub[["gene", "song_type", "nonsong_type", "avg_log2FC", "lfcSE", "baseMean",
-                   "p_val", "p_val_adj"]]
-        b.sheet(f"{SHORT[song]}_vs_{non.replace('Glut-', '')}", sub)
+    order = {s: i for i, s in enumerate(SONG_PAIRS)}
+    df = (df.assign(contrast=df["compare"].map(lambda s: f"{s} vs {SONG_PAIRS[s]}"),
+                    _o=df["compare"].map(order))
+          .sort_values(["_o", "p_val_adj"], na_position="last", kind="stable"))
+    df = df[["contrast", "gene", "avg_log2FC", "lfcSE", "baseMean", "p_val", "p_val_adj"]]
+    b.sheet("glut_deg", df)
     b.close()
 
 
