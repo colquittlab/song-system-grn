@@ -288,20 +288,31 @@ def dar_book(out):
              "DARs are FDR < 0.01 and |Log2FC| >= 0.6. Coordinates are 0-based, half-open (BED) on "
              "the zebra finch genome used for the multiome analysis.",
              [*[f for *_, f in files], inter, DATA_ROOT / "multiome/archr/peaks_glut.qmd"],
-             ["One table (CSV file or workbook sheet) per pair and direction: _up = more accessible in the song type, _down = less.",
-              "Log2FC is song type / non-song type.",
-              "intersect: regions shared across the three song types' DAR sets (both directions).",
-              "The repository's *_union.bed is a plain concatenation of the six pair files and is "
-              "not repeated here.",
+             ["All DARs of the three contrasts in a single table. contrast names the song type and "
+              "the non-song type it was compared with (song vs non-song). The three contrasts are: "
+              + "; ".join(f"{s} vs {n}" for s, n in pairs) + ".",
+              "Log2FC is song type / non-song type. direction: up = more accessible in the song "
+              "type, down = less accessible.",
+              "shared_all_song_types: TRUE if the region is a DAR (either direction) in all three "
+              "contrasts (the repository's *_intersect.bed).",
+              "Rows are grouped by contrast, then direction (up first), in genomic order within each.",
+              "The strand column of the BED files (always '*') is omitted; the repository's "
+              "*_union.bed is a plain concatenation of the six pair files and is not repeated.",
               "There is no LMAN pair in the multiome data."])
+    shared = set(pd.read_csv(inter, sep="\t", header=None)[3])
+    parts = []
     for s, n, d, f in files:
         df = pd.read_csv(f, sep="\t", header=None,
                          names=["chrom", "start", "end", "name", "Log2FC", "strand"])
-        df.insert(4, "song_type", s)
-        df.insert(5, "nonsong_type", n)
-        b.sheet(f"{SHORT[s]}_{'up' if d == '1' else 'down'}", df)
-    df = pd.read_csv(inter, sep="\t", header=None, names=["chrom", "start", "end", "name"])
-    b.sheet("intersect", df)
+        df.insert(0, "contrast", f"{s} vs {n}")
+        df["direction"] = "up" if d == "1" else "down"
+        parts.append(df)
+    df = pd.concat(parts, ignore_index=True)
+    assert shared <= set(df["name"]), "intersect regions missing from the pair DARs"
+    df["shared_all_song_types"] = df["name"].isin(shared)
+    df = df[["contrast", "chrom", "start", "end", "name", "Log2FC", "direction",
+             "shared_all_song_types"]]
+    b.sheet("song_nonsong_dars", df)
     b.close()
 
 
