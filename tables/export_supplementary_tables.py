@@ -211,32 +211,18 @@ CALLS_NOTE = ("composite_calls: one row per finch cluster. top_rank_agg is the c
 
 def integration_book(out, key, species, ref, figure):
     d = COMPOSITE / f"{key}_hybrid"
-    calls, conf, agree = need(d / "composite_calls.csv", d / "composite_confidence_matrix.csv",
-                              d / "composite_agreement_count_matrix.csv")
-    cs = COMPOSITE / "class_summary"
-    summ, tests = need(cs / "class_summary_table.csv", cs / "class_summary_tests.csv")
-    pair = f"Finch × {species}"
+    (calls,) = need(d / "composite_calls.csv")
     b = Book(out, f"Finch-{species} integration labels",
              f"Cross-species correspondence of adult zebra finch snRNA-seq cell types ({figure}) with "
              f"{ref}. Calls combine four methods (GSI, SAMap, Seurat CCA, SATURN at weight 0.5) into a "
              f"composite score per finch cluster x {species} cluster.",
-             [calls, conf, agree, summ, tests, LABEL_LOOKUP],
+             [calls, LABEL_LOOKUP],
              [CALLS_NOTE,
               "Finch GABAergic clusters were renamed to the hybrid labels with hybrid_label_lookup.csv, "
-              "as the figures do (relabel_finch_clusters()); the source CSVs keep the raw cluster IDs.",
-              "confidence_matrix: heatmap fill. agreement_matrix: number of methods placing the pair "
-              "in their reciprocal top 5 (heatmap dots)."])
+              "as the figures do (relabel_finch_clusters()); the source CSVs keep the raw cluster IDs."])
     df = pd.read_csv(calls)
     df["query"] = relabel(df["query"])
     b.sheet("composite_calls", df.rename(columns={"query": "finch_cluster"}))
-    b.sheet("confidence_matrix", read_matrix(conf, relabel_rows=True),
-            f"Finch clusters (rows) x {species} clusters (columns)")
-    b.sheet("agreement_matrix", read_matrix(agree, relabel_rows=True))
-    s = pd.read_csv(summ)
-    b.sheet("class_summary", s[s["pair"] == pair])
-    t = pd.read_csv(tests)
-    b.sheet("class_tests", t[t["pair"].isin([pair, "chicken vs mouse (paired)"])],
-            "One-sided tests between cell classes (p column)")
     b.close()
 
 
