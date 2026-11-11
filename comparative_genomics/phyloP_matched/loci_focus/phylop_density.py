@@ -24,6 +24,12 @@ highly constrained bases) than Glut-RA activity bases. Reported per span and tra
   per peak       each peak's tail fraction and mean phyloP over its high-difference bases;
                  RA vs G4 compared with Mann–Whitney (bases within a peak are not
                  independent, so the per-peak test is the one to quote)
+  per base       the pooled (base-weighted) statistics -- share of high-difference bases
+                 with phyloP > 1, 2, 3, 4 and the pooled mean -- G4 minus RA, with a 95%
+                 interval and two-sided p from a peak-cluster bootstrap: peaks are drawn
+                 with replacement and keep all their bases (in both contrasts), so the
+                 within-element correlation of bases is respected. This is the test for
+                 "more highly constrained bases overall", as the density shows it.
 
 Centring. By default each window is centred on the 501-bp ArchR element. With
 --center snapatac it is centred as Fig. 6E's are, on a SnapATAC2 cluster peak midpoint
@@ -60,6 +66,7 @@ PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GA
 COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
 PAD, K, THR = 1000, 11, 5.0
 TAILS = (2.0, 3.0)
+BOOT_Q = (1.0, 2.0, 3.0, 4.0); NBOOT = 2000
 SNAP = "/private/warm-archive/colquittlab/assembly/tracks_lark/snapatac_peaks"
 UPCL = {"RA_over_Arco": "Glut-RA", "GABA4_over_GABA1": "GABA-4-1"}
 SPAN_LABEL = {"domain": "DHX35–TOP1 domain", "1p5mb": "MAFB ±1.5 Mb", "gw": "genome-wide"}
@@ -124,6 +131,28 @@ def centre(n, c, s, e, cls, SI, bws, size):
     return s + (e - s) // 2, "element centre"
 
 
+def boot(df, t, rng=None):
+    """G4 - RA in base-weighted statistics, peak-cluster bootstrap (bases stay with their peak)"""
+    rng = rng or np.random.default_rng(7)
+    pa, pb = PAIRS                                   # RA pair, G4 pair
+    nA, nB = df[f"nbins|{pa}"].values, df[f"nbins|{pb}"].values
+    stat_cols = [("mean", f"sum|{pa}|{t}", f"sum|{pb}|{t}")] + \
+                [(f"frac>{q:g}", f"n>{q:g}|{pa}|{t}", f"n>{q:g}|{pb}|{t}") for q in BOOT_Q]
+    X = {k: (df[a].values, df[b].values) for k, a, b in stat_cols}
+    obs = {k: xb.sum() / nB.sum() - xa.sum() / nA.sum() for k, (xa, xb) in X.items()}
+    N = len(df); draws = {k: np.empty(NBOOT) for k in X}
+    for i in range(NBOOT):
+        ix = rng.integers(0, N, N); a, b = nA[ix].sum(), nB[ix].sum()
+        for k, (xa, xb) in X.items(): draws[k][i] = xb[ix].sum() / b - xa[ix].sum() / a
+    out = {}
+    for k in X:
+        d = draws[k]; lo, hi = np.percentile(d, [2.5, 97.5])
+        p = min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()) + 1 / NBOOT)
+        out.update({f"base_{k}_RA": X[k][0].sum() / nA.sum(), f"base_{k}_G4": X[k][1].sum() / nB.sum(),
+                    f"base_{k}_diff": obs[k], f"base_{k}_lo": lo, f"base_{k}_hi": hi, f"base_{k}_p": p})
+    return out
+
+
 def run(span, how="element"):
     EL = elem_coords(); CLS = classes(); sfx = "_snapcenter" if how == "snapatac" else ""
     SI = snap_index() if how == "snapatac" else None
@@ -150,6 +179,9 @@ def run(span, how="element"):
                 r[f"phylop|{p}|{t}"] = float(ph[t][m].mean()) if m.any() else np.nan
                 for q in TAILS:
                     r[f"tail{q:g}|{p}|{t}"] = float((ph[t][m] > q).mean()) if m.any() else np.nan
+                # per-peak sufficient statistics for the base-weighted bootstrap
+                r[f"sum|{p}|{t}"] = float(ph[t][m].sum())
+                for q in BOOT_Q: r[f"n>{q:g}|{p}|{t}"] = int((ph[t][m] > q).sum())
                 if m.any(): base[(p, t)].append(ph[t][m])
         for t in PHYLOP: r[f"phylop_center100|{t}"] = float(ph[t][PAD - 50:PAD + 50].mean())
         rows.append(r)
@@ -173,7 +205,8 @@ def run(span, how="element"):
                          rank_biserial=rb, p_mannwhitney=mw.pvalue if mw else np.nan,
                          median_base_RA=np.median(bA) if len(bA) else np.nan,
                          median_base_G4=np.median(bB) if len(bB) else np.nan,
-                         **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()}))
+                         **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()},
+                         **boot(df, t)))
     S = pd.DataFrame(summ)
     S.to_csv(result(f"phylop_density_summary{sfx}.tsv", span), sep="\t", index=False, float_format="%.4g")
     print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
@@ -203,8 +236,9 @@ def main():
             ax.set_ylim(0, ax.get_ylim()[1] * 1.55)          # headroom for the annotation
             s = S[S.track == t].iloc[0]
             ax.set_title(f"{SPAN_LABEL[sp]} · {t}", loc="left", pad=2)
-            ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s.tail2_bases_RA:.0f}% / {100*s.tail2_bases_G4:.0f}%"
-                    f"\nper-peak p = {s.tail2_p_peak:.2g}",
+            ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s['base_frac>2_RA']:.0f}% / {100*s['base_frac>2_G4']:.0f}%"
+                    f"\nΔ {100*s['base_frac>2_diff']:+.1f} [{100*s['base_frac>2_lo']:+.1f}, {100*s['base_frac>2_hi']:+.1f}]"
+                    ("\nbootstrap p < 0.001" if s['base_frac>2_p'] < 1e-3 else f"\nbootstrap p = {s['base_frac>2_p']:.2g}"),
                     transform=ax.transAxes, ha="right", va="top", fontsize=4.5, color="#4A525C")
             for k in ("top", "right"): ax.spines[k].set_visible(False)
             if i == len(spans) - 1: ax.set_xlabel("phyloP (11-bp rolling mean)")
