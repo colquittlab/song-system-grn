@@ -238,7 +238,7 @@ def main():
             ax.set_title(f"{SPAN_LABEL[sp]} · {t}", loc="left", pad=2)
             ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s['base_frac>2_RA']:.0f}% / {100*s['base_frac>2_G4']:.0f}%"
                     f"\nΔ {100*s['base_frac>2_diff']:+.1f} [{100*s['base_frac>2_lo']:+.1f}, {100*s['base_frac>2_hi']:+.1f}]"
-                    ("\nbootstrap p < 0.001" if s['base_frac>2_p'] < 1e-3 else f"\nbootstrap p = {s['base_frac>2_p']:.2g}"),
+                    + ("\nbootstrap p < 0.001" if s['base_frac>2_p'] < 1e-3 else f"\nbootstrap p = {s['base_frac>2_p']:.2g}"),
                     transform=ax.transAxes, ha="right", va="top", fontsize=4.5, color="#4A525C")
             for k in ("top", "right"): ax.spines[k].set_visible(False)
             if i == len(spans) - 1: ax.set_xlabel("phyloP (11-bp rolling mean)")
