@@ -8,4 +8,4 @@
 set -euo pipefail
 source /private/home/bcolquit/miniforge3/etc/profile.d/conda.sh; set +u; conda activate hic; set -u
 cd /private/groups/colquittlab/song-system-grn-worktrees/loci-focus/comparative_genomics/phyloP_matched/loci_focus
-python phylop_density.py domain 1p5mb gw
+python phylop_density.py ${CENTER:+--center $CENTER} domain 1p5mb gw

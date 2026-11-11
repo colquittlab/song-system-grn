@@ -25,8 +25,15 @@ highly constrained bases) than Glut-RA activity bases. Reported per span and tra
                  RA vs G4 compared with Mann–Whitney (bases within a peak are not
                  independent, so the per-peak test is the one to quote)
 
+Centring. By default each window is centred on the 501-bp ArchR element. With
+--center snapatac it is centred as Fig. 6E's are, on a SnapATAC2 cluster peak midpoint
+(computeMatrix reference-point centre): an RA_over_Arco element takes the Glut-RA.bed peak
+it overlaps most, a GABA4_over_GABA1 element the GABA-4-1.bed peak; an element with no
+overlapping peak falls back to the summit of its up cluster's fragment signal (21-bp
+rolling mean) within the element. Outputs then carry a _snapcenter suffix.
+
 Spans: domain (default), 1p5mb, gw (genome-wide reference).
-    python phylop_density.py [domain 1p5mb gw]
+    python phylop_density.py [--center snapatac] [domain 1p5mb gw]
 Writes results/<span>/phylop_density_{peaks,summary}.tsv and
 results/compare_mafb_spans/fig_phylop_density.{png,pdf}.
 """
@@ -53,6 +60,8 @@ PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GA
 COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
 PAD, K, THR = 1000, 11, 5.0
 TAILS = (2.0, 3.0)
+SNAP = "/private/warm-archive/colquittlab/assembly/tracks_lark/snapatac_peaks"
+UPCL = {"RA_over_Arco": "Glut-RA", "GABA4_over_GABA1": "GABA-4-1"}
 SPAN_LABEL = {"domain": "DHX35–TOP1 domain", "1p5mb": "MAFB ±1.5 Mb", "gw": "genome-wide"}
 
 
@@ -92,8 +101,32 @@ def tail(df, bA, bB, t, q):
             f"tail{q:g}_p_peak": mw.pvalue if mw else np.nan}
 
 
-def run(span):
-    EL = elem_coords(); CLS = classes()
+def snap_index():
+    """cluster -> chrom -> sorted (start, end) arrays of SnapATAC2 peaks"""
+    out = {}
+    for cl in set(UPCL.values()):
+        d = pd.read_csv(f"{SNAP}/{cl}.bed", sep="\t", header=None, usecols=[0, 1, 2], names=["c", "s", "e"])
+        out[cl] = {c: (g.s.values, g.e.values) for c, g in d.sort_values(["c", "s"]).groupby("c")}
+    return out
+
+
+def centre(n, c, s, e, cls, SI, bws, size):
+    """(centre, how): SnapATAC peak midpoint, else fragment summit within the element"""
+    cl = UPCL.get(cls)
+    if cl and c in SI[cl]:
+        S, E = SI[cl][c]; i0 = max(0, np.searchsorted(S, s) - 50); i1 = np.searchsorted(S, e)
+        ov = [(min(E[i], e) - max(S[i], s), i) for i in range(i0, i1) if E[i] > s and S[i] < e]
+        if ov:
+            i = max(ov)[1]; return (S[i] + E[i]) // 2, "snapatac"
+    if cl:
+        f = rollmean(vals(bws[cl], c, s, e, size[cl][c]), 21)
+        if f.max() > 0: return s + int(np.argmax(f)), "fragment summit"
+    return s + (e - s) // 2, "element centre"
+
+
+def run(span, how="element"):
+    EL = elem_coords(); CLS = classes(); sfx = "_snapcenter" if how == "snapatac" else ""
+    SI = snap_index() if how == "snapatac" else None
     if span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
     else: names = list(EL)
@@ -102,11 +135,14 @@ def run(span):
     base = {(p, t): [] for p in PAIRS for t in PHYLOP}       # base-level phyloP at high-diff bins
     rows = []
     for i, n in enumerate(sorted(names)):
-        c, s, e = EL[n]; mid = s + (e - s) // 2; a, b = mid - PAD, mid + PAD
+        c, s, e = EL[n]
         if any(c not in size[k] for k in bws): continue
+        mid, via = centre(n, c, s, e, CLS.get(n, ""), SI, bws, size) if SI else (s + (e - s) // 2, "element centre")
+        a, b = mid - PAD, mid + PAD
         ph = {t: rollmean(vals(bws[t], c, a, b, size[t][c])) for t in PHYLOP}
         fr = {k: vals(bws[k], c, a, b, size[k][c]) for k in FRAG}
-        r = dict(peak=n, chrom=c, start=s, end=e, cls=CLS.get(n, ""))
+        r = dict(peak=n, chrom=c, start=s, end=e, cls=CLS.get(n, ""), centre=mid, centred_on=via,
+                 shift=mid - (s + (e - s) // 2))
         for p, (x, y) in PAIRS.items():
             d = rollmean(fr[x] - fr[y]); m = d > THR
             r[f"nbins|{p}"] = int(m.sum())
@@ -119,14 +155,17 @@ def run(span):
         rows.append(r)
         if span == "gw" and i % 5000 == 0: print(f"    {span}: {i}/{len(names)}", flush=True)
     df = pd.DataFrame(rows)
-    df.to_csv(result("phylop_density_peaks.tsv", span), sep="\t", index=False, float_format="%.4g")
+    df.to_csv(result(f"phylop_density_peaks{sfx}.tsv", span), sep="\t", index=False, float_format="%.4g")
+    if SI is not None:
+        print(f"  {span}: centred on " + ", ".join(f"{k} {v}" for k, v in df.centred_on.value_counts().items())
+              + f"; |shift| median {df['shift'].abs().median():.0f} bp, 90th pct {df['shift'].abs().quantile(.9):.0f} bp", flush=True)
     summ = []
     for t in PHYLOP:
         A, B = (df[f"phylop|{p}|{t}"].dropna().values for p in PAIRS)
         mw = stats.mannwhitneyu(A, B, alternative="two-sided") if len(A) and len(B) else None
         rb = (2 * mw.statistic / (len(A) * len(B)) - 1) if mw else np.nan
         bA, bB = (np.concatenate(base[(p, t)]) if base[(p, t)] else np.array([]) for p in PAIRS)
-        summ.append(dict(span=span, track=t, n_peaks=len(df),
+        summ.append(dict(span=span, centring=how, track=t, n_peaks=len(df),
                          n_peaks_RA=len(A), n_peaks_G4=len(B), n_bases_RA=len(bA), n_bases_G4=len(bB),
                          median_peakmean_RA=np.median(A) if len(A) else np.nan,
                          median_peakmean_G4=np.median(B) if len(B) else np.nan,
@@ -136,14 +175,18 @@ def run(span):
                          median_base_G4=np.median(bB) if len(bB) else np.nan,
                          **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()}))
     S = pd.DataFrame(summ)
-    S.to_csv(result("phylop_density_summary.tsv", span), sep="\t", index=False, float_format="%.4g")
+    S.to_csv(result(f"phylop_density_summary{sfx}.tsv", span), sep="\t", index=False, float_format="%.4g")
     print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
     return df, base, S
 
 
 def main():
-    spans = sys.argv[1:] or ["domain", "1p5mb", "gw"]
-    out = {sp: run(sp) for sp in spans}
+    args = sys.argv[1:]; how = "element"
+    if "--center" in args:
+        i = args.index("--center"); how = args[i + 1]; del args[i:i + 2]
+    sfx = "_snapcenter" if how == "snapatac" else ""
+    spans = args or ["domain", "1p5mb", "gw"]
+    out = {sp: run(sp, how) for sp in spans}
     fig, axs = plt.subplots(len(spans), len(PHYLOP), figsize=(1.45 * len(PHYLOP) + .2, 1.05 * len(spans) + .3),
                             squeeze=False)
     for i, sp in enumerate(spans):
@@ -170,8 +213,8 @@ def main():
     fig.legend(handles=h, loc="lower center", ncol=2, frameon=False, fontsize=5, bbox_to_anchor=(.5, -.01))
     fig.tight_layout(rect=(0, .05, 1, 1), h_pad=.6, w_pad=.6)
     for ext in ("png", "pdf"):
-        fig.savefig(result(f"fig_phylop_density.{ext}", "compare_mafb_spans"), dpi=600)
-    print("  wrote results/compare_mafb_spans/fig_phylop_density.png/.pdf")
+        fig.savefig(result(f"fig_phylop_density{sfx}.{ext}", "compare_mafb_spans"), dpi=600)
+    print(f"  wrote results/compare_mafb_spans/fig_phylop_density{sfx}.png/.pdf")
 
 
 if __name__ == "__main__":
