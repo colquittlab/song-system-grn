@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+"""Fig. 6E phyloP distribution, redone on the loci_focus DAR sets.
+
+deeptools_mafb.qmd (comparative_genomics/deeptools) draws, for the MAFB-linked peaks, the
+density of per-base phyloP at bases where cell-type accessibility differs strongly
+(fragment-signal difference > 5), separately for Glut-RA − Glut-Arco-1 and
+GABA-4-1 − GABA-1-1. Its peaks are SnapATAC2 cluster peaks filtered by ArchR p2g links to
+MAFB, ArchR DARs (FDR < 0.1, Log2FC > 1) and 20–200 kb from the TSS. This script keeps the
+measurement identical and swaps the peaks for the loci_focus DARs: the RA_over_Arco and
+GABA4_over_GABA1 elements (dar_sets: FDR < 0.1, no fold-change cutoff; elements up in both
+dropped) in a span.
+
+Measurement, as in the notebook (computeMatrix reference-point, missing data as zero):
+  ±1,000 bp around each element centre at 1 bp; phyloP and the two fragment differences
+  each smoothed by an 11-bp centred rolling mean (edges left unsmoothed, as
+  zoo::rollmean(fill = NA) then restored); keep bases with difference > 5.
+Tracks: phyloP_avian363_3model_all ("avian all") and phyloP_mamAvi605_3model_all
+("vert. all"); fragment bigwigs Glut-RA, Glut-Arco-1, GABA-4-1, GABA-1-1 (bin 1, unsmoothed).
+
+The Fig. 6E reading is a tail one: GABA-4 activity bases carry a heavier right tail (more
+highly constrained bases) than Glut-RA activity bases. Reported per span and track:
+  tail fraction  share of high-difference bases with smoothed phyloP > 2 and > 3, pooled over
+                 bases (as the density pools them) -- descriptive
+  per peak       each peak's tail fraction and mean phyloP over its high-difference bases;
+                 RA vs G4 compared with Mann–Whitney (bases within a peak are not
+                 independent, so the per-peak test is the one to quote)
+
+Spans: domain (default), 1p5mb, gw (genome-wide reference).
+    python phylop_density.py [domain 1p5mb gw]
+Writes results/<span>/phylop_density_{peaks,summary}.tsv and
+results/compare_mafb_spans/fig_phylop_density.{png,pdf}.
+"""
+import sys, json
+import numpy as np, pandas as pd, pyBigWig
+from scipy import stats
+import matplotlib
+matplotlib.use("Agg")
+matplotlib.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial"], "pdf.fonttype": 42,
+                            "font.size": 5, "axes.titlesize": 6, "axes.labelsize": 6,
+                            "xtick.labelsize": 5, "ytick.labelsize": 5, "axes.linewidth": .4,
+                            "xtick.major.width": .4, "ytick.major.width": .4})
+import matplotlib.pyplot as plt
+
+F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus"
+sys.path.insert(0, F)
+from span import elem_coords, in_domain, wide_elements, result
+
+T = "/private/warm-archive/colquittlab/assembly/tracks_lark"
+PHYLOP = {"avian all": f"{T}/phyloP/phyloP_avian363_3model_all.bw",
+          "vert. all": f"{T}/phyloP/phyloP_mamAvi605_3model_all.bw"}
+FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
+PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
+COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
+PAD, K, THR = 1000, 11, 5.0
+TAILS = (2.0, 3.0)
+SPAN_LABEL = {"domain": "DHX35–TOP1 domain", "1p5mb": "MAFB ±1.5 Mb", "gw": "genome-wide"}
+
+
+def rollmean(x, k=K):
+    """centred rolling mean; the k//2 edge values keep their raw value (zoo fill = NA, restored)"""
+    out = x.copy(); h = k // 2
+    c = np.convolve(x, np.ones(k) / k, mode="valid")
+    out[h:len(x) - h] = c
+    return out
+
+
+def vals(bw, c, s, e, size):
+    s0, e0 = max(0, s), min(e, size)
+    v = np.zeros(e - s, dtype=float)
+    if e0 > s0:
+        x = np.asarray(bw.values(c, s0, e0), dtype=float)
+        v[s0 - s:e0 - s] = np.nan_to_num(x, nan=0.0)
+    return v
+
+
+def classes():
+    cls = {}
+    for l in open(f"{F}/allelem_cls.bed"):
+        x = l.rstrip("\n").split("\t"); cls[x[3]] = x[4]
+    return cls
+
+
+def tail(df, bA, bB, t, q):
+    """pooled and per-peak share of high-difference bases with phyloP > q, RA vs G4"""
+    A, B = (df[f"tail{q:g}|{p}|{t}"].dropna().values for p in PAIRS)
+    mw = stats.mannwhitneyu(B, A, alternative="two-sided") if len(A) and len(B) else None
+    return {f"tail{q:g}_bases_RA": (bA > q).mean() if len(bA) else np.nan,
+            f"tail{q:g}_bases_G4": (bB > q).mean() if len(bB) else np.nan,
+            f"tail{q:g}_peakmean_RA": A.mean() if len(A) else np.nan,
+            f"tail{q:g}_peakmean_G4": B.mean() if len(B) else np.nan,
+            f"tail{q:g}_rank_biserial_G4_vs_RA": (2 * mw.statistic / (len(A) * len(B)) - 1) if mw else np.nan,
+            f"tail{q:g}_p_peak": mw.pvalue if mw else np.nan}
+
+
+def run(span):
+    EL = elem_coords(); CLS = classes()
+    if span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
+    elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
+    else: names = list(EL)
+    bws = {k: pyBigWig.open(p) for k, p in {**PHYLOP, **FRAG}.items()}
+    size = {k: bw.chroms() for k, bw in bws.items()}
+    base = {(p, t): [] for p in PAIRS for t in PHYLOP}       # base-level phyloP at high-diff bins
+    rows = []
+    for i, n in enumerate(sorted(names)):
+        c, s, e = EL[n]; mid = s + (e - s) // 2; a, b = mid - PAD, mid + PAD
+        if any(c not in size[k] for k in bws): continue
+        ph = {t: rollmean(vals(bws[t], c, a, b, size[t][c])) for t in PHYLOP}
+        fr = {k: vals(bws[k], c, a, b, size[k][c]) for k in FRAG}
+        r = dict(peak=n, chrom=c, start=s, end=e, cls=CLS.get(n, ""))
+        for p, (x, y) in PAIRS.items():
+            d = rollmean(fr[x] - fr[y]); m = d > THR
+            r[f"nbins|{p}"] = int(m.sum())
+            for t in PHYLOP:
+                r[f"phylop|{p}|{t}"] = float(ph[t][m].mean()) if m.any() else np.nan
+                for q in TAILS:
+                    r[f"tail{q:g}|{p}|{t}"] = float((ph[t][m] > q).mean()) if m.any() else np.nan
+                if m.any(): base[(p, t)].append(ph[t][m])
+        for t in PHYLOP: r[f"phylop_center100|{t}"] = float(ph[t][PAD - 50:PAD + 50].mean())
+        rows.append(r)
+        if span == "gw" and i % 5000 == 0: print(f"    {span}: {i}/{len(names)}", flush=True)
+    df = pd.DataFrame(rows)
+    df.to_csv(result("phylop_density_peaks.tsv", span), sep="\t", index=False, float_format="%.4g")
+    summ = []
+    for t in PHYLOP:
+        A, B = (df[f"phylop|{p}|{t}"].dropna().values for p in PAIRS)
+        mw = stats.mannwhitneyu(A, B, alternative="two-sided") if len(A) and len(B) else None
+        rb = (2 * mw.statistic / (len(A) * len(B)) - 1) if mw else np.nan
+        bA, bB = (np.concatenate(base[(p, t)]) if base[(p, t)] else np.array([]) for p in PAIRS)
+        summ.append(dict(span=span, track=t, n_peaks=len(df),
+                         n_peaks_RA=len(A), n_peaks_G4=len(B), n_bases_RA=len(bA), n_bases_G4=len(bB),
+                         median_peakmean_RA=np.median(A) if len(A) else np.nan,
+                         median_peakmean_G4=np.median(B) if len(B) else np.nan,
+                         diff_medians=(np.median(A) - np.median(B)) if len(A) and len(B) else np.nan,
+                         rank_biserial=rb, p_mannwhitney=mw.pvalue if mw else np.nan,
+                         median_base_RA=np.median(bA) if len(bA) else np.nan,
+                         median_base_G4=np.median(bB) if len(bB) else np.nan,
+                         **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()}))
+    S = pd.DataFrame(summ)
+    S.to_csv(result("phylop_density_summary.tsv", span), sep="\t", index=False, float_format="%.4g")
+    print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
+    return df, base, S
+
+
+def main():
+    spans = sys.argv[1:] or ["domain", "1p5mb", "gw"]
+    out = {sp: run(sp) for sp in spans}
+    fig, axs = plt.subplots(len(spans), len(PHYLOP), figsize=(1.45 * len(PHYLOP) + .2, 1.05 * len(spans) + .3),
+                            squeeze=False)
+    for i, sp in enumerate(spans):
+        df, base, S = out[sp]
+        for j, t in enumerate(PHYLOP):
+            ax = axs[i][j]
+            for p in PAIRS:
+                v = np.concatenate(base[(p, t)]) if base[(p, t)] else np.array([])
+                if len(v) < 5: continue
+                lo, hi = np.percentile(v, [.5, 99.5]); xs = np.linspace(lo, hi, 300)
+                kd = stats.gaussian_kde(v)(xs)
+                ax.plot(xs, kd, color=COL[p], lw=.7); ax.fill_between(xs, kd, color=COL[p], alpha=.15, lw=0)
+            ax.axvline(0, color="#9AA3AE", lw=.3)
+            ax.set_ylim(0, ax.get_ylim()[1] * 1.55)          # headroom for the annotation
+            s = S[S.track == t].iloc[0]
+            ax.set_title(f"{SPAN_LABEL[sp]} · {t}", loc="left", pad=2)
+            ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s.tail2_bases_RA:.0f}% / {100*s.tail2_bases_G4:.0f}%"
+                    f"\nper-peak p = {s.tail2_p_peak:.2g}",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=4.5, color="#4A525C")
+            for k in ("top", "right"): ax.spines[k].set_visible(False)
+            if i == len(spans) - 1: ax.set_xlabel("phyloP (11-bp rolling mean)")
+            if j == 0: ax.set_ylabel("density")
+    h = [plt.Line2D([], [], color=c, lw=1, label=p) for p, c in COL.items()]
+    fig.legend(handles=h, loc="lower center", ncol=2, frameon=False, fontsize=5, bbox_to_anchor=(.5, -.01))
+    fig.tight_layout(rect=(0, .05, 1, 1), h_pad=.6, w_pad=.6)
+    for ext in ("png", "pdf"):
+        fig.savefig(result(f"fig_phylop_density.{ext}", "compare_mafb_spans"), dpi=600)
+    print("  wrote results/compare_mafb_spans/fig_phylop_density.png/.pdf")
+
+
+if __name__ == "__main__":
+    main()
