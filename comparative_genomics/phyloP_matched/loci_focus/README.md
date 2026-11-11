@@ -26,10 +26,13 @@ span it was computed on. Paths in it are relative to the warm-archive directory.
 - **±1.5 Mb** — MAFB ±1.5 Mb (285 DARs), reported alongside the default for power; outputs
   tagged `_1p5mb` / `mafb_1p5mb`.
 
-DAR classes come from `phyloP_matched/dar_sets/`: RAup (Glut-RA vs Glut-Arco-1) and G4up
-(GABA-4-1 vs GABA-1-1), with the 4,520 elements up in both dropped, giving mutually
-exclusive `RA_over_Arco` / `GABA4_over_GABA1` sets of 501-bp consensus elements
-(`allelem_cls.bed`).
+DAR classes come from `phyloP_matched/dar_sets/` (see its README): RAup (Glut-RA vs
+Glut-Arco-1) and G4up (GABA-4-1 vs GABA-1-1), from the same ArchR object as the Table 06 DAR
+BEDs but filtered at **FDR < 0.1 with no fold-change cutoff** (Table 06 uses FDR < 0.01 and
+|Log2FC| > 0.6, so it is a strict subset). The 4,520 elements up in both are dropped, giving
+mutually exclusive `RA_over_Arco` (28,834) / `GABA4_over_GABA1` (31,029) sets of 501-bp
+consensus elements (`allelem_cls.bed`). The looser sets are deliberate: e.g. Glut-HVC-2.394967,
+the Fig. 6 example AR site, is a DAR here but not in Table 06.
 
 ## Layout
 
