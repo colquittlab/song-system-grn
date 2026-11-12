@@ -39,6 +39,13 @@ it overlaps most, a GABA4_over_GABA1 element the GABA-4-1.bed peak; an element w
 overlapping peak falls back to the summit of its up cluster's fragment signal (21-bp
 rolling mean) within the element. Outputs then carry a _snapcenter suffix.
 
+Track set. --tracks perbase swaps in the matched-neutral per-base phyloP tracks
+(phyloP_matched/perbase/tracks; phyloP LRT CONACC against the matched neutral model):
+"whole tree (matched)" and "oscine lineage, birdAnc222 (matched)". The latter is phyloP's
+--subtree mode -- conservation or acceleration on the oscine clade relative to the rest of the
+tree, i.e. oscine-lineage-specific constraint, not conservation within oscines. Outputs then
+carry _perbase.
+
 Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the fragment
 difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
 bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
@@ -70,6 +77,11 @@ T = "/private/warm-archive/colquittlab/assembly/tracks_lark"
 PHYLOP = {"avian all": f"{T}/phyloP/phyloP_avian363_3model_all.bw",
           "vert. all": f"{T}/phyloP/phyloP_mamAvi605_3model_all.bw",
           "oscine (Anc218)": f"{T}/phyloP/phyloP_avian363_3model_birdAnc218.bw"}
+PB = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/perbase/tracks"
+TRACK_SETS = {"3model": dict(PHYLOP),
+              "perbase": {"whole tree (matched)": f"{PB}/wholetree_perbase_lsd2.bw",
+                          "oscine lineage, birdAnc222 (matched)": f"{PB}/subtree222_perbase_lsd2.bw"}}
+TRACKS = "3model"
 FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
 PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
 COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
@@ -170,7 +182,7 @@ def boot(df, t, rng=None):
 
 
 def suffix(how):
-    return ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
+    return ("_perbase" if TRACKS == "perbase" else "") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
 
 
 def run(span, how="element"):
@@ -240,8 +252,11 @@ def run(span, how="element"):
 
 
 def main():
-    global K
+    global K, TRACKS, PHYLOP
     args = sys.argv[1:]; how = "element"
+    if "--tracks" in args:
+        i = args.index("--tracks"); TRACKS = args[i + 1]; del args[i:i + 2]
+        PHYLOP = TRACK_SETS[TRACKS]
     if "--center" in args:
         i = args.index("--center"); how = args[i + 1]; del args[i:i + 2]
     if "--smooth" in args:
