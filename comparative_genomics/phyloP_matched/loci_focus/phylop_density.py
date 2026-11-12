@@ -14,8 +14,9 @@ Measurement, as in the notebook (computeMatrix reference-point, missing data as 
   ±1,000 bp around each element centre at 1 bp; phyloP and the two fragment differences
   each smoothed by an 11-bp centred rolling mean (edges left unsmoothed, as
   zoo::rollmean(fill = NA) then restored); keep bases with difference > 5.
-Tracks: phyloP_avian363_3model_all ("avian all") and phyloP_mamAvi605_3model_all
-("vert. all"); fragment bigwigs Glut-RA, Glut-Arco-1, GABA-4-1, GABA-1-1 (bin 1, unsmoothed).
+Tracks: phyloP_avian363_3model_all ("avian all"), phyloP_mamAvi605_3model_all ("vert. all")
+and phyloP_avian363_3model_birdAnc218 ("oscine (Anc218)", the core-oscine subtree, as in the
+Fig. 6 phyloP tracks); fragment bigwigs Glut-RA, Glut-Arco-1, GABA-4-1, GABA-1-1 (bin 1, unsmoothed).
 
 The Fig. 6E reading is a tail one: GABA-4 activity bases carry a heavier right tail (more
 highly constrained bases) than Glut-RA activity bases. Reported per span and track:
@@ -38,8 +39,12 @@ it overlaps most, a GABA4_over_GABA1 element the GABA-4-1.bed peak; an element w
 overlapping peak falls back to the summit of its up cluster's fragment signal (21-bp
 rolling mean) within the element. Outputs then carry a _snapcenter suffix.
 
+Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the fragment
+difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
+bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
+
 Spans: domain (default), 1p5mb, gw (genome-wide reference).
-    python phylop_density.py [--center snapatac] [domain 1p5mb gw]
+    python phylop_density.py [--center snapatac] [--smooth K] [domain 1p5mb gw]
 Writes results/<span>/phylop_density_{peaks,summary}.tsv and
 results/compare_mafb_spans/fig_phylop_density.{png,pdf}.
 """
@@ -60,7 +65,8 @@ from span import elem_coords, in_domain, wide_elements, result
 
 T = "/private/warm-archive/colquittlab/assembly/tracks_lark"
 PHYLOP = {"avian all": f"{T}/phyloP/phyloP_avian363_3model_all.bw",
-          "vert. all": f"{T}/phyloP/phyloP_mamAvi605_3model_all.bw"}
+          "vert. all": f"{T}/phyloP/phyloP_mamAvi605_3model_all.bw",
+          "oscine (Anc218)": f"{T}/phyloP/phyloP_avian363_3model_birdAnc218.bw"}
 FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
 PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
 COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
@@ -69,11 +75,13 @@ TAILS = (2.0, 3.0)
 BOOT_Q = (1.0, 2.0, 3.0, 4.0); NBOOT = 2000
 SNAP = "/private/warm-archive/colquittlab/assembly/tracks_lark/snapatac_peaks"
 UPCL = {"RA_over_Arco": "Glut-RA", "GABA4_over_GABA1": "GABA-4-1"}
-SPAN_LABEL = {"domain": "DHX35–TOP1 domain", "1p5mb": "MAFB ±1.5 Mb", "gw": "genome-wide"}
+SPAN_LABEL = {"domain": "DHX35–TOP1", "1p5mb": "MAFB ±1.5 Mb", "gw": "genome-wide"}
 
 
-def rollmean(x, k=K):
+def rollmean(x, k=None):
     """centred rolling mean; the k//2 edge values keep their raw value (zoo fill = NA, restored)"""
+    k = K if k is None else k
+    if k <= 1: return x
     out = x.copy(); h = k // 2
     c = np.convolve(x, np.ones(k) / k, mode="valid")
     out[h:len(x) - h] = c
@@ -153,8 +161,12 @@ def boot(df, t, rng=None):
     return out
 
 
+def suffix(how):
+    return ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
+
+
 def run(span, how="element"):
-    EL = elem_coords(); CLS = classes(); sfx = "_snapcenter" if how == "snapatac" else ""
+    EL = elem_coords(); CLS = classes(); sfx = suffix(how)
     SI = snap_index() if how == "snapatac" else None
     if span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
@@ -214,13 +226,16 @@ def run(span, how="element"):
 
 
 def main():
+    global K
     args = sys.argv[1:]; how = "element"
     if "--center" in args:
         i = args.index("--center"); how = args[i + 1]; del args[i:i + 2]
-    sfx = "_snapcenter" if how == "snapatac" else ""
+    if "--smooth" in args:
+        i = args.index("--smooth"); K = int(args[i + 1]); del args[i:i + 2]
+    sfx = suffix(how)
     spans = args or ["domain", "1p5mb", "gw"]
     out = {sp: run(sp, how) for sp in spans}
-    fig, axs = plt.subplots(len(spans), len(PHYLOP), figsize=(1.45 * len(PHYLOP) + .2, 1.05 * len(spans) + .3),
+    fig, axs = plt.subplots(len(spans), len(PHYLOP), figsize=(1.8 * len(PHYLOP) + .2, 1.05 * len(spans) + .3),
                             squeeze=False)
     for i, sp in enumerate(spans):
         df, base, S = out[sp]
@@ -233,7 +248,7 @@ def main():
                 kd = stats.gaussian_kde(v)(xs)
                 ax.plot(xs, kd, color=COL[p], lw=.7); ax.fill_between(xs, kd, color=COL[p], alpha=.15, lw=0)
             ax.axvline(0, color="#9AA3AE", lw=.3)
-            ax.set_ylim(0, ax.get_ylim()[1] * 1.55)          # headroom for the annotation
+            ax.set_ylim(0, ax.get_ylim()[1] * 1.95)          # headroom for the annotation
             s = S[S.track == t].iloc[0]
             ax.set_title(f"{SPAN_LABEL[sp]} · {t}", loc="left", pad=2)
             ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s['base_frac>2_RA']:.0f}% / {100*s['base_frac>2_G4']:.0f}%"
@@ -241,7 +256,7 @@ def main():
                     + ("\nbootstrap p < 0.001" if s['base_frac>2_p'] < 1e-3 else f"\nbootstrap p = {s['base_frac>2_p']:.2g}"),
                     transform=ax.transAxes, ha="right", va="top", fontsize=4.5, color="#4A525C")
             for k in ("top", "right"): ax.spines[k].set_visible(False)
-            if i == len(spans) - 1: ax.set_xlabel("phyloP (11-bp rolling mean)")
+            if i == len(spans) - 1: ax.set_xlabel("phyloP (per base)" if K <= 1 else f"phyloP ({K}-bp rolling mean)")
             if j == 0: ax.set_ylabel("density")
     h = [plt.Line2D([], [], color=c, lw=1, label=p) for p, c in COL.items()]
     fig.legend(handles=h, loc="lower center", ncol=2, frameon=False, fontsize=5, bbox_to_anchor=(.5, -.01))
