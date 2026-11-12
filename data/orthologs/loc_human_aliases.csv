@@ -1,0 +1,1902 @@
+gene,product,human_symbol,match
+LOC110467545,ras-related and estrogen-regulated growth inhibitor,RERG,exact
+LOC110467550,interferon-induced transmembrane protein 5-like,IFITM5,-like stripped
+LOC110467559,inner centromere protein,INCENP,exact
+LOC110467575,prolactin-releasing peptide receptor,PRLHR,exact
+LOC110467576,protein-L-isoaspartate(D-aspartate) O-methyltransferase,PCMT1,exact
+LOC110467587,DNA polymerase alpha subunit B,POLA2,exact
+LOC110467588,relA-associated inhibitor-like,PPP1R13L,-like stripped
+LOC110467613,collagen alpha-1(III) chain-like,COL3A1,-like stripped
+LOC110467632,"glycogen phosphorylase, muscle form-like",PYGM,-like stripped
+LOC110467633,transcription intermediary factor 1-beta-like,TRIM28,-like stripped
+LOC110467639,unconventional myosin-XIX,MYO19,exact
+LOC110467640,unconventional myosin-XIX-like,MYO19,-like stripped
+LOC110467673,aldehyde dehydrogenase family 3 member A2-like,ALDH3A2,-like stripped
+LOC110467728,multidrug and toxin extrusion protein 2,SLC47A2,exact
+LOC110467729,multidrug and toxin extrusion protein 1,SLC47A1,exact
+LOC110467730,aldehyde dehydrogenase family 3 member A2-like,ALDH3A2,-like stripped
+LOC110467731,transient receptor potential cation channel subfamily V member 2,TRPV2,exact
+LOC110467737,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110467767,E3 ubiquitin-protein ligase Topors-like,TOPORS,-like stripped
+LOC110467768,atrial natriuretic peptide receptor 2,NPR2,exact
+LOC110467785,coagulation factor XIII B chain-like,F13B,-like stripped
+LOC110467789,low-density lipoprotein receptor class A domain-containing protein 1,LDLRAD1,exact
+LOC110467861,RNA-binding protein 8A,RBM8A,exact
+LOC110467862,LIX1-like protein,LIX1L,exact
+LOC110467863,RNA-binding protein 8A,RBM8A,exact
+LOC110467864,LIX1-like protein,LIX1L,exact
+LOC110467866,serine/threonine-protein kinase PAK 3,PAK3,exact
+LOC110467883,ubiquitin carboxyl-terminal hydrolase 12,USP12,exact
+LOC110467884,pre-mRNA 3'-end-processing factor FIP1,FIP1L1,exact
+LOC110467892,ras-related GTP-binding protein A,RRAGA,exact
+LOC110467894,BTB/POZ domain-containing protein KCTD12,KCTD12,exact
+LOC110467896,ligand of Numb protein X 2,LNX2,exact
+LOC110467897,homeobox protein CDX-1-like,CDX1,-like stripped
+LOC110467900,transcription factor SOX-3,SOX3,exact
+LOC110467902,"cytochrome c oxidase subunit 7B, mitochondrial",COX7B,exact
+LOC110467907,ras-like protein family member 11A-like,RASL11A,-like stripped
+LOC110467912,Krueppel-like factor 5,KLF5,exact
+LOC110467927,cytosolic 5'-nucleotidase 1B,NT5C1B,exact
+LOC110467928,retinol dehydrogenase 14,RDH14,exact
+LOC110467985,"b(0,+)-type amino acid transporter 1",SLC7A9,exact
+LOC110467986,protein LYRIC,MTDH,exact
+LOC110467990,PWWP domain-containing DNA repair factor 3A-like,PWWP3A,-like stripped
+LOC110468020,endogenous retrovirus group K member 5 Gag polyprotein-like,ERVK-5,-like stripped
+LOC110468021,cytochrome P450 2U1,CYP2U1,exact
+LOC110468027,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110468043,tumor necrosis factor receptor superfamily member 16-like,NGFR,-like stripped
+LOC110468044,neuroblast differentiation-associated protein AHNAK,AHNAK,exact
+LOC110468045,zinc finger protein 154-like,ZNF154,-like stripped
+LOC110468062,ferritin light chain,FTL,exact
+LOC110468074,"L-lactate dehydrogenase A chain, transcript variant X2",LDHA,exact
+LOC110468080,vitamin D 25-hydroxylase,CYP2R1,exact
+LOC110468089,"KH domain-containing, RNA-binding, signal transduction-associated protein 1-like",KHDRBS1,-like stripped
+LOC110468119,serine/threonine-protein kinase SBK2-like,SBK2,-like stripped
+LOC110468120,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110468125,"E3 ubiquitin-protein ligase RNF138, transcript variant X1",RNF138,exact
+LOC110468128,transthyretin-like,TTR,-like stripped
+LOC110468129,transthyretin,TTR,exact
+LOC110468134,"ras-related protein Rab-10, transcript variant X2",RAB10,exact
+LOC110468135,desmoglein-2,DSG2,exact
+LOC110468139,desmoglein-1,DSG1,exact
+LOC110468143,liprin-alpha-3-like,PPFIA3,-like stripped
+LOC110468175,"beta-galactosidase-1-like protein 2, transcript variant X3",GLB1L2,exact
+LOC110468182,endothelial cell-selective adhesion molecule,ESAM,exact
+LOC110468238,maestro heat-like repeat-containing protein family member 1,MROH1,exact
+LOC110468275,signal-induced proliferation-associated 1-like protein 3,SIPA1L3,exact
+LOC110468276,leishmanolysin-like peptidase,LMLN,exact
+LOC110468277,protein mono-ADP-ribosyltransferase PARP14-like,PARP14,-like stripped
+LOC110468278,glycerol-3-phosphate dehydrogenase 1-like protein,GPD1L,exact
+LOC110468281,TGF-beta receptor type-2,TGFBR2,exact
+LOC110468304,"rho guanine nucleotide exchange factor 17, transcript variant X1",ARHGEF17,exact
+LOC110468312,leucine-zipper-like transcriptional regulator 1 homolog,LZTR1,exact
+LOC110468322,cytochrome P450 27C1,CYP27C1,exact
+LOC110468346,"mitochondrial chaperone BCS1, transcript variant X1",BCS1L,exact
+LOC110468366,"unconventional myosin-X, transcript variant X3",MYO10,exact
+LOC110468379,C-X-C chemokine receptor type 2,CXCR2,exact
+LOC110468382,"sterol 26-hydroxylase, mitochondrial",CYP27A1,exact
+LOC110468389,rac GTPase-activating protein 1,RACGAP1,exact
+LOC110468407,motor neuron and pancreas homeobox protein 1,MNX1,exact
+LOC110468413,"gap junction gamma-1 protein, transcript variant X1",GJC1,exact
+LOC110468450,disintegrin and metalloproteinase domain-containing protein 9,ADAM9,exact
+LOC110468454,T cell receptor alpha variable 4,TRAV4,exact
+LOC110468464,hyaluronan and proteoglycan link protein 4,HAPLN4,exact
+LOC110468465,hsp90 co-chaperone Cdc37,CDC37,exact
+LOC110468466,olfactory receptor 14C36-like,OR14C36,-like stripped
+LOC110468487,proline-rich protein 36-like,PRR36,-like stripped
+LOC110468493,glycerol-3-phosphate acyltransferase 3,GPAT3,exact
+LOC110468494,glycerol-3-phosphate acyltransferase 3,GPAT3,exact
+LOC110468500,"17-beta-hydroxysteroid dehydrogenase 13, transcript variant X2",HSD17B13,exact
+LOC110468521,ras-related protein Rab-33B,RAB33B,exact
+LOC110468524,placenta-specific gene 8 protein-like,PLAC8,-like stripped
+LOC110468531,protein FAM3A-like,FAM3A,-like stripped
+LOC110468548,putative RNA-binding protein 15B,RBM15B,exact
+LOC110468557,metal transporter CNNM4-like,CNNM4,-like stripped
+LOC110468558,VIP36-like protein,LMAN2L,exact
+LOC110468559,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110468592,fibrinogen-like protein 1,FGL1,exact
+LOC110468593,"phosphatidylinositol 3,4,5-trisphosphate 3-phosphatase TPTE2",TPTE2,exact
+LOC110468601,histone deacetylase 5,HDAC5,exact
+LOC110468602,voltage-dependent L-type calcium channel subunit beta-1,CACNB1,exact
+LOC110468644,"proteoglycan 4, transcript variant X2",PRG4,exact
+LOC110468661,mucin-5AC,MUC5AC,exact
+LOC110468663,cytosolic 5'-nucleotidase 1A,NT5C1A,exact
+LOC110468678,otoferlin-like,OTOF,-like stripped
+LOC110468679,"cholesterol side-chain cleavage enzyme, mitochondrial",CYP11A1,exact
+LOC110468688,retinol dehydrogenase 13,RDH13,exact
+LOC110468696,"leucine zipper putative tumor suppressor 3, transcript variant X4",LZTS3,exact
+LOC110468699,drebrin-like,DBN1,-like stripped
+LOC110468706,BCL2/adenovirus E1B 19 kDa protein-interacting protein 3,BNIP3,exact
+LOC110468709,5-hydroxytryptamine receptor 7,HTR7,exact
+LOC110468712,cytochrome P450 26B1,CYP26B1,exact
+LOC110468714,transcription factor COE4,EBF4,exact
+LOC110468730,rho-related BTB domain-containing protein 2,RHOBTB2,exact
+LOC110468735,"alpha-internexin-like, transcript variant X2",INA,-like stripped
+LOC110468736,interleukin-12 subunit beta-like,IL12B,-like stripped
+LOC110468737,dedicator of cytokinesis protein 2,DOCK2,exact
+LOC110468741,protein O-GlcNAcase-like,OGA,-like stripped
+LOC110468764,cytochrome b5,CYB5A,exact
+LOC110468793,cadherin-1,CDH1,exact
+LOC110468794,cadherin-1,CDH1,exact
+LOC110468797,VPS9 domain-containing protein 1,VPS9D1,exact
+LOC110468806,zinc finger protein ZFPM1-like,ZFPM1,-like stripped
+LOC110468826,sulfotransferase 2B1,SULT2B1,exact
+LOC110468832,cytochrome b-245 light chain,CYBA,exact
+LOC110468834,DENN domain-containing protein 4B-like,DENND4B,-like stripped
+LOC110468837,otoferlin-like,OTOF,-like stripped
+LOC110468838,lysine-specific demethylase 5C-like,KDM5C,-like stripped
+LOC110468846,"SAM and SH3 domain-containing protein 1, transcript variant X5",SASH1,exact
+LOC110468874,cytochrome c oxidase assembly factor 6 homolog,COA6,exact
+LOC110468941,zinc finger protein 845,ZNF845,exact
+LOC110468950,opsin-5,OPN5,exact
+LOC110468975,"tyrosine-protein phosphatase non-receptor type substrate 1, transcript variant X1",SIRPA,exact
+LOC110468976,tyrosine-protein phosphatase non-receptor type substrate 1,SIRPA,exact
+LOC110468994,interferon regulatory factor 4,IRF4,exact
+LOC110469014,bactericidal permeability-increasing protein,BPI,exact
+LOC110469019,BPI fold-containing family B member 4,BPIFB4,exact
+LOC110469021,DEP domain-containing mTOR-interacting protein,DEPTOR,exact
+LOC110469023,tyrosine-protein kinase Srms,SRMS,exact
+LOC110469024,peroxidasin homolog,PXDN,exact
+LOC110469045,BPI fold-containing family B member 4,BPIFB4,exact
+LOC110469049,zinc finger protein 154-like,ZNF154,-like stripped
+LOC110469051,CAP-Gly domain-containing linker protein 3-like,CLIP3,-like stripped
+LOC110469058,single-minded homolog 2,SIM2,exact
+LOC110469059,single-minded homolog 2,SIM2,exact
+LOC110469069,SH3 domain-binding glutamic acid-rich protein,SH3BGR,exact
+LOC110469075,MORC family CW-type zinc finger protein 3,MORC3,exact
+LOC110469092,protocadherin-19-like,PCDH19,-like stripped
+LOC110469112,NADH-cytochrome b5 reductase 2,CYB5R2,exact
+LOC110469131,"chromogranin-A-like, transcript variant X1",CHGA,-like stripped
+LOC110469133,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC110469136,"potassium voltage-gated channel subfamily A member 3-like, transcript variant X2",KCNA3,-like stripped
+LOC110469156,tubulin alpha-8 chain,TUBA8,exact
+LOC110469168,adenosine receptor A1,ADORA1,exact
+LOC110469179,glutathione S-transferase Mu 1-like,GSTM1,-like stripped
+LOC110469188,protein phosphatase 1 regulatory subunit 12B-like,PPP1R12B,-like stripped
+LOC110469292,ganglioside-induced differentiation-associated protein 1-like 1,GDAP1L1,exact
+LOC110469300,P2Y purinoceptor 1,P2RY1,exact
+LOC110469308,neuritin,NRN1,exact
+LOC110469310,antileukoproteinase,SLPI,exact
+LOC110469315,metastasis-associated protein MTA2-like,MTA2,-like stripped
+LOC110469316,transcriptional repressor p66-alpha-like,GATAD2A,-like stripped
+LOC110469317,collagen alpha-2(I) chain-like,COL1A2,-like stripped
+LOC110469329,"inhibitor of nuclear factor kappa-B kinase-interacting protein, transcript variant X2",IKBIP,exact
+LOC110469381,PRKC apoptosis WT1 regulator protein,PAWR,exact
+LOC110469414,cytochrome P450 1B1,CYP1B1,exact
+LOC110469432,PRKC apoptosis WT1 regulator protein,PAWR,exact
+LOC110469434,glioma pathogenesis-related protein 1,GLIPR1,exact
+LOC110469438,glioma pathogenesis-related protein 1-like,GLIPR1,-like stripped
+LOC110469444,"excitatory amino acid transporter 4, transcript variant X1",SLC1A6,exact
+LOC110469449,"kelch-like protein 24, transcript variant X1",KLHL24,exact
+LOC110469456,excitatory amino acid transporter 5,SLC1A7,exact
+LOC110469468,cytochrome b-c1 complex subunit 10,UQCR11,exact
+LOC110469472,AN1-type zinc finger protein 5,ZFAND5,exact
+LOC110469474,nuclear receptor ROR-beta,RORB,exact
+LOC110469487,"platelet glycoprotein Ib alpha chain, transcript variant X1",GP1BA,exact
+LOC110469491,potassium voltage-gated channel subfamily V member 2,KCNV2,exact
+LOC110469492,complexin-3-like,CPLX3,-like stripped
+LOC110469493,mucosa-associated lymphoid tissue lymphoma translocation protein 1,MALT1,exact
+LOC110469503,cilia- and flagella-associated protein 251,CFAP251,exact
+LOC110469508,bone morphogenetic protein 2,BMP2,exact
+LOC110469510,DNA polymerase epsilon subunit 4,POLE4,exact
+LOC110469529,"lethal(3)malignant brain tumor-like protein 3, transcript variant X8",L3MBTL3,exact
+LOC110469536,"discoidin, CUB and LCCL domain-containing protein 1",DCBLD1,exact
+LOC110469538,ras-related protein Rab-39B,RAB39B,exact
+LOC110469539,ras-related protein Rab-42-like,RAB42,-like stripped
+LOC110469558,"RCC1 and BTB domain-containing protein 2, transcript variant X1",RCBTB2,exact
+LOC110469569,protein patched homolog 1,PTCH1,exact
+LOC110469585,histone-lysine N-methyltransferase SETDB2,SETDB2,exact
+LOC110469590,E3 ubiquitin-protein ligase HECTD3,HECTD3,exact
+LOC110469612,proto-oncogene DBL,MCF2,exact
+LOC110469613,spermatogenesis-associated protein 16,SPATA16,exact
+LOC110469652,"sodium channel protein type 1 subunit alpha, transcript variant X2",SCN1A,exact
+LOC110469653,sodium channel protein type 2 subunit alpha-like,SCN2A,-like stripped
+LOC110469658,sodium channel protein type 2 subunit alpha,SCN2A,exact
+LOC110469662,protocadherin alpha-8-like,PCDHA8,-like stripped
+LOC110469665,rho GTPase-activating protein 7,DLC1,exact
+LOC110469673,nuclear receptor subfamily 2 group F member 6,NR2F6,exact
+LOC110469676,"delta-1-pyrroline-5-carboxylate dehydrogenase, mitochondrial",ALDH4A1,exact
+LOC110469677,"delta-1-pyrroline-5-carboxylate dehydrogenase, mitochondrial",ALDH4A1,exact
+LOC110469696,"phosphatidylinositol 3-kinase regulatory subunit gamma, transcript variant X2",PIK3R3,exact
+LOC110469722,"poly(rC)-binding protein 3, transcript variant X14",PCBP3,exact
+LOC110469761,eukaryotic translation initiation factor 3 subunit G-like,EIF3G,-like stripped
+LOC110469765,"cytochrome b-c1 complex subunit 6, mitochondrial",UQCRH,exact
+LOC110469766,"guanine nucleotide-binding protein G(i) subunit alpha-1, transcript variant X1",GNAI1,exact
+LOC110469776,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110469777,plasma membrane calcium-transporting ATPase 1-like,ATP2B1,-like stripped
+LOC110469780,fatty-acid amide hydrolase 1,FAAH,exact
+LOC110469787,"cytochrome c oxidase assembly factor 8, transcript variant X3",COA8,exact
+LOC110469797,inverted formin-2-like,INF2,-like stripped
+LOC110469798,inverted formin-2,INF2,exact
+LOC110469803,exocyst complex component 3,EXOC3,exact
+LOC110469806,exocyst complex component 3-like protein 4,EXOC3L4,exact
+LOC110469839,electrogenic sodium bicarbonate cotransporter 4-like,SLC4A5,-like stripped
+LOC110469840,histone deacetylase 4-like,HDAC4,-like stripped
+LOC110469841,histone deacetylase 4-like,HDAC4,-like stripped
+LOC110469847,cytochrome P450 4B1,CYP4B1,exact
+LOC110469849,histone-lysine N-methyltransferase SETMAR,SETMAR,exact
+LOC110469855,"contactin-4, transcript variant X2",CNTN4,exact
+LOC110469856,contactin-6,CNTN6,exact
+LOC110469866,zinc finger protein 501-like,ZNF501,-like stripped
+LOC110469881,"nucleolar RNA helicase 2, transcript variant X1",DDX21,exact
+LOC110469882,"BEN domain-containing protein 5, transcript variant X3",BEND5,exact
+LOC110469886,hexokinase HKDC1,HKDC1,exact
+LOC110469887,hexokinase-1,HK1,exact
+LOC110469891,"core histone macro-H2A.2, transcript variant X2",MACROH2A2,exact
+LOC110469893,"prosaposin, transcript variant X1",PSAP,exact
+LOC110469900,catenin alpha-3-like,CTNNA3,-like stripped
+LOC110469903,nucleolar RNA helicase 2,DDX21,exact
+LOC110469904,prosaposin-like,PSAP,-like stripped
+LOC110469914,"6-phosphofructo-2-kinase/fructose-2,6-bisphosphatase 4, transcript variant X2",PFKFB4,exact
+LOC110469940,protein BTG1,BTG1,exact
+LOC110469952,semaphorin-3D,SEMA3D,exact
+LOC110469956,acylamino-acid-releasing enzyme-like,APEH,-like stripped
+LOC110469968,acylamino-acid-releasing enzyme,APEH,exact
+LOC110469976,transient receptor potential cation channel subfamily M member 8-like,TRPM8,-like stripped
+LOC110469980,tetraspanin-3,TSPAN3,exact
+LOC110469982,rho GTPase-activating protein 35-like,ARHGAP35,-like stripped
+LOC110470005,"pleckstrin homology domain-containing family A member 1, transcript variant X2",PLEKHA1,exact
+LOC110470009,CDK5 regulatory subunit-associated protein 3,CDK5RAP3,exact
+LOC110470043,stromelysin-1-like,MMP3,-like stripped
+LOC110470046,protein NPAT,NPAT,exact
+LOC110470053,matrix metalloproteinase-27-like,MMP27,-like stripped
+LOC110470054,interstitial collagenase-like,MMP1,-like stripped
+LOC110470055,stromelysin-1-like,MMP3,-like stripped
+LOC110470056,collagenase 3,MMP13,exact
+LOC110470063,putative Polycomb group protein ASXL3,ASXL3,exact
+LOC110470065,ribonucleases P/MRP protein subunit POP1,POP1,exact
+LOC110470112,cytochrome c oxidase assembly factor 7,COA7,exact
+LOC110470121,gasdermin-A-like,GSDMA,-like stripped
+LOC110470131,interleukin-8,CXCL8,exact
+LOC110470149,"lysosome membrane protein 2, transcript variant X2",SCARB2,exact
+LOC110470156,"cytochrome c oxidase assembly protein COX18, mitochondrial, transcript variant X1",COX18,exact
+LOC110470161,interleukin-8-like,CXCL8,-like stripped
+LOC110470166,CDK5 regulatory subunit-associated protein 3,CDK5RAP3,exact
+LOC110470180,UPF0488 protein C8orf33 homolog,C8orf33,exact
+LOC110470184,"ankyrin repeat and fibronectin type-III domain-containing protein 1, transcript variant X2",ANKFN1,exact
+LOC110470215,syntaxin-binding protein 4-like,STXBP4,-like stripped
+LOC110470225,myeloid-associated differentiation marker-like,MYADM,-like stripped
+LOC110470237,cytoplasmic phosphatidylinositol transfer protein 1,PITPNC1,exact
+LOC110470241,SH3 and multiple ankyrin repeat domains protein 3-like,SHANK3,-like stripped
+LOC110470242,SH3 and multiple ankyrin repeat domains protein 3-like,SHANK3,-like stripped
+LOC110470245,"bis(5'-adenosyl)-triphosphatase ENPP4, transcript variant X4",ENPP4,exact
+LOC110470248,"24-hydroxycholesterol 7-alpha-hydroxylase, transcript variant X3",CYP39A1,exact
+LOC110470270,retinol dehydrogenase 8,RDH8,exact
+LOC110470272,taste receptor type 2 member 9-like,TAS2R9,-like stripped
+LOC110470273,taste receptor type 2 member 9-like,TAS2R9,-like stripped
+LOC110470274,taste receptor type 2 member 7-like,TAS2R7,-like stripped
+LOC110470277,protein eva-1 homolog C-like,EVA1C,-like stripped
+LOC110470279,"WD repeat and coiled-coil-containing protein, transcript variant X2",WDCP,exact
+LOC110470282,taste receptor type 2 member 9-like,TAS2R9,-like stripped
+LOC110470293,atlastin-1-like,ATL1,-like stripped
+LOC110470294,atlastin-1-like,ATL1,-like stripped
+LOC110470295,kallikrein-14-like,KLK14,-like stripped
+LOC110470319,cyclin-dependent kinase 11B,CDK11B,exact
+LOC110470320,solute carrier family 35 member E2A,SLC35E2A,exact
+LOC110470343,Golgi integral membrane protein 4-like,GOLIM4,-like stripped
+LOC110470346,transcription factor HES-5,HES5,exact
+LOC110470348,ubiquitin conjugation factor E4 B,UBE4B,exact
+LOC110470357,transcription factor HES-5,HES5,exact
+LOC110470362,"fatty acyl-CoA reductase 1, transcript variant X4",FAR1,exact
+LOC110470380,"zinc finger CCCH-type antiviral protein 1, transcript variant X1",ZC3HAV1,exact
+LOC110470390,mucolipin-2,MCOLN2,exact
+LOC110470410,T-cell surface glycoprotein CD3 gamma chain,CD3G,exact
+LOC110470445,basic salivary proline-rich protein 1-like,PRB1,-like stripped
+LOC110470450,junctional adhesion molecule-like,JAML,exact
+LOC110470457,G protein-activated inward rectifier potassium channel 4,KCNJ5,exact
+LOC110470479,5-hydroxytryptamine receptor 3A,HTR3A,exact
+LOC110470481,Krueppel-like factor 2,KLF2,exact
+LOC110470519,E3 ubiquitin-protein ligase HECTD3-like,HECTD3,-like stripped
+LOC110470573,2-oxoglutarate receptor 1,OXGR1,exact
+LOC110470611,"polycomb complex protein BMI-1, transcript variant X1",BMI1,exact
+LOC110470663,haloacid dehalogenase-like hydrolase domain-containing 5,HDHD5,exact
+LOC110470667,platelet glycoprotein IX,GP9,exact
+LOC110470672,proline-rich protein 15-like protein,PRR15L,exact
+LOC110470675,laminin subunit beta-2-like,LAMB2,-like stripped
+LOC110470681,guanine nucleotide-binding protein G(q) subunit alpha,GNAQ,exact
+LOC110470686,focadhesin,FOCAD,exact
+LOC110470688,forkhead box protein B2-like,FOXB2,-like stripped
+LOC110470690,netrin-4,NTN4,exact
+LOC110470691,interferon omega-1,IFNW1,exact
+LOC110470697,MARVEL domain-containing protein 3,MARVELD3,exact
+LOC110470698,serpin B12-like,SERPINB12,-like stripped
+LOC110470707,"serpin B6-like, transcript variant X1",SERPINB6,-like stripped
+LOC110470709,serpin B10-like,SERPINB10,-like stripped
+LOC110470712,leukocyte elastase inhibitor,SERPINB1,exact
+LOC110470725,Fc receptor-like protein 4,FCRL4,exact
+LOC110470726,thrombospondin-2-like,THBS2,-like stripped
+LOC110470748,uncharacterized protein C5orf34 homolog,C5orf34,exact
+LOC110470765,complement C1q and tumor necrosis factor-related protein 9A,C1QTNF9,exact
+LOC110470779,PDZ and LIM domain protein 5-like,PDLIM5,-like stripped
+LOC110470786,2'-5'-oligoadenylate synthase 1,OAS1,exact
+LOC110470791,store-operated calcium entry regulator STIMATE,STIMATE,exact
+LOC110470810,bromodomain-containing protein 8-like,BRD8,-like stripped
+LOC110470815,alpha-2B adrenergic receptor-like,ADRA2B,-like stripped
+LOC110470816,PDZ and LIM domain protein 7,PDLIM7,exact
+LOC110470817,lateral signaling target protein 2 homolog,ZFYVE28,exact
+LOC110470825,ADP-ribosylation factor-like protein 3,ARL3,exact
+LOC110470844,mediator of RNA polymerase II transcription subunit 7,MED7,exact
+LOC110470876,cytochrome b5,CYB5A,exact
+LOC110470905,exocyst complex component 4-like,EXOC4,-like stripped
+LOC110470912,endonuclease domain-containing 1 protein-like,ENDOD1,-like stripped
+LOC110470950,collagen alpha-2(VIII) chain,COL8A2,exact
+LOC110470951,collagen alpha-1(VII) chain,COL7A1,exact
+LOC110470952,exocyst complex component 4-like,EXOC4,-like stripped
+LOC110470953,endonuclease domain-containing 1 protein-like,ENDOD1,-like stripped
+LOC110470954,interleukin-2 receptor subunit alpha,IL2RA,exact
+LOC110470965,endonuclease domain-containing 1 protein-like,ENDOD1,-like stripped
+LOC110470966,store-operated calcium entry regulator STIMATE,STIMATE,exact
+LOC110470979,transmembrane protein 45B,TMEM45B,exact
+LOC110470988,transmembrane protein 45B,TMEM45B,exact
+LOC110470992,distal membrane-arm assembly complex protein 1,DMAC1,exact
+LOC110470994,betaine--homocysteine S-methyltransferase 1,BHMT,exact
+LOC110471003,"cyclin-dependent kinase 7, transcript variant X1",CDK7,exact
+LOC110471010,"fructose-1,6-bisphosphatase isozyme 2",FBP2,exact
+LOC110471011,"fructose-1,6-bisphosphatase 1",FBP1,exact
+LOC110471019,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110471020,post-GPI attachment to proteins factor 6,PGAP6,exact
+LOC110471057,C-C chemokine receptor type 5-like,CCR5,-like stripped
+LOC110471058,C-C chemokine receptor type 1-like,CCR1,-like stripped
+LOC110471062,C-C chemokine receptor type 8,CCR8,exact
+LOC110471065,prostatic acid phosphatase-like,ACP3,-like stripped
+LOC110471066,prostatic acid phosphatase-like,ACP3,-like stripped
+LOC110471067,C-C chemokine receptor type 8,CCR8,exact
+LOC110471079,interleukin-17 receptor C,IL17RC,exact
+LOC110471089,cytochrome P450 20A1,CYP20A1,exact
+LOC110471097,inducible T-cell costimulator,ICOS,exact
+LOC110471102,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110471117,tubulin monoglycylase TTLL3,TTLL3,exact
+LOC110471139,connector enhancer of kinase suppressor of ras 2,CNKSR2,exact
+LOC110471140,fructose-bisphosphate aldolase A-like,ALDOA,-like stripped
+LOC110471141,proline-rich protein 15-like protein,PRR15L,exact
+LOC110471166,zinc finger protein 436-like,ZNF436,-like stripped
+LOC110471205,C-X-C motif chemokine 6-like,CXCL6,-like stripped
+LOC110471206,interleukin-8-like,CXCL8,-like stripped
+LOC110471209,lysosome membrane protein 2,SCARB2,exact
+LOC110471222,monocarboxylate transporter 13,SLC16A13,exact
+LOC110471224,programmed cell death 1 ligand 2,PDCD1LG2,exact
+LOC110471225,programmed cell death 1 ligand 1,CD274,exact
+LOC110471228,glutamine-rich protein 2,QRICH2,exact
+LOC110471229,acrosin,ACR,exact
+LOC110471231,doublesex- and mab-3-related transcription factor 2,DMRT2,exact
+LOC110471254,butyrophilin subfamily 1 member A1,BTN1A1,exact
+LOC110471297,relaxin-3,RLN3,exact
+LOC110471323,"ankyrin repeat and KH domain-containing protein 1, transcript variant X8",ANKHD1,exact
+LOC110471325,protocadherin-10,PCDH10,exact
+LOC110471328,protocadherin beta-16,PCDHB16,exact
+LOC110471335,SLC35A4 upstream open reading frame protein-like,SLC35A4,-like stripped
+LOC110471347,"histidine--tRNA ligase, cytoplasmic",HARS1,exact
+LOC110471349,"protocadherin alpha-C1, transcript variant X1",PCDHAC1,exact
+LOC110471350,protocadherin beta-2-like,PCDHB2,-like stripped
+LOC110471351,cytosolic 5'-nucleotidase 1A-like,NT5C1A,-like stripped
+LOC110471386,cytochrome c oxidase assembly factor 1 homolog,COA1,exact
+LOC110471404,"threonine--tRNA ligase 1, cytoplasmic",TARS1,exact
+LOC110471410,"neuronal acetylcholine receptor subunit alpha-7, transcript variant X2",CHRNA7,exact
+LOC110471426,"methylmalonyl-CoA epimerase, mitochondrial",MCEE,exact
+LOC110471444,carnitine O-acetyltransferase-like,CRAT,-like stripped
+LOC110471473,transient receptor potential cation channel subfamily M member 8-like,TRPM8,-like stripped
+LOC110471474,serum amyloid P-component,APCS,exact
+LOC110471476,alpha-endosulfine,ENSA,exact
+LOC110471537,atypical chemokine receptor 1,ACKR1,exact
+LOC110471541,histone H2A type 2-B,H2AC21,exact
+LOC110471546,lysosomal acid glucosylceramidase,GBA1,exact
+LOC110471547,lysosomal acid glucosylceramidase,GBA1,exact
+LOC110471567,ras-related protein Rab-11A-like,RAB11A,-like stripped
+LOC110471570,Fc receptor-like protein 3,FCRL3,exact
+LOC110471571,cilia- and flagella-associated protein 45,CFAP45,exact
+LOC110471572,Fc receptor-like protein 2,FCRL2,exact
+LOC110471575,lysosomal acid glucosylceramidase,GBA1,exact
+LOC110471576,death-associated protein kinase 2,DAPK2,exact
+LOC110471577,dnaJ homolog subfamily A member 1,DNAJA1,exact
+LOC110471592,"translocon-associated protein subunit beta, transcript variant X1",SSR2,exact
+LOC110471593,cilia- and flagella-associated protein 45,CFAP45,exact
+LOC110471594,"translocon-associated protein subunit beta, transcript variant X2",SSR2,exact
+LOC110471597,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110471598,microtubule-associated protein RP/EB family member 3-like,MAPRE3,-like stripped
+LOC110471599,ankyrin repeat and SOCS box protein 9-like,ASB9,-like stripped
+LOC110471603,"cytochrome b-c1 complex subunit 1, mitochondrial",UQCRC1,exact
+LOC110471621,ankyrin repeat and SOCS box protein 9-like,ASB9,-like stripped
+LOC110471658,somatotropin,GH1,exact
+LOC110471663,rho GTPase-activating protein 17,ARHGAP17,exact
+LOC110471696,C-type lectin domain family 7 member A-like,CLEC7A,-like stripped
+LOC110471710,"UDP-glucuronosyltransferase 2A2, transcript variant X1",UGT2A2,exact
+LOC110471736,transmembrane protease serine 11E,TMPRSS11E,exact
+LOC110471747,"26S proteasome non-ATPase regulatory subunit 9, transcript variant X2",PSMD9,exact
+LOC110471795,cilia- and flagella-associated protein 251,CFAP251,exact
+LOC110471796,uncharacterized protein C10orf95-like,C10orf95,-like stripped
+LOC110471813,G protein-activated inward rectifier potassium channel 1,KCNJ3,exact
+LOC110471824,alanyl-tRNA editing protein Aarsd1,AARSD1,exact
+LOC110471835,"cytochrome c oxidase assembly factor 3 homolog, mitochondrial",COA3,exact
+LOC110471843,signal transducer and activator of transcription 5B,STAT5B,exact
+LOC110471844,inactive phospholipase C-like protein 2,PLCL2,exact
+LOC110471857,"keratin, type I cytoskeletal 14",KRT14,exact
+LOC110471858,"keratin, type I cytoskeletal 13",KRT13,exact
+LOC110471859,"keratin, type I cytoskeletal 16-like",KRT16,-like stripped
+LOC110471860,"keratin, type I cytoskeletal 19-like",KRT19,-like stripped
+LOC110471862,"keratin, type I cytoskeletal 23-like",KRT23,-like stripped
+LOC110471887,collagen alpha-1(I) chain-like,COL1A1,-like stripped
+LOC110471893,"keratin, type I cytoskeletal 13",KRT13,exact
+LOC110471894,"keratin, type I cytoskeletal 10",KRT10,exact
+LOC110471896,"keratin, type I cytoskeletal 12-like, transcript variant X1",KRT12,-like stripped
+LOC110471907,homeobox protein Hox-A3-like,HOXA3,-like stripped
+LOC110471910,retinol dehydrogenase 8,RDH8,exact
+LOC110471926,"keratin, type I cytoskeletal 19",KRT19,exact
+LOC110472022,toll-like receptor 6,TLR6,exact
+LOC110472054,transmembrane protein 178B,TMEM178B,exact
+LOC110472081,semaphorin-3F,SEMA3F,exact
+LOC110472087,"transmembrane protein 263, transcript variant X1",TMEM263,exact
+LOC110472101,"carbohydrate sulfotransferase 9, transcript variant X1",CHST9,exact
+LOC110472108,"transmembrane protein 151B, transcript variant X1",TMEM151B,exact
+LOC110472111,aminoacylase-1,ACY1,exact
+LOC110472112,cytosolic phospholipase A2 beta,PLA2G4B,exact
+LOC110472113,acyl-coenzyme A thioesterase 1,ACOT1,exact
+LOC110472135,acyl-coenzyme A thioesterase 1-like,ACOT1,-like stripped
+LOC110472148,astacin-like metalloendopeptidase,ASTL,exact
+LOC110472151,astacin-like metalloendopeptidase,ASTL,exact
+LOC110472153,cytosolic phospholipase A2 epsilon,PLA2G4E,exact
+LOC110472154,cytosolic phospholipase A2 epsilon-like,PLA2G4E,-like stripped
+LOC110472155,cytosolic phospholipase A2 epsilon-like,PLA2G4E,-like stripped
+LOC110472156,cytosolic phospholipase A2 epsilon,PLA2G4E,exact
+LOC110472157,cytosolic phospholipase A2 epsilon,PLA2G4E,exact
+LOC110472158,cytosolic phospholipase A2 epsilon,PLA2G4E,exact
+LOC110472159,cytosolic phospholipase A2 epsilon,PLA2G4E,exact
+LOC110472164,peroxisomal succinyl-coenzyme A thioesterase-like,ACOT4,-like stripped
+LOC110472218,"lipocalin-15, transcript variant X2",LCN15,exact
+LOC110472229,ectonucleoside triphosphate diphosphohydrolase 8,ENTPD8,exact
+LOC110472231,ectonucleoside triphosphate diphosphohydrolase 8,ENTPD8,exact
+LOC110472232,ectonucleoside triphosphate diphosphohydrolase 8,ENTPD8,exact
+LOC110472250,ATP-dependent RNA helicase DDX19A,DDX19A,exact
+LOC110472277,chymotrypsin-C,CTRC,exact
+LOC110472282,"phospholipase A2, membrane associated",PLA2G2A,exact
+LOC110472287,cytosolic 5'-nucleotidase 1A-like,NT5C1A,-like stripped
+LOC110472313,neuronal acetylcholine receptor subunit alpha-7,CHRNA7,exact
+LOC110472314,metalloprotease TIKI1,TRABD2A,exact
+LOC110472315,metalloprotease TIKI1-like,TRABD2A,-like stripped
+LOC110472320,"solute carrier family 2, facilitated glucose transporter member 3",SLC2A3,exact
+LOC110472324,"alpha-2-macroglobulin-like protein 1, transcript variant X5",A2ML1,exact
+LOC110472325,alpha-2-macroglobulin-like protein 1,A2ML1,exact
+LOC110472346,"transforming growth factor beta activator LRRC32, transcript variant X1",LRRC32,exact
+LOC110472349,homeobox protein NANOG,NANOG,exact
+LOC110472350,homeobox protein NANOG,NANOG,exact
+LOC110472351,DNA dC->dU-editing enzyme APOBEC-3F,APOBEC3F,exact
+LOC110472354,alpha-2-macroglobulin-like protein 1,A2ML1,exact
+LOC110472355,alpha-2-macroglobulin-like protein 1,A2ML1,exact
+LOC110472356,alpha-2-macroglobulin,A2M,exact
+LOC110472357,"inter-alpha-trypsin inhibitor heavy chain H3, transcript variant X1",ITIH3,exact
+LOC110472359,M-phase inducer phosphatase 2,CDC25B,exact
+LOC110472360,coiled-coil domain-containing protein 171,CCDC171,exact
+LOC110472393,cleavage stimulation factor subunit 1,CSTF1,exact
+LOC110472394,"1,25-dihydroxyvitamin D(3) 24-hydroxylase, mitochondrial",CYP24A1,exact
+LOC110472398,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110472459,putative uncharacterized protein ASB16-AS1,ASB16-AS1,exact
+LOC110472485,conserved oligomeric Golgi complex subunit 1,COG1,exact
+LOC110472527,"histone-lysine N-methyltransferase PRDM16-like, transcript variant X1",PRDM16,-like stripped
+LOC110472528,histone-lysine N-methyltransferase PRDM16-like,PRDM16,-like stripped
+LOC110472547,histone-lysine N-methyltransferase PRDM16-like,PRDM16,-like stripped
+LOC110472549,metal transporter CNNM4-like,CNNM4,-like stripped
+LOC110472615,granzyme A,GZMA,exact
+LOC110472625,transmembrane protein 14C,TMEM14C,exact
+LOC110472641,"magnesium transporter NIPA2, transcript variant X1",NIPA2,exact
+LOC110472657,rho-related GTP-binding protein RhoG,RHOG,exact
+LOC110472661,gap junction alpha-3 protein-like,GJA3,-like stripped
+LOC110472666,"sestrin-3, transcript variant X1",SESN3,exact
+LOC110472673,"gamma-aminobutyric acid receptor subunit alpha-3, transcript variant X2",GABRA3,exact
+LOC110472684,"nuclear cap-binding protein subunit 2, transcript variant X1",NCBP2,exact
+LOC110472685,zona pellucida sperm-binding protein 3,ZP3,exact
+LOC110472688,nuclear pore glycoprotein p62-like,NUP62,-like stripped
+LOC110472689,aryl-hydrocarbon-interacting protein-like 1,AIPL1,exact
+LOC110472690,40-kDa huntingtin-associated protein,F8A1; F8A2; F8A3,exact
+LOC110472693,serine/threonine-protein kinase MARK2,MARK2,exact
+LOC110472733,collagen alpha-1(I) chain-like,COL1A1,-like stripped
+LOC110472734,contactin-associated protein-like 4,CNTNAP4,exact
+LOC110472741,cryptic protein,CFC1,exact
+LOC110472745,DNA excision repair protein ERCC-6-like 2,ERCC6L2,exact
+LOC110472785,collagen alpha-1(XXVIII) chain-like,COL28A1,-like stripped
+LOC110472802,"phosphofurin acidic cluster sorting protein 1, transcript variant X2",PACS1,exact
+LOC110472819,ankyrin repeat domain-containing protein 9,ANKRD9,exact
+LOC110472823,"transmembrane protein 121, transcript variant X2",TMEM121,exact
+LOC110472835,speedy protein A,SPDYA,exact
+LOC110472849,solute carrier family 22 member 23,SLC22A23,exact
+LOC110472877,chorion-specific transcription factor GCMb,GCM2,exact
+LOC110472900,"POU domain, class 3, transcription factor 3-like",POU3F3,-like stripped
+LOC110472919,"fatty acid-binding protein, liver",FABP1,exact
+LOC110472932,"carnitine O-palmitoyltransferase 1, liver isoform",CPT1A,exact
+LOC110472934,cell adhesion molecule 4-like,CADM4,-like stripped
+LOC110472938,sodium- and chloride-dependent betaine transporter,SLC6A12,exact
+LOC110472940,anthrax toxin receptor 1-like,ANTXR1,-like stripped
+LOC110472953,"cystine/glutamate transporter, transcript variant X1",SLC7A11,exact
+LOC110472954,"protein mono-ADP-ribosyltransferase PARP12, transcript variant X2",PARP12,exact
+LOC110472955,solute carrier organic anion transporter family member 1C1,SLCO1C1,exact
+LOC110472974,sodium- and chloride-dependent GABA transporter 1,SLC6A1,exact
+LOC110472978,potassium voltage-gated channel subfamily KQT member 1-like,KCNQ1,-like stripped
+LOC110472986,sodium- and chloride-dependent GABA transporter 2,SLC6A13,exact
+LOC110472987,acrosin-binding protein,ACRBP,exact
+LOC110473056,polymeric immunoglobulin receptor,PIGR,exact
+LOC110473085,bile acid receptor,NR1H4,exact
+LOC110473087,complement receptor type 2,CR2,exact
+LOC110473088,interleukin-20,IL20,exact
+LOC110473113,folate receptor gamma,FOLR3,exact
+LOC110473115,"transmembrane O-methyltransferase homolog, transcript variant X1",TOMT,exact
+LOC110473120,suppressor of tumorigenicity 14 protein-like,ST14,-like stripped
+LOC110473149,zinc finger protein 630-like,ZNF630,-like stripped
+LOC110473161,focadhesin,FOCAD,exact
+LOC110473177,choline O-acetyltransferase-like,CHAT,-like stripped
+LOC110473186,"patatin-like phospholipase domain-containing protein 2, transcript variant X1",PNPLA2,exact
+LOC110473194,"potassium voltage-gated channel subfamily A member 6, transcript variant X1",KCNA6,exact
+LOC110473210,acrosin,ACR,exact
+LOC110473252,interleukin-12 receptor subunit beta-2,IL12RB2,exact
+LOC110473253,"methylcrotonoyl-CoA carboxylase beta chain, mitochondrial",MCCC2,exact
+LOC110473255,cystathionine gamma-lyase,CTH,exact
+LOC110473256,cystathionine gamma-lyase,CTH,exact
+LOC110473264,coiled-coil domain-containing protein 42,CCDC42,exact
+LOC110473269,"HAUS augmin-like complex subunit 3, transcript variant X1",HAUS3,exact
+LOC110473270,mucin-5AC,MUC5AC,exact
+LOC110473272,histone RNA hairpin-binding protein,SLBP,exact
+LOC110473306,"charged multivesicular body protein 3, transcript variant X1",CHMP3,exact
+LOC110473327,protein NDNF,NDNF,exact
+LOC110473334,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110473339,T-cell antigen CD7,CD7,exact
+LOC110473343,"urotensin-2 receptor, transcript variant X1",UTS2R,exact
+LOC110473344,urotensin-2 receptor,UTS2R,exact
+LOC110473352,"cytochrome b-245 chaperone 1, transcript variant X1",CYBC1,exact
+LOC110473356,phosphatidylserine lipase ABHD16A,ABHD16A,exact
+LOC110473366,sodium/glucose cotransporter 2-like,SLC5A2,-like stripped
+LOC110473385,olfactory receptor 14C36-like,OR14C36,-like stripped
+LOC110473388,nodal homolog,NODAL,exact
+LOC110473390,disintegrin and metalloproteinase domain-containing protein 32,ADAM32,exact
+LOC110473400,disintegrin and metalloproteinase domain-containing protein 9,ADAM9,exact
+LOC110473412,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110473441,complement receptor type 1,CR1,exact
+LOC110473442,keratinocyte proline-rich protein,KPRP,exact
+LOC110473447,"diphosphoinositol polyphosphate phosphohydrolase 1, transcript variant X2",NUDT3,exact
+LOC110473479,heme-binding protein 2-like,HEBP2,-like stripped
+LOC110473502,interferon lambda-3-like,IFNL3,-like stripped
+LOC110473520,protocadherin alpha-13-like,PCDHA13,-like stripped
+LOC110473552,"mitochondrial import inner membrane translocase subunit Tim23, transcript variant X2",TIMM23,exact
+LOC110473557,synaptotagmin-15,SYT15,exact
+LOC110473572,taste receptor type 2 member 40-like,TAS2R40,-like stripped
+LOC110473577,transmembrane protein 126A,TMEM126A,exact
+LOC110473579,glutathione S-transferase omega-1,GSTO1,exact
+LOC110473583,"steroid 17-alpha-hydroxylase/17,20 lyase",CYP17A1,exact
+LOC110473606,gamma-aminobutyric acid receptor subunit pi,GABRP,exact
+LOC110473608,VPS10 domain-containing receptor SorCS1,SORCS1,exact
+LOC110473616,"solute carrier family 2, facilitated glucose transporter member 9",SLC2A9,exact
+LOC110473696,"heparan sulfate glucosamine 3-O-sulfotransferase 1, transcript variant X3",HS3ST1,exact
+LOC110473699,"protein mono-ADP-ribosyltransferase PARP12, transcript variant X1",PARP12,exact
+LOC110473721,TBC1 domain family member 7,TBC1D7,exact
+LOC110473730,peptide-N(4)-(N-acetyl-beta-glucosaminyl)asparagine amidase,NGLY1,exact
+LOC110473744,centrosomal protein of 57 kDa,CEP57,exact
+LOC110473756,ethanolaminephosphotransferase 1,SELENOI,exact
+LOC110473781,"glutamate receptor ionotropic, kainate 5-like",GRIK5,-like stripped
+LOC110473800,"rho GTPase-activating protein 39, transcript variant X1",ARHGAP39,exact
+LOC110473803,putative transporter SVOPL,SVOPL,exact
+LOC110473811,zinc finger protein 418-like,ZNF418,-like stripped
+LOC110473819,transcription initiation factor TFIID subunit 4,TAF4,exact
+LOC110473828,tyrosine 3-monooxygenase-like,TH,-like stripped
+LOC110473844,"proline dehydrogenase 1, mitochondrial, transcript variant X1",PRODH,exact
+LOC110473846,protein DGCR6,DGCR6,exact
+LOC110473866,platelet glycoprotein V,GP5,exact
+LOC110473874,"troponin I, cardiac muscle-like",TNNI3,-like stripped
+LOC110473888,phospholipid scramblase family member 5,PLSCR5,exact
+LOC110473889,phospholipid scramblase 1,PLSCR1,exact
+LOC110473893,"25-hydroxyvitamin D-1 alpha hydroxylase, mitochondrial",CYP27B1,exact
+LOC110473897,signal-induced proliferation-associated 1-like protein 3,SIPA1L3,exact
+LOC110473915,"D-beta-hydroxybutyrate dehydrogenase, mitochondrial",BDH1,exact
+LOC110473918,melanotransferrin,MELTF,exact
+LOC110473958,cullin-9,CUL9,exact
+LOC110473961,carbohydrate sulfotransferase 8-like,CHST8,-like stripped
+LOC110473962,heme-binding protein 1,HEBP1,exact
+LOC110473996,retinol dehydrogenase 12,RDH12,exact
+LOC110474003,serine/arginine-rich splicing factor 5,SRSF5,exact
+LOC110474006,lysosomal acid lipase/cholesteryl ester hydrolase,LIPA,exact
+LOC110474007,lipase member M,LIPM,exact
+LOC110474015,lipase member M,LIPM,exact
+LOC110474060,autoimmune regulator,AIRE,exact
+LOC110474068,serine/threonine-protein phosphatase 2A regulatory subunit B'' subunit alpha,PPP2R3A,exact
+LOC110474086,rap1 GTPase-GDP dissociation stimulator 1,RAP1GDS1,exact
+LOC110474091,tetraspanin-14,TSPAN14,exact
+LOC110474113,pancreatic lipase-related protein 2,PNLIPRP2,exact
+LOC110474114,pancreatic lipase-related protein 2-like,PNLIPRP2,-like stripped
+LOC110474116,inactive pancreatic lipase-related protein 1-like,PNLIPRP1,-like stripped
+LOC110474137,coiled-coil domain-containing protein 157-like,CCDC157,-like stripped
+LOC110474138,coiled-coil domain-containing protein 157-like,CCDC157,-like stripped
+LOC110474142,cytochrome b-c1 complex subunit 9,UQCR10,exact
+LOC110474225,"tropomodulin-3, transcript variant X2",TMOD3,exact
+LOC110474227,"tropomodulin-2, transcript variant X4",TMOD2,exact
+LOC110474232,"aromatase, transcript variant X1",CYP19A1,exact
+LOC110474254,nicotinamide riboside kinase 2,NMRK2,exact
+LOC110474266,"sterile alpha motif domain-containing protein 9-like, transcript variant X1",SAMD9L,exact
+LOC110474297,ras-related and estrogen-regulated growth inhibitor-like protein,RERGL,exact
+LOC110474320,GDNF-inducible zinc finger protein 1,GZF1,exact
+LOC110474324,vinculin,VCL,exact
+LOC110474347,CD276 antigen-like,CD276,-like stripped
+LOC110474352,putative P2Y purinoceptor 10,P2RY10,exact
+LOC110474354,transcription initiation factor TFIID subunit 9,TAF9,exact
+LOC110474359,"diacylglycerol O-acyltransferase 2, transcript variant X1",DGAT2,exact
+LOC110474361,sodium/hydrogen exchanger 2-like,SLC9A2,-like stripped
+LOC110474371,fibronectin type-III domain-containing protein 3a,FNDC3A,exact
+LOC110474378,putative P2Y purinoceptor 10,P2RY10,exact
+LOC110474379,"phosphatidylinositol 3,4,5-trisphosphate 5-phosphatase 2",INPPL1,exact
+LOC110474381,transforming growth factor beta activator LRRC32,LRRC32,exact
+LOC110474383,protocadherin alpha-2-like,PCDHA2,-like stripped
+LOC110474389,"solute carrier family 2, facilitated glucose transporter member 5, transcript variant X2",SLC2A5,exact
+LOC110474425,guanylin,GUCA2A,exact
+LOC110474452,ATP-binding cassette sub-family A member 9-like,ABCA9,-like stripped
+LOC110474470,E3 ubiquitin-protein ligase TRIM62,TRIM62,exact
+LOC110474501,"cytochrome c oxidase subunit 4 isoform 1, mitochondrial",COX4I1,exact
+LOC110474503,pituitary adenylate cyclase-activating polypeptide type I receptor,ADCYAP1R1,exact
+LOC110474504,vasoactive intestinal polypeptide receptor 1,VIPR1,exact
+LOC110474513,E3 ubiquitin-protein ligase RNF135,RNF135,exact
+LOC110474519,7-alpha-hydroxycholest-4-en-3-one 12-alpha-hydroxylase,CYP8B1,exact
+LOC110474542,zinc finger protein OZF-like,ZNF146,-like stripped
+LOC110474551,"solute carrier family 2, facilitated glucose transporter member 4-like",SLC2A4,-like stripped
+LOC110474554,pre-mRNA 3' end processing protein WDR33,WDR33,exact
+LOC110474561,gap junction alpha-5 protein-like,GJA5,-like stripped
+LOC110474571,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110474592,peptide-N(4)-(N-acetyl-beta-glucosaminyl)asparagine amidase,NGLY1,exact
+LOC110474598,ubiquitin-conjugating enzyme E2 E1,UBE2E1,exact
+LOC110474601,"ubiquitin-conjugating enzyme E2 E2, transcript variant X1",UBE2E2,exact
+LOC110474649,cytochrome c,CYCS,exact
+LOC110474682,von Willebrand factor D and EGF domain-containing protein,VWDE,exact
+LOC110474715,"interleukin-1 receptor-like 2, transcript variant X2",IL1RL2,exact
+LOC110474732,serum paraoxonase/arylesterase 2,PON2,exact
+LOC110474739,carboxymethylenebutenolidase homolog,CMBL,exact
+LOC110474740,interleukin-1 receptor type 1,IL1R1,exact
+LOC110474741,serine/threonine-protein kinase SBK2,SBK2,exact
+LOC110474783,"ubiquitin carboxyl-terminal hydrolase BAP1-like, transcript variant X2",BAP1,-like stripped
+LOC110474790,parathyroid hormone/parathyroid hormone-related peptide receptor,PTH1R,exact
+LOC110474803,peptide YY,PYY,exact
+LOC110474826,"E3 ubiquitin-protein ligase RNF113A, transcript variant X2",RNF113A,exact
+LOC110474841,"serine/arginine-rich splicing factor 7, transcript variant X1",SRSF7,exact
+LOC110474848,"ninein-like protein, transcript variant X3",NINL,exact
+LOC110474872,amine oxidase [flavin-containing] A,MAOA,exact
+LOC110474874,amine oxidase [flavin-containing] B,MAOB,exact
+LOC110474899,heparan sulfate glucosamine 3-O-sulfotransferase 3A1,HS3ST3A1,exact
+LOC110474909,myosin-13-like,MYH13,-like stripped
+LOC110474922,"dual specificity mitogen-activated protein kinase kinase 4, transcript variant X2",MAP2K4,exact
+LOC110474925,interleukin-10 receptor subunit beta,IL10RB,exact
+LOC110474927,oligodendrocyte transcription factor 2,OLIG2,exact
+LOC110474931,olfactory receptor 51E2,OR51E2,exact
+LOC110474932,olfactory receptor 52B2-like,OR52B2,-like stripped
+LOC110474951,hemoglobin subunit beta,HBB,exact
+LOC110474952,hemoglobin subunit beta-like,HBB,-like stripped
+LOC110474956,F-box/WD repeat-containing protein 7,FBXW7,exact
+LOC110474965,olfactory receptor 51G2-like,OR51G2,-like stripped
+LOC110474966,folate receptor gamma,FOLR3,exact
+LOC110474967,olfactory receptor 52B2-like,OR52B2,-like stripped
+LOC110474973,acidic mammalian chitinase,CHIA,exact
+LOC110474983,probable ATP-dependent RNA helicase DDX49,DDX49,exact
+LOC110474988,plasma kallikrein-like,KLKB1,-like stripped
+LOC110475000,DNA-directed RNA polymerase II subunit RPB1-like,POLR2A,-like stripped
+LOC110475012,alanine aminotransferase 1,GPT,exact
+LOC110475024,protein ecdysoneless homolog,ECD,exact
+LOC110475029,"broad substrate specificity ATP-binding cassette transporter ABCG2, transcript variant X1",ABCG2,exact
+LOC110475038,aquaporin-3,AQP3,exact
+LOC110475043,urea transporter 2,SLC14A2,exact
+LOC110475046,small EDRK-rich factor 1,SERF1A; SERF1B,exact
+LOC110475047,"survival motor neuron protein, transcript variant X1",SMN1; SMN2,exact
+LOC110475048,general transcription factor IIH subunit 2,GTF2H2,exact
+LOC110475070,aquaporin-7,AQP7,exact
+LOC110475079,contactin-3,CNTN3,exact
+LOC110475093,M-phase inducer phosphatase 1,CDC25A,exact
+LOC110475094,"microtubule-associated protein 4-like, transcript variant X1",MAP4,-like stripped
+LOC110475096,microtubule-associated protein 4-like,MAP4,-like stripped
+LOC110475106,"ATP-binding cassette sub-family F member 2, transcript variant X1",ABCF2,exact
+LOC110475116,SCO-spondin,SSPOP,exact
+LOC110475143,F-box/WD repeat-containing protein 10,FBXW10,exact
+LOC110475147,TBC1 domain family member 24,TBC1D24,exact
+LOC110475151,Golgi apparatus membrane protein TVP23 homolog B,TVP23B,exact
+LOC110475154,"protoheme IX farnesyltransferase, mitochondrial",COX10,exact
+LOC110475155,heparan sulfate glucosamine 3-O-sulfotransferase 3B1,HS3ST3B1,exact
+LOC110475162,ly6/PLAUR domain-containing protein 2,LYPD2,exact
+LOC110475163,ubiquitin carboxyl-terminal hydrolase CYLD,CYLD,exact
+LOC110475166,"lymphocyte antigen 6E, transcript variant X5",LY6E,exact
+LOC110475168,"1-phosphatidylinositol 4,5-bisphosphate phosphodiesterase gamma-1, transcript variant X1",PLCG1,exact
+LOC110475170,lymphocyte antigen 6E,LY6E,exact
+LOC110475204,sulfotransferase 6B1,SULT6B1,exact
+LOC110475212,NADH-cytochrome b5 reductase 3,CYB5R3,exact
+LOC110475253,fibrinogen-like protein 1-like protein,FGL1,-like stripped
+LOC110475272,"neuroendocrine protein 7B2, transcript variant X1",SCG5,exact
+LOC110475306,D-aminoacyl-tRNA deacylase 2,DTD2,exact
+LOC110475308,kelch-like protein 29,KLHL29,exact
+LOC110475318,zinc finger and BTB domain-containing protein 8A,ZBTB8A,exact
+LOC110475327,proline-rich nuclear receptor coactivator 2,PNRC2,exact
+LOC110475346,"zinc finger and BTB domain-containing protein 8A, transcript variant X1",ZBTB8A,exact
+LOC110475355,bone morphogenetic protein 8B,BMP8B,exact
+LOC110475361,myotubularin-related protein 9-like,MTMR9,-like stripped
+LOC110475363,MARCKS-related protein,MARCKSL1,exact
+LOC110475364,"KH domain-containing, RNA-binding, signal transduction-associated protein 1",KHDRBS1,exact
+LOC110475373,carbonyl reductase [NADPH] 1,CBR1,exact
+LOC110475413,"antigen-presenting glycoprotein CD1d, transcript variant X2",CD1D,exact
+LOC110475451,aryl hydrocarbon receptor,AHR,exact
+LOC110475464,"lysosomal alpha-glucosidase, transcript variant X2",GAA,exact
+LOC110475500,"protein FRA10AC1, transcript variant X1",FRA10AC1,exact
+LOC110475502,cytochrome c oxidase assembly protein COX19,COX19,exact
+LOC110475518,"radial spoke head 10 homolog B, transcript variant X2",RSPH10B,exact
+LOC110475525,small integral membrane protein 10-like protein 2A,SMIM10L2A,exact
+LOC110475535,"cytochrome b-c1 complex subunit 2, mitochondrial, transcript variant X1",UQCRC2,exact
+LOC110475545,"acyl-coenzyme A synthetase ACSM3, mitochondrial-like, transcript variant X3",ACSM3,-like stripped
+LOC110475546,"acyl-coenzyme A synthetase ACSM4, mitochondrial-like",ACSM4,-like stripped
+LOC110475547,"acyl-coenzyme A synthetase ACSM4, mitochondrial-like",ACSM4,-like stripped
+LOC110475575,galanin receptor type 1,GALR1,exact
+LOC110475578,cytochrome P450 2W1-like,CYP2W1,-like stripped
+LOC110475579,bone morphogenetic protein 7,BMP7,exact
+LOC110475584,putative short-chain dehydrogenase/reductase family 42E member 2,SDR42E2,exact
+LOC110475585,putative short-chain dehydrogenase/reductase family 42E member 2,SDR42E2,exact
+LOC110475590,lipase member M,LIPM,exact
+LOC110475603,"myosin light chain kinase, smooth muscle",MYLK,exact
+LOC110475622,interferon-induced protein with tetratricopeptide repeats 5,IFIT5,exact
+LOC110475628,formin-like protein 1,FMNL1,exact
+LOC110475656,"gap junction beta-6 protein, transcript variant X1",GJB6,exact
+LOC110475659,cytochrome P450 26C1,CYP26C1,exact
+LOC110475671,putative transporter SVOPL,SVOPL,exact
+LOC110475679,"annexin A8, transcript variant X1",ANXA8,exact
+LOC110475699,kazal-type serine protease inhibitor domain-containing protein 1,KAZALD1,exact
+LOC110475706,synaptosomal-associated protein 47,SNAP47,exact
+LOC110475713,anoctamin-2,ANO2,exact
+LOC110475719,"potassium voltage-gated channel subfamily A member 1, transcript variant X1",KCNA1,exact
+LOC110475732,complement factor D,CFD,exact
+LOC110475734,"uncharacterized protein KIAA1958 homolog, transcript variant X1",KIAA1958,exact
+LOC110475760,transducin-like enhancer protein 1,TLE1,exact
+LOC110475767,scaffold attachment factor B1,SAFB,exact
+LOC110475769,"scaffold attachment factor B1, transcript variant X2",SAFB,exact
+LOC110475792,CCAAT/enhancer-binding protein zeta,CEBPZ,exact
+LOC110475793,"protein arginine methyltransferase NDUFAF7, mitochondrial-like",NDUFAF7,-like stripped
+LOC110475795,tubulin monoglycylase TTLL3,TTLL3,exact
+LOC110475796,"D-beta-hydroxybutyrate dehydrogenase, mitochondrial",BDH1,exact
+LOC110475813,cytochrome P450 26A1,CYP26A1,exact
+LOC110475817,zinc finger protein 883-like,ZNF883,-like stripped
+LOC110475820,"glutamate receptor ionotropic, NMDA 2D",GRIN2D,exact
+LOC110475823,baculoviral IAP repeat-containing protein 5-like,BIRC5,-like stripped
+LOC110475825,"solute carrier family 2, facilitated glucose transporter member 10-like",SLC2A10,-like stripped
+LOC110475826,"protein PET117 homolog, mitochondrial",PET117,exact
+LOC110475834,eukaryotic translation initiation factor 5A-1,EIF5A,exact
+LOC110475840,sphingosine 1-phosphate receptor 2-like,S1PR2,-like stripped
+LOC110475863,trefoil factor 1,TFF1,exact
+LOC110475876,glucose-6-phosphate exchanger SLC37A1,SLC37A1,exact
+LOC110475882,E3 ubiquitin-protein ligase TRIM39,TRIM39,exact
+LOC110475883,C-C motif chemokine 4 homolog,CCL4,exact
+LOC110475884,C-C motif chemokine 4 homolog,CCL4,exact
+LOC110475885,C-C motif chemokine 5,CCL5,exact
+LOC110475889,claudin-3,CLDN3,exact
+LOC110475890,claudin-4-like,CLDN4,-like stripped
+LOC110475891,claudin-4-like,CLDN4,-like stripped
+LOC110475905,nuclear envelope pore membrane protein POM 121C,POM121C,exact
+LOC110475906,myeloperoxidase,MPO,exact
+LOC110475907,1-acyl-sn-glycerol-3-phosphate acyltransferase alpha,AGPAT1,exact
+LOC110475908,eosinophil peroxidase,EPX,exact
+LOC110475913,"protein SERAC1, transcript variant X5",SERAC1,exact
+LOC110475926,"general transcription factor IIH subunit 5, transcript variant X3",GTF2H5,exact
+LOC110475973,nectin-1,NECTIN1,exact
+LOC110475975,histamine H3 receptor,HRH3,exact
+LOC110475983,"cytochrome b-c1 complex subunit Rieske, mitochondrial",UQCRFS1,exact
+LOC110475986,"transcription factor GATA-4, transcript variant X2",GATA4,exact
+LOC110476003,pantetheinase,VNN1,exact
+LOC110476004,trace amine-associated receptor 1-like,TAAR1,-like stripped
+LOC110476010,solute carrier family 22 member 3,SLC22A3,exact
+LOC110476072,disintegrin and metalloproteinase domain-containing protein 20,ADAM20,exact
+LOC110476077,deubiquitinase DESI2,DESI2,exact
+LOC110476078,"cytochrome c oxidase assembly protein COX16 homolog, mitochondrial",COX16,exact
+LOC110476084,pleckstrin homology domain-containing family D member 1,PLEKHD1,exact
+LOC110476092,glucagon receptor,GCGR,exact
+LOC110476095,UBA-like domain-containing protein 1,UBALD1,exact
+LOC110476134,"myeloid leukemia factor 1, transcript variant X1",MLF1,exact
+LOC110476147,matrix metalloproteinase-9,MMP9,exact
+LOC110476152,"oxidative stress-responsive serine-rich protein 1, transcript variant X1",OSER1,exact
+LOC110476169,thyrotropin-releasing hormone receptor,TRHR,exact
+LOC110476170,oxidative stress-responsive serine-rich protein 1,OSER1,exact
+LOC110476171,ganglioside-induced differentiation-associated protein 1-like 1,GDAP1L1,exact
+LOC110476173,protein-glutamine gamma-glutamyltransferase 6-like,TGM6,-like stripped
+LOC110476174,protein-glutamine gamma-glutamyltransferase 6-like,TGM6,-like stripped
+LOC110476175,protein-glutamine gamma-glutamyltransferase E-like,TGM3,-like stripped
+LOC110476202,macrophage mannose receptor 1-like,MRC1,-like stripped
+LOC110476204,"macrophage mannose receptor 1-like, transcript variant X1",MRC1,-like stripped
+LOC110476205,macrophage mannose receptor 1-like,MRC1,-like stripped
+LOC110476206,macrophage mannose receptor 1-like,MRC1,-like stripped
+LOC110476208,macrophage mannose receptor 1-like,MRC1,-like stripped
+LOC110476217,purine nucleoside phosphorylase,PNP,exact
+LOC110476227,C-C motif chemokine 5,CCL5,exact
+LOC110476233,uromodulin,UMOD,exact
+LOC110476252,SNF-related serine/threonine-protein kinase,SNRK,exact
+LOC110476256,fibulin-7,FBLN7,exact
+LOC110476257,C-type lectin domain family 18 member A,CLEC18A,exact
+LOC110476298,histidine-rich glycoprotein-like,HRG,-like stripped
+LOC110476305,mucin-5AC,MUC5AC,exact
+LOC110476307,mitochondrial import receptor subunit TOM40 homolog,TOMM40,exact
+LOC110476390,cytochrome b-c1 complex subunit 8,UQCRQ,exact
+LOC110476427,exocyst complex component 3-like protein 4,EXOC3L4,exact
+LOC110476518,T-lymphocyte activation antigen CD80,CD80,exact
+LOC110476535,nuclear receptor subfamily 0 group B member 2,NR0B2,exact
+LOC110476563,zinc finger CCCH domain-containing protein 13-like,ZC3H13,-like stripped
+LOC110476581,histone H3.3,H3-3A; H3-3B,exact
+LOC110476595,cytoglobin,CYGB,exact
+LOC110476621,schwannomin-interacting protein 1,SCHIP1,exact
+LOC110476623,"myeloid leukemia factor 1, transcript variant X1",MLF1,exact
+LOC110476628,fibrinogen-like protein 1-like protein,FGL1,-like stripped
+LOC110476630,fibrinogen-like protein 1-like protein,FGL1,-like stripped
+LOC110476633,cytosolic arginine sensor for mTORC1 subunit 2,CASTOR2,exact
+LOC110476643,"disheveled-associated activator of morphogenesis 2, transcript variant X3",DAAM2,exact
+LOC110476653,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110476668,actin-like protein 6B,ACTL6B,exact
+LOC110476674,phosphoribosylformylglycinamidine synthase,PFAS,exact
+LOC110476678,syntaxin-1B,STX1B,exact
+LOC110476686,mesoderm posterior protein 1-like,MESP1,-like stripped
+LOC110476692,protein shisa-like-1,SHISAL1,exact
+LOC110476694,barrier-to-autointegration factor,BANF1,exact
+LOC110476712,DNA polymerase delta catalytic subunit,POLD1,exact
+LOC110476723,low-density lipoprotein receptor class A domain-containing protein 1,LDLRAD1,exact
+LOC110476744,NADH-cytochrome b5 reductase-like,CYB5RL,exact
+LOC110476773,arylacetamide deacetylase-like 4,AADACL4,exact
+LOC110476774,arylacetamide deacetylase-like 4,AADACL4,exact
+LOC110476776,arylacetamide deacetylase-like 4,AADACL4,exact
+LOC110476794,sperm mitochondrial-associated cysteine-rich protein-like,SMCP,-like stripped
+LOC110476795,small proline-rich protein 2F-like,SPRR2F,-like stripped
+LOC110476796,loricrin-like,LORICRIN,-like stripped
+LOC110476799,protein S100-A4-like,S100A4,-like stripped
+LOC110476801,"protein S100-A4-like, transcript variant X1",S100A4,-like stripped
+LOC110476808,cathepsin S,CTSS,exact
+LOC110476838,loricrin-like,LORICRIN,-like stripped
+LOC110476839,keratin-associated protein 5-2-like,KRTAP5-2,-like stripped
+LOC110476840,keratin-associated protein 4-3-like,KRTAP4-3,-like stripped
+LOC110476843,protein S100-A12-like,S100A12,-like stripped
+LOC110476844,protein S100-A9-like,S100A9,-like stripped
+LOC110476857,rho guanine nucleotide exchange factor 2,ARHGEF2,exact
+LOC110476874,transmembrane 9 superfamily member 2,TM9SF2,exact
+LOC110476882,rho guanine nucleotide exchange factor 11,ARHGEF11,exact
+LOC110476883,ETS translocation variant 3,ETV3,exact
+LOC110476885,basic salivary proline-rich protein 2-like,PRB2,-like stripped
+LOC110476888,SLAM family member 8-like,SLAMF8,-like stripped
+LOC110476889,signaling lymphocytic activation molecule,SLAMF1,exact
+LOC110476894,trichohyalin-like,TCHH,-like stripped
+LOC110476895,keratin-associated protein 10-4,KRTAP10-4,exact
+LOC110476899,"keratin, type I cytoskeletal 9-like",KRT9,-like stripped
+LOC110476900,"keratin, type I cytoskeletal 9",KRT9,exact
+LOC110476909,keratin-associated protein 10-7-like,KRTAP10-7,-like stripped
+LOC110476932,M-phase inducer phosphatase 1-like,CDC25A,-like stripped
+LOC110476937,E3 ubiquitin-protein ligase TRIM7-like,TRIM7,-like stripped
+LOC110476938,THAP domain-containing protein 5,THAP5,exact
+LOC110476940,zinc finger protein 768-like,ZNF768,-like stripped
+LOC110476941,zinc finger protein 777,ZNF777,exact
+LOC110476951,"zinc finger protein 746, transcript variant X1",ZNF746,exact
+LOC110476953,"glutamine synthetase, transcript variant X1",GLUL,exact
+LOC110476954,discoidin domain-containing receptor 2,DDR2,exact
+LOC110476962,voltage-dependent N-type calcium channel subunit alpha-1B,CACNA1B,exact
+LOC110477020,dual specificity mitogen-activated protein kinase kinase 4,MAP2K4,exact
+LOC110477022,T-cell receptor-associated transmembrane adapter 1,TRAT1,exact
+LOC110477035,"cytochrome P450 2J2-like, transcript variant X3",CYP2J2,-like stripped
+LOC110477050,TOG array regulator of axonemal microtubules protein 1,TOGARAM1,exact
+LOC110477054,heme-binding protein 2,HEBP2,exact
+LOC110477061,cytochrome P450 2J2-like,CYP2J2,-like stripped
+LOC110477076,lens fiber major intrinsic protein,MIP,exact
+LOC110477082,tubulin alpha-1C chain,TUBA1C,exact
+LOC110477084,"tubulin alpha-1B chain, transcript variant X1",TUBA1B,exact
+LOC110477087,serine/threonine-protein phosphatase 6 regulatory ankyrin repeat subunit C,ANKRD52,exact
+LOC110477093,retinol dehydrogenase 16,RDH16,exact
+LOC110477094,17-beta-hydroxysteroid dehydrogenase type 6,HSD17B6,exact
+LOC110477097,inhibin beta C chain-like,INHBC,-like stripped
+LOC110477113,cullin-associated NEDD8-dissociated protein 1,CAND1,exact
+LOC110477133,"serine/threonine-protein kinase TNNI3K, transcript variant X2",TNNI3K,exact
+LOC110477146,mediator of RNA polymerase II transcription subunit 20,MED20,exact
+LOC110477148,"trem-like transcript 4 protein, transcript variant X1",TREML4,exact
+LOC110477178,"D-aminoacyl-tRNA deacylase 2, transcript variant X2",DTD2,exact
+LOC110477300,leucine-rich repeat-containing protein 42,LRRC42,exact
+LOC110477306,protein PBMUCL2-like,HCG22,-like stripped
+LOC110477329,patched domain-containing protein 3,PTCHD3,exact
+LOC110477335,"presequence protease, mitochondrial-like",PITRM1,-like stripped
+LOC110477342,attractin-like,ATRN,-like stripped
+LOC110477349,netrin receptor UNC5D,UNC5D,exact
+LOC110477353,attractin-like,ATRN,-like stripped
+LOC110477357,C-terminal-binding protein 2,CTBP2,exact
+LOC110477361,olfactory receptor 14C36-like,OR14C36,-like stripped
+LOC110477397,dynein regulatory complex protein 1,DRC1,exact
+LOC110477400,heat shock protein beta-7,HSPB7,exact
+LOC110477417,"carbonic anhydrase 2, transcript variant X1",CA2,exact
+LOC110477443,"RING finger protein 151, transcript variant X1",RNF151,exact
+LOC110477455,cytochrome b-c1 complex subunit 7,UQCRB,exact
+LOC110477474,ribonucleases P/MRP protein subunit POP1,POP1,exact
+LOC110477475,"carbonic anhydrase 3, transcript variant X1",CA3,exact
+LOC110477476,carbonic anhydrase 3,CA3,exact
+LOC110477478,Y+L amino acid transporter 2-like,SLC7A6,-like stripped
+LOC110477484,carbonic anhydrase 13,CA13,exact
+LOC110477506,histone H3.3,H3-3A; H3-3B,exact
+LOC110477510,left-right determination factor 1,LEFTY1,exact
+LOC110477540,TLC domain-containing protein 5,TLCD5,exact
+LOC110477548,TLC domain-containing protein 5,TLCD5,exact
+LOC110477571,integrin alpha-11,ITGA11,exact
+LOC110477616,surfeit locus protein 1,SURF1,exact
+LOC110477658,carboxyl-terminal PDZ ligand of neuronal nitric oxide synthase protein,NOS1AP,exact
+LOC110477710,protein CutA homolog,CUTA,exact
+LOC110477799,"transmembrane protein 182, transcript variant X1",TMEM182,exact
+LOC110477813,"keratin, type II cytoskeletal 8",KRT8,exact
+LOC110477814,"keratin, type II cytoskeletal 75",KRT75,exact
+LOC110477815,"keratin, type II cytoskeletal 6B-like",KRT6B,-like stripped
+LOC110477818,"keratin, type II cytoskeletal 80",KRT80,exact
+LOC110477824,"keratin, type II cytoskeletal 4",KRT4,exact
+LOC110477826,"keratin, type II cytoskeletal 3",KRT3,exact
+LOC110477827,"keratin, type II cytoskeletal 3",KRT3,exact
+LOC110477828,"keratin, type II cytoskeletal 6A-like, transcript variant X1",KRT6A,-like stripped
+LOC110477829,"keratin, type II cytoskeletal 6A-like",KRT6A,-like stripped
+LOC110477830,"keratin, type II cytoskeletal 6A-like",KRT6A,-like stripped
+LOC110477840,nucleolar pre-ribosomal-associated protein 1,URB1,exact
+LOC110477854,solute carrier organic anion transporter family member 4C1,SLCO4C1,exact
+LOC110477877,perilipin-3,PLIN3,exact
+LOC110477879,perilipin-2,PLIN2,exact
+LOC110477888,perilipin-3,PLIN3,exact
+LOC110477916,epoxide hydrolase 1,EPHX1,exact
+LOC110477941,"sulfotransferase 6B1-like, transcript variant X1",SULT6B1,-like stripped
+LOC110477952,"sulfotransferase 6B1-like, transcript variant X2",SULT6B1,-like stripped
+LOC110477957,cis-aconitate decarboxylase,ACOD1,exact
+LOC110477959,exocyst complex component 1,EXOC1,exact
+LOC110477961,"H(+)/Cl(-) exchange transporter 5, transcript variant X1",CLCN5,exact
+LOC110477963,cytochrome P450 2J2,CYP2J2,exact
+LOC110477964,endothelin receptor type B,EDNRB,exact
+LOC110477965,DNA-directed RNA polymerases I and III subunit RPAC2,POLR1D,exact
+LOC110477968,"methionine--tRNA ligase, mitochondrial",MARS2,exact
+LOC110477969,ras-related protein Rab-33A-like,RAB33A,-like stripped
+LOC110477970,"RNA-binding motif protein, X-linked 2-like",RBMX2,-like stripped
+LOC110477974,"regulator of cell cycle RGCC, transcript variant X3",RGCC,exact
+LOC110477975,tumor necrosis factor ligand superfamily member 10,TNFSF10,exact
+LOC110477982,BTB/POZ domain-containing protein KCTD12,KCTD12,exact
+LOC110478014,tyrosine-protein kinase ZAP-70,ZAP70,exact
+LOC110478017,"acidic leucine-rich nuclear phosphoprotein 32 family member B, transcript variant X1",ANP32B,exact
+LOC110478019,F-box only protein 28,FBXO28,exact
+LOC110478029,"calcium-activated potassium channel subunit beta-2, transcript variant X3",KCNMB2,exact
+LOC110478077,GPI-linked NAD(P)(+)--arginine ADP-ribosyltransferase 1,ART1,exact
+LOC110478099,"septin-2, transcript variant X2",SEPTIN2,exact
+LOC110478103,cilia- and flagella-associated protein 251,CFAP251,exact
+LOC110478138,collagen alpha-2(I) chain-like,COL1A2,-like stripped
+LOC110478139,sodium-dependent serotonin transporter,SLC6A4,exact
+LOC110478145,tetratricopeptide repeat protein 28-like,TTC28,-like stripped
+LOC110478146,protein HIRA,HIRA,exact
+LOC110478148,26S proteasome non-ATPase regulatory subunit 9,PSMD9,exact
+LOC110478154,trichohyalin-like,TCHH,-like stripped
+LOC110478194,PHD finger protein 13,PHF13,exact
+LOC110478212,"solute carrier family 2, facilitated glucose transporter member 11",SLC2A11,exact
+LOC110478235,ribosyldihydronicotinamide dehydrogenase [quinone]-like,NQO2,-like stripped
+LOC110478241,"ribosyldihydronicotinamide dehydrogenase [quinone]-like, transcript variant X3",NQO2,-like stripped
+LOC110478245,tubulin beta-1 chain,TUBB1,exact
+LOC110478266,"cytochrome c oxidase subunit 5B, mitochondrial",COX5B,exact
+LOC110478267,calsenilin,KCNIP3,exact
+LOC110478274,steroid 21-hydroxylase,CYP21A2,exact
+LOC110478279,histone H2A.V,H2AZ2,exact
+LOC110478290,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110478296,cytosolic purine 5'-nucleotidase,NT5C2,exact
+LOC110478299,myeloid-associated differentiation marker homolog,MYADM,exact
+LOC110478306,dickkopf-related protein 3,DKK3,exact
+LOC110478323,myocyte-specific enhancer factor 2B,MEF2B,exact
+LOC110478339,"SURP and G-patch domain-containing protein 1-like, transcript variant X2",SUGP1,-like stripped
+LOC110478386,transmembrane 4 L6 family member 1,TM4SF1,exact
+LOC110478387,high affinity choline transporter 1,SLC5A7,exact
+LOC110478409,centrosomal protein of 57 kDa,CEP57,exact
+LOC110478412,"putative N-acetylated-alpha-linked acidic dipeptidase, transcript variant X5",FOLH1B,exact
+LOC110478414,N-acetylated-alpha-linked acidic dipeptidase 2,NAALAD2,exact
+LOC110478432,transmembrane protein 132D,TMEM132D,exact
+LOC110478439,"BMP/retinoic acid-inducible neural-specific protein 3, transcript variant X1",BRINP3,exact
+LOC110478441,dystrobrevin beta,DTNB,exact
+LOC110478452,dystrobrevin beta,DTNB,exact
+LOC110478466,ankyrin repeat domain-containing protein 24,ANKRD24,exact
+LOC110478489,uridine-cytidine kinase-like 1,UCKL1,exact
+LOC110478505,low density lipoprotein receptor adapter protein 1,LDLRAP1,exact
+LOC110478510,E3 ubiquitin-protein ligase RNF19B,RNF19B,exact
+LOC110478540,cytochrome c oxidase assembly protein COX14 homolog,COX14,exact
+LOC110478547,prolactin,PRL,exact
+LOC110478557,A disintegrin and metalloproteinase with thrombospondin motifs 20-like,ADAMTS20,-like stripped
+LOC110478627,hexokinase-2,HK2,exact
+LOC110478653,"diacylglycerol kinase beta, transcript variant X1",DGKB,exact
+LOC110478675,SRC kinase signaling inhibitor 1-like,SRCIN1,-like stripped
+LOC110478744,coagulation factor VII,F7,exact
+LOC110478758,gamma-aminobutyric acid receptor subunit rho-1,GABRR1,exact
+LOC110478774,"E3 SUMO-protein ligase RanBP2, transcript variant X2",RANBP2,exact
+LOC110478787,glucagon receptor-like,GCGR,-like stripped
+LOC110478798,gap junction delta-2 protein,GJD2,exact
+LOC110478799,alpha-actinin-4,ACTN4,exact
+LOC110478803,histone H3.3,H3-3A; H3-3B,exact
+LOC110478805,protein Smaug homolog 2,SAMD4B,exact
+LOC110478825,"RNA-binding protein 4B, transcript variant X1",RBM4B,exact
+LOC110478830,"spectrin beta chain, non-erythrocytic 1",SPTBN1,exact
+LOC110478833,echinoderm microtubule-associated protein-like 3,EML3,exact
+LOC110478841,solute carrier family 22 member 6,SLC22A6,exact
+LOC110478851,REST corepressor 2,RCOR2,exact
+LOC110478874,carboxypeptidase A2,CPA2,exact
+LOC110478876,carboxypeptidase A1,CPA1,exact
+LOC110478877,carboxypeptidase A1,CPA1,exact
+LOC110478906,14 kDa phosphohistidine phosphatase,PHPT1,exact
+LOC110478952,"torsin-1A-interacting protein 2, transcript variant X1",TOR1AIP2,exact
+LOC110478960,"myomegalin, transcript variant X3",PDE4DIP,exact
+LOC110478972,P-selectin,SELP,exact
+LOC110478991,torsin-1A-interacting protein 1,TOR1AIP1,exact
+LOC110478992,ADAMTS-like protein 2,ADAMTSL2,exact
+LOC110478997,basic salivary proline-rich protein 2-like,PRB2,-like stripped
+LOC110478999,"cytochrome b5 reductase 4, transcript variant X1",CYB5R4,exact
+LOC110479021,neuron navigator 2,NAV2,exact
+LOC110479025,"natural killer cells antigen CD94, transcript variant X2",KLRD1,exact
+LOC110479035,killer cell lectin-like receptor subfamily F member 1,KLRF1,exact
+LOC110479041,V-type proton ATPase catalytic subunit A,ATP6V1A,exact
+LOC110479046,V-set and immunoglobulin domain-containing protein 8-like,VSIG8,-like stripped
+LOC110479051,cilia- and flagella-associated protein 45-like,CFAP45,-like stripped
+LOC110479065,sodium/potassium-transporting ATPase subunit alpha-2,ATP1A2,exact
+LOC110479072,glucosidase 2 subunit beta,PRKCSH,exact
+LOC110479074,dnaJ homolog subfamily B member 1,DNAJB1,exact
+LOC110479075,proto-oncogene vav-like,VAV1,-like stripped
+LOC110479079,pre-B-cell leukemia transcription factor 2,PBX2,exact
+LOC110479085,procollagen galactosyltransferase 1,COLGALT1,exact
+LOC110479095,gamma-secretase-activating protein-like,GSAP,-like stripped
+LOC110479129,midnolin,MIDN,exact
+LOC110479132,ankyrin repeat domain-containing protein 24,ANKRD24,exact
+LOC110479168,zinc finger protein 474,ZNF474,exact
+LOC110479169,gamma-aminobutyric acid receptor subunit rho-2,GABRR2,exact
+LOC110479188,"F-box/LRR-repeat protein 2, transcript variant X2",FBXL2,exact
+LOC110479189,upstream-binding protein 1,UBP1,exact
+LOC110479197,ER degradation-enhancing alpha-mannosidase-like protein 2,EDEM2,exact
+LOC110479238,fructose-bisphosphate aldolase B,ALDOB,exact
+LOC110479244,actin-like protein 10,ACTL10,exact
+LOC110479245,N-terminal EF-hand calcium-binding protein 3,NECAB3,exact
+LOC110479258,acrosin,ACR,exact
+LOC110479263,choline/ethanolamine kinase,CHKB,exact
+LOC110479268,V-type proton ATPase subunit C 1,ATP6V1C1,exact
+LOC110479271,cadherin-10,CDH10,exact
+LOC110479307,uncharacterized protein C8orf76,C8orf76,exact
+LOC110479346,arylsulfatase D,ARSD,exact
+LOC110479348,interleukin-5 receptor subunit alpha-like,IL5RA,-like stripped
+LOC110479365,"regucalcin, transcript variant X3",RGN,exact
+LOC110479384,regucalcin-like,RGN,-like stripped
+LOC110479386,granulocyte-macrophage colony-stimulating factor receptor subunit alpha,CSF2RA,exact
+LOC110479387,granulocyte-macrophage colony-stimulating factor receptor subunit alpha-like,CSF2RA,-like stripped
+LOC110479388,arylsulfatase D,ARSD,exact
+LOC110479391,fibronectin type III domain-containing protein 9,FNDC9,exact
+LOC110479393,granulocyte-macrophage colony-stimulating factor receptor subunit alpha,CSF2RA,exact
+LOC110479395,"cohesin subunit SA-2, transcript variant X3",STAG2,exact
+LOC110479399,cytochrome c oxidase assembly factor 5,COA5,exact
+LOC110479434,alpha-crystallin A chain,CRYAA,exact
+LOC110479435,cystathionine beta-synthase,CBS,exact
+LOC110479436,cystathionine beta-synthase-like,CBS,-like stripped
+LOC110479437,mediator of RNA polymerase II transcription subunit 1,MED1,exact
+LOC110479438,alpha-crystallin A chain-like,CRYAA,-like stripped
+LOC110479446,dnaJ homolog subfamily A member 4,DNAJA4,exact
+LOC110479459,diacylglycerol O-acyltransferase 1,DGAT1,exact
+LOC110479460,heat shock factor protein 1,HSF1,exact
+LOC110479462,maestro heat-like repeat-containing protein family member 1,MROH1,exact
+LOC110479463,maestro heat-like repeat-containing protein family member 1,MROH1,exact
+LOC110479465,repressor of RNA polymerase III transcription MAF1 homolog,MAF1,exact
+LOC110479466,ranBP-type and C3HC4-type zinc finger-containing protein 1-like,RBCK1,-like stripped
+LOC110479468,ranBP-type and C3HC4-type zinc finger-containing protein 1-like,RBCK1,-like stripped
+LOC110479469,"cytochrome c1, heme protein, mitochondrial",CYC1,exact
+LOC110479470,basic helix-loop-helix transcription factor scleraxis,SCX,exact
+LOC110479484,acrosin,ACR,exact
+LOC110479493,collagen alpha-1(XVI) chain-like,COL16A1,-like stripped
+LOC110479530,"myosin-7, transcript variant X1",MYH7,exact
+LOC110479532,"myosin-6, transcript variant X1",MYH6,exact
+LOC110479544,transcription intermediary factor 1-beta,TRIM28,exact
+LOC110479564,vasoactive intestinal polypeptide receptor 1,VIPR1,exact
+LOC110479566,1-acyl-sn-glycerol-3-phosphate acyltransferase alpha,AGPAT1,exact
+LOC110479568,"alpha-2-macroglobulin-like protein 1, transcript variant X3",A2ML1,exact
+LOC110479572,"acid-sensing ion channel 2, transcript variant X1",ASIC2,exact
+LOC110479573,hematopoietic lineage cell-specific protein,HCLS1,exact
+LOC110479574,rab-like protein 2A,RABL2A,exact
+LOC110479580,collagen alpha-1(I) chain-like,COL1A1,-like stripped
+LOC110479583,guanylyl cyclase-activating protein 1,GUCA1A,exact
+LOC110479598,homeobox protein Hox-C4,HOXC4,exact
+LOC110479626,proteinase-activated receptor 4-like,F2RL3,-like stripped
+LOC110479627,ectoderm-neural cortex protein 1,ENC1,exact
+LOC110479637,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC110479638,"potassium channel subfamily K member 16, transcript variant X2",KCNK16,exact
+LOC110479654,erythroferrone-like,ERFE,-like stripped
+LOC110479693,vesicular inhibitory amino acid transporter,SLC32A1,exact
+LOC110479709,E3 ubiquitin/ISG15 ligase TRIM25,TRIM25,exact
+LOC110479710,sulfate transporter,SLC26A2,exact
+LOC110479726,"F-box only protein 6, transcript variant X2",FBXO6,exact
+LOC110479734,"transmembrane protein 132B, transcript variant X1",TMEM132B,exact
+LOC110479742,ubiquitin-like protein 7,UBL7,exact
+LOC110479747,"cytochrome c oxidase subunit 5A, mitochondrial",COX5A,exact
+LOC110479757,basic salivary proline-rich protein 4-like,PRB4,-like stripped
+LOC110479767,histidine-rich glycoprotein-like,HRG,-like stripped
+LOC110479789,matrix metalloproteinase-9,MMP9,exact
+LOC110479795,phospholipid transfer protein,PLTP,exact
+LOC110479806,"WAP four-disulfide core domain protein 3-like, transcript variant X2",WFDC3,-like stripped
+LOC110479807,WAP four-disulfide core domain protein 2-like,WFDC2,-like stripped
+LOC110479819,basic salivary proline-rich protein 1-like,PRB1,-like stripped
+LOC110479833,prolactin,PRL,exact
+LOC110479878,"TBC1 domain family member 30, transcript variant X1",TBC1D30,exact
+LOC110479884,spermidine/spermine N(1)-acetyltransferase-like protein 1,SATL1,exact
+LOC110479890,"UAP56-interacting factor, transcript variant X3",FYTTD1,exact
+LOC110479905,homeobox protein Hox-B1-like,HOXB1,-like stripped
+LOC110479906,homeobox protein Hox-B1-like,HOXB1,-like stripped
+LOC110479909,homeobox protein Hox-D9,HOXD9,exact
+LOC110479911,"ATP synthase F(0) complex subunit C1, mitochondrial-like",ATP5MC1,-like stripped
+LOC110479912,pancreatic alpha-amylase,AMY2A,exact
+LOC110479923,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC110479953,pre-mRNA-splicing factor CWC22 homolog,CWC22,exact
+LOC110479957,zinc finger protein 586-like,ZNF586,-like stripped
+LOC110479977,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110479982,E3 ubiquitin-protein ligase ZNF598,ZNF598,exact
+LOC110479985,"hydroxyacylglutathione hydrolase, mitochondrial, transcript variant X5",HAGH,exact
+LOC110479986,"ATP synthase F(0) complex subunit C1, mitochondrial",ATP5MC1,exact
+LOC110479992,testis-expressed protein 2,TEX2,exact
+LOC110480014,"HLA class II histocompatibility antigen, DR alpha chain",HLA-DRA,exact
+LOC110480015,"HLA class II histocompatibility antigen, DR beta 3 chain",HLA-DRB3,exact
+LOC110480023,serine/threonine-protein kinase TAO2,TAOK2,exact
+LOC110480024,CDP-diacylglycerol--inositol 3-phosphatidyltransferase,CDIPT,exact
+LOC110480028,sarcoplasmic/endoplasmic reticulum calcium ATPase 1,ATP2A1,exact
+LOC110480029,3 beta-hydroxysteroid dehydrogenase type 7-like,HSD3B7,-like stripped
+LOC110480032,2-hydroxyacylsphingosine 1-beta-galactosyltransferase,UGT8,exact
+LOC110480034,cryptochrome-1,CRY1,exact
+LOC110480038,zona pellucida sperm-binding protein 4-like,ZP4,-like stripped
+LOC110480039,"copine-5, transcript variant X5",CPNE5,exact
+LOC110480040,"myb-related transcription factor, partner of profilin-like",MYPOP,-like stripped
+LOC110480041,tetraspanin-18,TSPAN18,exact
+LOC110480055,disintegrin and metalloproteinase domain-containing protein 33,ADAM33,exact
+LOC110480060,chloride intracellular channel protein 2,CLIC2,exact
+LOC110480062,neurotrypsin,PRSS12,exact
+LOC110480070,"splicing regulator RBM11-like, transcript variant X2",RBM11,-like stripped
+LOC110480073,protein eva-1 homolog C,EVA1C,exact
+LOC110480082,testis-specific serine/threonine-protein kinase 2,TSSK2,exact
+LOC110480091,collagen alpha-1(I) chain-like,COL1A1,-like stripped
+LOC110480094,"RNA-binding motif protein, X-linked 2",RBMX2,exact
+LOC110480104,"synaptotagmin-like protein 2, transcript variant X2",SYTL2,exact
+LOC110480108,"phosphatidylinositol-binding clathrin assembly protein, transcript variant X3",PICALM,exact
+LOC110480121,"serine/threonine-protein kinase PAK 3, transcript variant X3",PAK3,exact
+LOC110480150,homeobox protein Nkx-2.5-like,NKX2-5,-like stripped
+LOC110480168,cytohesin-2-like,CYTH2,-like stripped
+LOC110480173,protein phosphatase 1 regulatory subunit 12C-like,PPP1R12C,-like stripped
+LOC110480175,protein kinase C gamma type,PRKCG,exact
+LOC110480177,trichohyalin-like,TCHH,-like stripped
+LOC110480180,BCL-6 corepressor-like protein 1,BCORL1,exact
+LOC110480196,calcium/calmodulin-dependent protein kinase type IV,CAMK4,exact
+LOC110480197,granzyme M-like,GZMM,-like stripped
+LOC110480199,ADAMTS-like protein 5,ADAMTSL5,exact
+LOC110480252,START domain-containing protein 10,STARD10,exact
+LOC110480253,RELT-like protein 2,RELL2,exact
+LOC110480259,collagen alpha-1(II) chain-like,COL2A1,-like stripped
+LOC110480276,sacsin-like,SACS,-like stripped
+LOC110480277,osteoclast-associated immunoglobulin-like receptor,OSCAR,exact
+LOC110480285,ubiquitin carboxyl-terminal hydrolase CYLD,CYLD,exact
+LOC110480304,phosphoribosylformylglycinamidine synthase,PFAS,exact
+LOC110480306,cytochrome P450 2C19,CYP2C19,exact
+LOC110480307,phosphoribosylformylglycinamidine synthase-like,PFAS,-like stripped
+LOC110480313,rhodopsin kinase GRK1,GRK1,exact
+LOC110480318,"arf-GAP with coiled-coil, ANK repeat and PH domain-containing protein 1-like",ACAP1,-like stripped
+LOC110480322,"keratin, type I cytoskeletal 9-like",KRT9,-like stripped
+LOC110480324,bromodomain-containing protein 4,BRD4,exact
+LOC110480325,calmodulin-regulated spectrin-associated protein 3-like,CAMSAP3,-like stripped
+LOC110480329,tumor necrosis factor receptor superfamily member 10B,TNFRSF10B,exact
+LOC110480333,fibrous sheath CABYR-binding protein-like,FSCB,-like stripped
+LOC110480370,multiple epidermal growth factor-like domains protein 6,MEGF6,exact
+LOC110480432,acrosomal protein KIAA1210-like,KIAA1210,-like stripped
+LOC110480450,COMM domain-containing protein 5,COMMD5,exact
+LOC110480458,homeobox protein ARX,ARX,exact
+LOC110480464,nyctalopin,NYX,exact
+LOC110480485,rho GTPase-activating protein 20,ARHGAP20,exact
+LOC110480499,"integrator complex subunit 6-like, transcript variant X1",INTS6L,exact
+LOC110480512,conserved oligomeric Golgi complex subunit 1,COG1,exact
+LOC110480537,cyclic AMP-dependent transcription factor ATF-7,ATF7,exact
+LOC110480540,zinc finger protein 787,ZNF787,exact
+LOC110480547,sodium/glucose cotransporter 2-like,SLC5A2,-like stripped
+LOC110480549,SAGA-associated factor 29,SGF29,exact
+LOC110480550,eukaryotic translation initiation factor 3 subunit C,EIF3C,exact
+LOC110480561,H(+)/Cl(-) exchange transporter 7,CLCN7,exact
+LOC110480573,metabotropic glutamate receptor 6,GRM6,exact
+LOC110480576,M1-specific T cell receptor alpha chain-like,TRA,-like stripped
+LOC110480577,cathepsin G,CTSG,exact
+LOC110480578,olfactory receptor 10A5-like,OR10A5,-like stripped
+LOC110480579,olfactory receptor 4D2,OR4D2,exact
+LOC110480581,olfactory receptor 6Y1-like,OR6Y1,-like stripped
+LOC110480582,olfactory receptor 6B1-like,OR6B1,-like stripped
+LOC110480584,olfactory receptor 10C1-like,OR10C1,-like stripped
+LOC110480587,transmembrane protein 132C,TMEM132C,exact
+LOC110480607,protein mono-ADP-ribosyltransferase PARP14,PARP14,exact
+LOC110480615,histamine N-methyltransferase-like,HNMT,-like stripped
+LOC110480621,von Willebrand factor D and EGF domain-containing protein,VWDE,exact
+LOC110480641,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110480642,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110480644,"serine/threonine-protein kinase PAK 3, transcript variant X1",PAK3,exact
+LOC110480645,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110480647,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110480656,"GDNF family receptor alpha-4, transcript variant X1",GFRA4,exact
+LOC110480660,filaggrin-2-like,FLG2,-like stripped
+LOC110480663,fas-binding factor 1-like,FBF1,-like stripped
+LOC110480668,SH3 and multiple ankyrin repeat domains protein 3-like,SHANK3,-like stripped
+LOC110480671,ras-related protein Rab-26,RAB26,exact
+LOC110480675,ELL-associated factor 1,EAF1,exact
+LOC110480679,frizzled-3,FZD3,exact
+LOC110480699,cytochrome c oxidase copper chaperone,COX17,exact
+LOC110480705,"galactosylgalactosylxylosylprotein 3-beta-glucuronosyltransferase 1, transcript variant X1",B3GAT1,exact
+LOC110480732,lymphotactin,XCL1,exact
+LOC110480792,phospholipase A2,PLA2G1B,exact
+LOC110480808,protein Wnt-4-like,WNT4,-like stripped
+LOC110480818,olfactory receptor 10AC1-like,OR10AC1,-like stripped
+LOC110480821,scavenger receptor cysteine-rich type 1 protein M130,CD163,exact
+LOC110480822,taste receptor type 2 member 40,TAS2R40,exact
+LOC110480824,transient receptor potential cation channel subfamily V member 6,TRPV6,exact
+LOC110480829,C-type lectin domain family 4 member E,CLEC4E,exact
+LOC110480833,tumor necrosis factor receptor superfamily member 1A,TNFRSF1A,exact
+LOC110480859,solute carrier family 25 member 33,SLC25A33,exact
+LOC110480865,"rap1 GTPase-activating protein 1, transcript variant X6",RAP1GAP,exact
+LOC110480886,"beta-1,4-galactosyltransferase 3",B4GALT3,exact
+LOC110480917,probable E3 ubiquitin-protein ligase HERC3,HERC3,exact
+LOC110480919,"sphingomyelin synthase-related protein 1, transcript variant X2",SAMD8,exact
+LOC110480920,"ras-GEF domain-containing family member 1B-like, transcript variant X2",RASGEF1B,-like stripped
+LOC110480926,choline/ethanolamine kinase-like,CHKB,-like stripped
+LOC110480942,acrosin,ACR,exact
+LOC110480944,sodium/bile acid cotransporter 7,SLC10A7,exact
+LOC110480945,"sodium/bile acid cotransporter 7-like, transcript variant X2",SLC10A7,-like stripped
+LOC110480947,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110480951,"protein FAM13A, transcript variant X1",FAM13A,exact
+LOC110480955,hydroperoxide isomerase ALOXE3,ALOXE3,exact
+LOC110480956,N-acetylmuramoyl-L-alanine amidase,PGLYRP2,exact
+LOC110480957,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110480959,SH3 domain-containing protein 19-like,SH3D19,-like stripped
+LOC110480960,zinc finger protein 436-like,ZNF436,-like stripped
+LOC110480976,transcription factor E4F1,E4F1,exact
+LOC110480977,delphilin,GRID2IP,exact
+LOC110480985,protein phosphatase 1 regulatory subunit 14B-like,PPP1R14B,-like stripped
+LOC110480990,distal membrane-arm assembly complex protein 1-like,DMAC1,-like stripped
+LOC110480995,EGF-containing fibulin-like extracellular matrix protein 2,EFEMP2,exact
+LOC110481003,protein-arginine deiminase type-1,PADI1,exact
+LOC110481004,protein-arginine deiminase type-2,PADI2,exact
+LOC110481017,noelin-2,OLFM2,exact
+LOC110481018,WD repeat domain-containing protein 83,WDR83,exact
+LOC110481077,"core histone macro-H2A.1, transcript variant X1",MACROH2A1,exact
+LOC110481082,protein Shroom1,SHROOM1,exact
+LOC110481088,"loricrin-like, transcript variant X1",LORICRIN,-like stripped
+LOC110481095,vacuolar protein sorting-associated protein 28 homolog,VPS28,exact
+LOC110481099,syntaxin-4-like,STX4,-like stripped
+LOC110481108,"HLA class II histocompatibility antigen, DM beta chain-like",HLA-DMB,-like stripped
+LOC110481110,zinc finger protein 692,ZNF692,exact
+LOC110481111,E3 ubiquitin-protein ligase TRIM7,TRIM7,exact
+LOC110481112,E3 ubiquitin-protein ligase TRIM7-like,TRIM7,-like stripped
+LOC110481122,V-type proton ATPase subunit C 1,ATP6V1C1,exact
+LOC110481130,protein NDRG2-like,NDRG2,-like stripped
+LOC110481142,mucolipin-1,MCOLN1,exact
+LOC110481146,retinol dehydrogenase 8-like,RDH8,-like stripped
+LOC110481148,RAS protein activator like-3-like,RASAL3,-like stripped
+LOC110481150,noelin-2,OLFM2,exact
+LOC110481162,alpha-1-antitrypsin,SERPINA1,exact
+LOC110481165,cholesterol 24-hydroxylase,CYP46A1,exact
+LOC110481167,"alpha-1-antitrypsin, transcript variant X1",SERPINA1,exact
+LOC110481170,alpha-1-antitrypsin,SERPINA1,exact
+LOC110481174,heat shock protein HSP 90-alpha,HSP90AA1,exact
+LOC110481185,extracellular tyrosine-protein kinase PKDCC,PKDCC,exact
+LOC110481203,ATP-sensitive inward rectifier potassium channel 12,KCNJ12,exact
+LOC110481211,leucine zipper protein 2-like,LUZP2,-like stripped
+LOC110481216,disks large homolog 4,DLG4,exact
+LOC110481224,interleukin-17F-like,IL17F,-like stripped
+LOC110481226,"medium-chain specific acyl-CoA dehydrogenase, mitochondrial",ACADM,exact
+LOC110481230,antigen peptide transporter 2,TAP2,exact
+LOC110481231,antigen peptide transporter 1,TAP1,exact
+LOC110481232,tenascin-X-like,TNXB,-like stripped
+LOC110481233,nicotinate-nucleotide pyrophosphorylase [carboxylating],QPRT,exact
+LOC110481236,signal-induced proliferation-associated 1-like protein 3,SIPA1L3,exact
+LOC110481260,"NACHT, LRR and PYD domains-containing protein 12",NLRP12,exact
+LOC110481267,liprin-alpha-3,PPFIA3,exact
+LOC110481268,"glycogen [starch] synthase, muscle",GYS1,exact
+LOC110481276,"cytochrome c oxidase subunit 6A1, mitochondrial",COX6A1,exact
+LOC110481288,glutathione S-transferase theta-1,GSTT1,exact
+LOC110481290,glutathione S-transferase theta-1,GSTT1,exact
+LOC110481305,"somatomedin-B and thrombospondin type-1 domain-containing protein, transcript variant X1",SBSPON,exact
+LOC110481310,"dynein light chain 1, cytoplasmic, transcript variant X3",DYNLL1,exact
+LOC110481313,"dynein light chain 1, cytoplasmic, transcript variant X2",DYNLL1,exact
+LOC110481316,"protein HIRA, transcript variant X1",HIRA,exact
+LOC110481323,D-dopachrome decarboxylase,DDT,exact
+LOC110481351,radial spoke head 14 homolog,RSPH14,exact
+LOC110481375,melanotransferrin,MELTF,exact
+LOC110481384,"solute carrier family 2, facilitated glucose transporter member 11-like",SLC2A11,-like stripped
+LOC110481385,"solute carrier family 2, facilitated glucose transporter member 11-like",SLC2A11,-like stripped
+LOC110481386,"solute carrier family 2, facilitated glucose transporter member 9-like",SLC2A9,-like stripped
+LOC110481387,"solute carrier family 2, facilitated glucose transporter member 11-like",SLC2A11,-like stripped
+LOC110481413,cleavage and polyadenylation specificity factor subunit 1,CPSF1,exact
+LOC110481427,DNA polymerase delta catalytic subunit-like,POLD1,-like stripped
+LOC110481439,transcription factor GATA-4,GATA4,exact
+LOC110481452,H(+)/Cl(-) exchange transporter 7,CLCN7,exact
+LOC110481454,deoxyribonuclease-1-like 2,DNASE1L2,exact
+LOC110481455,deoxyribonuclease-1-like,DNASE1,-like stripped
+LOC110481457,UBA-like domain-containing protein 1,UBALD1,exact
+LOC110481487,"cytochrome c oxidase assembly factor 4 homolog, mitochondrial, transcript variant X2",COA4,exact
+LOC110481494,claudin-8,CLDN8,exact
+LOC110481533,rho guanine nucleotide exchange factor 1,ARHGEF1,exact
+LOC110481534,myosin light polypeptide 6,MYL6,exact
+LOC110481535,SWI/SNF complex subunit SMARCC2-like,SMARCC2,-like stripped
+LOC110481536,LETM1 domain-containing protein 1,LETMD1,exact
+LOC110481537,natural resistance-associated macrophage protein 2-like,SLC11A2,-like stripped
+LOC110481538,protocadherin gamma-B3,PCDHGB3,exact
+LOC110481540,RELT-like protein 2,RELL2,exact
+LOC110481553,eukaryotic initiation factor 4A-I,EIF4A1,exact
+LOC110481563,serine/threonine-protein phosphatase 2A 65 kDa regulatory subunit A alpha isoform,PPP2R1A,exact
+LOC110481567,zinc finger protein 576,ZNF576,exact
+LOC110481571,melanopsin,OPN4,exact
+LOC110481579,"alcohol dehydrogenase class-3, transcript variant X1",ADH5,exact
+LOC110481596,histone H2A.Z,H2AZ1,exact
+LOC110481611,plasma membrane calcium-transporting ATPase 3,ATP2B3,exact
+LOC110481645,twist-related protein 2,TWIST2,exact
+LOC110481660,"IQ domain-containing protein E, transcript variant X2",IQCE,exact
+LOC110481663,low-density lipoprotein receptor-related protein 3,LRP3,exact
+LOC110481690,"spectrin beta chain, non-erythrocytic 5, transcript variant X1",SPTBN5,exact
+LOC110481703,"cytochrome c oxidase assembly protein COX20, mitochondrial",COX20,exact
+LOC110481721,basic salivary proline-rich protein 1-like,PRB1,-like stripped
+LOC110481729,RNA-binding protein 10-like,RBM10,-like stripped
+LOC110481730,synapsin-1-like,SYN1,-like stripped
+LOC110481732,RNA-binding protein FUS-like,FUS,-like stripped
+LOC110481734,nucleolar protein 9-like,NOP9,-like stripped
+LOC110481752,"C-type lectin domain family 2 member D, transcript variant X2",CLEC2D,exact
+LOC110481754,PR domain zinc finger protein 14,PRDM14,exact
+LOC110481764,synaptotagmin-3,SYT3,exact
+LOC110481766,THAP domain-containing protein 7-like,THAP7,-like stripped
+LOC110481778,"fatty acid-binding protein, adipocyte",FABP4,exact
+LOC110481779,"myelin P2 protein-like, transcript variant X2",PMP2,-like stripped
+LOC110481782,fatty acid-binding protein 5,FABP5,exact
+LOC110481785,"carbonic anhydrase 13, transcript variant X2",CA13,exact
+LOC110481815,chymotrypsin-like elastase family member 1,CELA1,exact
+LOC110481816,lysosomal alpha-glucosidase,GAA,exact
+LOC110481821,phosphatidylinositol 5-phosphate 4-kinase type-2 gamma,PIP4K2C,exact
+LOC110481825,myosin-6,MYH6,exact
+LOC110481833,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110481835,cysteine/serine-rich nuclear protein 2,CSRNP2,exact
+LOC110481838,ryanodine receptor 1-like,RYR1,-like stripped
+LOC110481849,negative elongation factor E,NELFE,exact
+LOC110481852,zinc finger protein 420-like,ZNF420,-like stripped
+LOC110481853,zinc finger protein 345-like,ZNF345,-like stripped
+LOC110481873,homeobox protein HMX1,HMX1,exact
+LOC110481874,homeobox protein HMX2-like,HMX2,-like stripped
+LOC110481878,C-C motif chemokine 5,CCL5,exact
+LOC110481888,"HAUS augmin-like complex subunit 3, transcript variant X1",HAUS3,exact
+LOC110481913,dickkopf-related protein 3-like,DKK3,-like stripped
+LOC110481915,putative protein FAM47C,FAM47C,exact
+LOC110481916,zinc finger protein 345,ZNF345,exact
+LOC110481917,transcription intermediary factor 1-beta-like,TRIM28,-like stripped
+LOC110481921,proteasome subunit beta type-5,PSMB5,exact
+LOC110481923,dehydrogenase/reductase SDR family member 4-like,DHRS4,-like stripped
+LOC110481924,matrix metalloproteinase-14,MMP14,exact
+LOC110481929,low-density lipoprotein receptor-related protein 3,LRP3,exact
+LOC110481932,voltage-dependent N-type calcium channel subunit alpha-1B-like,CACNA1B,-like stripped
+LOC110481939,DDB1- and CUL4-associated factor 11-like,DCAF11,-like stripped
+LOC110481942,neuroguidin-like,NGDN,-like stripped
+LOC110481943,protein AHNAK2,AHNAK2,exact
+LOC110481950,collagen alpha-1(XXVI) chain-like,COL26A1,-like stripped
+LOC110481951,ras GTPase-activating protein 4,RASA4,exact
+LOC110481960,merlin,NF2,exact
+LOC110481964,apoptosis-inducing factor 3,AIFM3,exact
+LOC110481968,kinesin-like protein KIF12,KIF12,exact
+LOC110482018,protein spinster homolog 3,SPNS3,exact
+LOC110482040,C-C motif chemokine 3,CCL3,exact
+LOC110482051,"monocarboxylate transporter 2, transcript variant X1",SLC16A7,exact
+LOC110482052,collagen alpha-1(XXVI) chain,COL26A1,exact
+LOC110482054,adenine phosphoribosyltransferase,APRT,exact
+LOC110482058,"NADPH--cytochrome P450 reductase, transcript variant X3",POR,exact
+LOC110482079,DNA-directed RNA polymerase II subunit RPB11-a,POLR2J,exact
+LOC110482101,transcription initiation factor TFIID subunit 6,TAF6,exact
+LOC110482103,retinal guanylyl cyclase 1-like,GUCY2D,-like stripped
+LOC110482110,"hexosaminidase D, transcript variant X3",HEXD,exact
+LOC110482111,ras-related protein Rab-26,RAB26,exact
+LOC110482113,transcription factor E4F1,E4F1,exact
+LOC110482120,E3 ubiquitin-protein ligase BRE1B,RNF40,exact
+LOC110482184,collagen alpha-1(I) chain-like,COL1A1,-like stripped
+LOC110482197,elongin-A,ELOA,exact
+LOC110482209,"E3 SUMO-protein ligase ZNF451, transcript variant X2",ZNF451,exact
+LOC110482235,adhesion G protein-coupled receptor L1,ADGRL1,exact
+LOC110482251,CDP-diacylglycerol--inositol 3-phosphatidyltransferase-like,CDIPT,-like stripped
+LOC110482258,collagen alpha-1(XXVII) chain,COL27A1,exact
+LOC110482266,"torsin-1B, transcript variant X2",TOR1B,exact
+LOC110482267,torsin-1A,TOR1A,exact
+LOC110482295,tumor necrosis factor ligand superfamily member 8,TNFSF8,exact
+LOC110482312,pre-mRNA-splicing factor ATP-dependent RNA helicase DHX16,DHX16,exact
+LOC110482320,IQ motif and SEC7 domain-containing protein 1,IQSEC1,exact
+LOC110482321,lysine-specific demethylase 5C-like,KDM5C,-like stripped
+LOC110482322,voltage-dependent L-type calcium channel subunit alpha-1F,CACNA1F,exact
+LOC110482324,epithelial discoidin domain-containing receptor 1,DDR1,exact
+LOC110482327,histone-lysine N-methyltransferase EHMT2,EHMT2,exact
+LOC110482333,transmembrane protein 132C,TMEM132C,exact
+LOC110482358,histamine H3 receptor-like,HRH3,-like stripped
+LOC110482360,laminin subunit alpha-3,LAMA3,exact
+LOC110482403,"FK506-binding protein 15, transcript variant X1",FKBP15,exact
+LOC110482406,patatin-like phospholipase domain-containing protein 7,PNPLA7,exact
+LOC110482407,fibroblast growth factor 11,FGF11,exact
+LOC110482408,neuroligin-2,NLGN2,exact
+LOC110482409,serrate RNA effector molecule homolog,SRRT,exact
+LOC110482413,"cytochrome c1, heme protein, mitochondrial-like",CYC1,-like stripped
+LOC110482415,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110482421,"myosin-binding protein C, fast-type",MYBPC2,exact
+LOC110482429,lanosterol 14-alpha demethylase,CYP51A1,exact
+LOC110482435,"pituitary tumor-transforming gene 1 protein-interacting protein, transcript variant X1",PTTG1IP,exact
+LOC110482444,"guanine nucleotide-binding protein G(I)/G(S)/G(O) subunit gamma-11, transcript variant X2",GNG11,exact
+LOC110482476,aurora kinase B,AURKB,exact
+LOC110482477,vesicle-associated membrane protein 2,VAMP2,exact
+LOC110482480,retinal guanylyl cyclase 1,GUCY2D,exact
+LOC110482491,CCR4-NOT transcription complex subunit 3,CNOT3,exact
+LOC110482494,leukocyte receptor cluster member 1 homolog,LENG1,exact
+LOC110482495,"POU domain, class 2, transcription factor 2-like",POU2F2,-like stripped
+LOC110482496,"glutamate receptor ionotropic, kainate 5",GRIK5,exact
+LOC110482499,ceramide synthase-like,TLCD3B,-like stripped
+LOC110482500,fructose-bisphosphate aldolase A,ALDOA,exact
+LOC110482501,serine/threonine-protein phosphatase 4 catalytic subunit,PPP4C,exact
+LOC110482502,SH3 and multiple ankyrin repeat domains protein 3-like,SHANK3,-like stripped
+LOC110482504,"cytochrome c oxidase subunit 7C, mitochondrial",COX7C,exact
+LOC110482531,ketosamine-3-kinase,FN3KRP,exact
+LOC110482554,"cytochrome P450 4F3, transcript variant X1",CYP4F3,exact
+LOC110482556,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110482557,"isocitrate dehydrogenase [NAD] subunit gamma, mitochondrial",IDH3G,exact
+LOC110482561,basic helix-loop-helix transcription factor scleraxis-like,SCX,-like stripped
+LOC110482562,ribosome biogenesis protein bop1,BOP1,exact
+LOC110482565,elongator complex protein 5-like,ELP5,-like stripped
+LOC110482567,"cholesterol side-chain cleavage enzyme, mitochondrial",CYP11A1,exact
+LOC110482575,proteinase-activated receptor 4-like,F2RL3,-like stripped
+LOC110482576,sodium/potassium-transporting ATPase subunit alpha-3,ATP1A3,exact
+LOC110482579,"solute carrier organic anion transporter family member 1C1, transcript variant X2",SLCO1C1,exact
+LOC110482584,aldo-keto reductase family 1 member B1,AKR1B1,exact
+LOC110482585,aldo-keto reductase family 1 member B1,AKR1B1,exact
+LOC110482590,aldo-keto reductase family 1 member B1,AKR1B1,exact
+LOC110482607,E3 ubiquitin-protein ligase RNF113A,RNF113A,exact
+LOC110482616,aldo-keto reductase family 1 member B1-like,AKR1B1,-like stripped
+LOC110482617,aldo-keto reductase family 1 member B10,AKR1B10,exact
+LOC110482633,oncostatin-M-specific receptor subunit beta,OSMR,exact
+LOC110482638,aldo-keto reductase family 1 member B10,AKR1B10,exact
+LOC110482647,protocadherin-11 X-linked,PCDH11X,exact
+LOC110482648,barrier-to-autointegration factor,BANF1,exact
+LOC110482651,testis-specific Y-encoded-like protein 4,TSPYL4,exact
+LOC110482655,non-structural maintenance of chromosomes element 3 homolog,NSMCE3,exact
+LOC110482658,zona pellucida sperm-binding protein 3-like,ZP3,-like stripped
+LOC110482660,keratinocyte proline-rich protein-like,KPRP,-like stripped
+LOC110482661,immunoglobulin superfamily containing leucine-rich repeat protein,ISLR,exact
+LOC110482663,immunoglobulin superfamily containing leucine-rich repeat protein 2,ISLR2,exact
+LOC110482672,synaptophysin-like protein 1,SYPL1,exact
+LOC110482673,kallikrein-14-like,KLK14,-like stripped
+LOC110482715,mediator of RNA polymerase II transcription subunit 7,MED7,exact
+LOC110482717,serine/threonine-protein phosphatase 2B catalytic subunit gamma isoform,PPP3CC,exact
+LOC110482719,leukotriene C4 synthase,LTC4S,exact
+LOC110482722,leukotriene C4 synthase,LTC4S,exact
+LOC110482724,filamin-A-like,FLNA,-like stripped
+LOC110482729,cationic amino acid transporter 2,SLC7A2,exact
+LOC110482731,T-cell immunoglobulin and mucin domain-containing protein 4,TIMD4,exact
+LOC110482733,neuropeptide Y receptor type 2,NPY2R,exact
+LOC110482735,calpain small subunit 1,CAPNS1,exact
+LOC110482738,"proton-coupled amino acid transporter 1, transcript variant X1",SLC36A1,exact
+LOC110482743,alpha-actinin-4,ACTN4,exact
+LOC110482747,"LON peptidase N-terminal domain and RING finger protein 1, transcript variant X1",LONRF1,exact
+LOC110482771,deoxycytidine kinase-like,DCK,-like stripped
+LOC110482785,filamin-A-like,FLNA,-like stripped
+LOC110482789,"sushi, nidogen and EGF-like domain-containing protein 1",SNED1,exact
+LOC110482793,"zinc finger protein 501-like, transcript variant X2",ZNF501,-like stripped
+LOC110482794,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110482799,zinc finger protein neuro-d4,DPF1,exact
+LOC110482802,DNA-directed RNA polymerase II subunit RPB1-like,POLR2A,-like stripped
+LOC110482803,protein CutA-like,CUTA,-like stripped
+LOC110482804,arf-GAP domain and FG repeat-containing protein 2-like,AGFG2,-like stripped
+LOC110482811,kinesin-like protein KIF1C,KIF1C,exact
+LOC110482812,leucine-rich repeat and calponin homology domain-containing protein 4,LRCH4,exact
+LOC110482821,"cadherin-6, transcript variant X6",CDH6,exact
+LOC110482829,discoidin domain-containing receptor 2,DDR2,exact
+LOC110482835,ras/Rap GTPase-activating protein SynGAP,SYNGAP1,exact
+LOC110482836,OTU domain-containing protein 5,OTUD5,exact
+LOC110482837,olfactory receptor 14C36-like,OR14C36,-like stripped
+LOC110482898,"neurabin-1, transcript variant X4",PPP1R9A,exact
+LOC110482923,ATP-binding cassette sub-family F member 1-like,ABCF1,-like stripped
+LOC110482926,zinc finger protein 497-like,ZNF497,-like stripped
+LOC110482934,general transcription and DNA repair factor IIH helicase subunit XPD-like,ERCC2,-like stripped
+LOC110482936,creatine kinase M-type-like,CKM,-like stripped
+LOC110482941,structural maintenance of chromosomes protein 1A-like,SMC1A,-like stripped
+LOC110482942,leucine-rich repeat-containing protein 14,LRRC14,exact
+LOC110482945,UPF0598 protein C8orf82,C8orf82,exact
+LOC110482947,alanine aminotransferase 2,GPT2,exact
+LOC110482960,crooked neck-like protein 1,CRNKL1,exact
+LOC110482962,calpain-2 catalytic subunit-like,CAPN2,-like stripped
+LOC110482988,mitochondrial amidoxime reducing component 2,MTARC2,exact
+LOC110482997,integrator complex subunit 14-like,INTS14,-like stripped
+LOC110482998,acrosin,ACR,exact
+LOC110483008,acrosin-like,ACR,-like stripped
+LOC110483013,acrosin-like,ACR,-like stripped
+LOC110483015,integrator complex subunit 14,INTS14,exact
+LOC110483020,acrosin-like,ACR,-like stripped
+LOC110483024,"nascent polypeptide-associated complex subunit alpha, muscle-specific form",NACA,exact
+LOC110483029,"protein PET100 homolog, mitochondrial",PET100,exact
+LOC110483036,serine/threonine-protein phosphatase 2A 65 kDa regulatory subunit A alpha isoform,PPP2R1A,exact
+LOC110483038,potassium-transporting ATPase alpha chain 1,ATP4A,exact
+LOC110483041,proline-rich protein 12-like,PRR12,-like stripped
+LOC110483042,TBC1 domain family member 17-like,TBC1D17,-like stripped
+LOC110483044,serrate RNA effector molecule homolog,SRRT,exact
+LOC110483049,zinc finger protein 184,ZNF184,exact
+LOC110483060,GAS2-like protein 3,GAS2L3,exact
+LOC110483065,histone H4,H4C1; H4C2; H4C3; H4C4; H4C5; H4C6; H4C8; H4C9; H4C11; H4C12; H4C13; H4C14; H4C15; H4C16,exact
+LOC110483069,histone H3.3,H3-3A; H3-3B,exact
+LOC110483074,tumor necrosis factor receptor superfamily member 13C,TNFRSF13C,exact
+LOC110483077,"coiled-coil domain-containing protein 134, transcript variant X2",CCDC134,exact
+LOC110483097,retinoic acid-induced protein 3,GPRC5A,exact
+LOC110483126,suppressor of cytokine signaling 1-like,SOCS1,-like stripped
+LOC110483136,solute carrier family 23 member 1,SLC23A1,exact
+LOC110483144,osteocalcin,BGLAP,exact
+LOC110483146,heat shock 70 kDa protein 12A,HSPA12A,exact
+LOC110483148,WD repeat domain phosphoinositide-interacting protein 4,WDR45,exact
+LOC110483158,creatine kinase M-type,CKM,exact
+LOC110483159,histone H1.10,H1-10,exact
+LOC110483166,histone H2A.J,H2AJ,exact
+LOC110483168,collagen alpha-5(IV) chain-like,COL4A5,-like stripped
+LOC110483174,histone H4,H4C1; H4C2; H4C3; H4C4; H4C5; H4C6; H4C8; H4C9; H4C11; H4C12; H4C13; H4C14; H4C15; H4C16,exact
+LOC110483180,voltage-dependent calcium channel gamma-8 subunit-like,CACNG8,-like stripped
+LOC110483184,splicing factor 3A subunit 2-like,SF3A2,-like stripped
+LOC110483195,"putative RNA-binding protein Luc7-like 2, transcript variant X3",LUC7L2,exact
+LOC110483196,"tRNA selenocysteine 1-associated protein 1, transcript variant X2",TRNAU1AP,exact
+LOC110483198,cytoglobin,CYGB,exact
+LOC110483201,mitochondrial import receptor subunit TOM40 homolog,TOMM40,exact
+LOC110483211,protocadherin gamma-A10-like,PCDHGA10,-like stripped
+LOC110483212,protocadherin gamma-B3,PCDHGB3,exact
+LOC110483213,protocadherin gamma-A10,PCDHGA10,exact
+LOC110483216,F-box only protein 28,FBXO28,exact
+LOC110483226,organic solute transporter subunit alpha,SLC51A,exact
+LOC110483312,p53 apoptosis effector related to PMP-22,PERP,exact
+LOC110483330,ATP-dependent DNA helicase Q4,RECQL4,exact
+LOC110483331,leucine-rich repeat-containing protein 14,LRRC14,exact
+LOC110483339,zinc finger protein 397-like,ZNF397,-like stripped
+LOC110483343,transcriptional repressor scratch 1,SCRT1,exact
+LOC110483349,zinc finger protein 436-like,ZNF436,-like stripped
+LOC110483350,"spectrin beta chain, non-erythrocytic 4",SPTBN4,exact
+LOC110483351,"spectrin beta chain, non-erythrocytic 4",SPTBN4,exact
+LOC110483383,F-box/LRR-repeat protein 2-like,FBXL2,-like stripped
+LOC110483403,tumor necrosis factor-like,TNF,-like stripped
+LOC110483408,"selenide, water dikinase 2",SEPHS2,exact
+LOC110483411,hsp90 co-chaperone Cdc37,CDC37,exact
+LOC110483412,ELAV-like protein 3,ELAVL3,exact
+LOC110483416,ATP-dependent DNA helicase Q4-like,RECQL4,-like stripped
+LOC110483417,olfactory receptor 6F1,OR6F1,exact
+LOC110483426,large neutral amino acids transporter small subunit 2,SLC7A8,exact
+LOC110483430,DNA-directed RNA polymerase II subunit RPB1-like,POLR2A,-like stripped
+LOC110483431,kinesin-like protein KIFC1,KIFC1,exact
+LOC110483468,kallikrein-14,KLK14,exact
+LOC110483473,mucin-5AC-like,MUC5AC,-like stripped
+LOC110483475,serine/threonine-protein phosphatase 5,PPP5C,exact
+LOC110483482,gamma-secretase subunit PEN-2,PSENEN,exact
+LOC110483483,protein lin-37 homolog,LIN37,exact
+LOC110483486,vitamin K epoxide reductase complex subunit 1,VKORC1,exact
+LOC110483487,"nascent polypeptide-associated complex subunit alpha, muscle-specific form",NACA,exact
+LOC110483488,arylsulfatase A,ARSA,exact
+LOC110483492,ADP-ribosylation factor-like protein 8B,ARL8B,exact
+LOC110483505,hyaluronidase-1,HYAL1,exact
+LOC110483513,hyaluronidase PH-20,SPAM1,exact
+LOC110483523,"transmembrane protein 14C, transcript variant X2",TMEM14C,exact
+LOC110483530,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110483532,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110483543,retinol dehydrogenase 5,RDH5,exact
+LOC110483545,glucose-6-phosphate exchanger SLC37A1,SLC37A1,exact
+LOC110483578,cleavage stimulation factor subunit 1,CSTF1,exact
+LOC110483603,"serine/threonine-protein phosphatase 4 regulatory subunit 1, transcript variant X1",PPP4R1,exact
+LOC110483618,"pleckstrin homology domain-containing family A member 1, transcript variant X1",PLEKHA1,exact
+LOC110483622,neuroguidin,NGDN,exact
+LOC110483625,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110483655,thiamine transporter 2-like,SLC19A3,-like stripped
+LOC110483656,thiamine transporter 2-like,SLC19A3,-like stripped
+LOC110483667,protocadherin gamma-A7-like,PCDHGA7,-like stripped
+LOC110483670,zinc finger protein 850-like,ZNF850,-like stripped
+LOC110483671,"leucine-rich repeat and fibronectin type III domain-containing protein 1-like protein, transcript variant X5",LRFN1,-like stripped
+LOC110483676,C5a anaphylatoxin chemotactic receptor 1,C5AR1,exact
+LOC110483680,DNA-binding death effector domain-containing protein 2,DEDD2,exact
+LOC110483681,protein capicua homolog,CIC,exact
+LOC110483682,cyclin-dependent kinase 16,CDK16,exact
+LOC110483715,"D-aspartate oxidase, transcript variant X1",DDO,exact
+LOC110483731,proprotein convertase subtilisin/kexin type 4,PCSK4,exact
+LOC110483734,ADAMTS-like protein 5,ADAMTSL5,exact
+LOC110483737,cleavage and polyadenylation specificity factor subunit 1-like,CPSF1,-like stripped
+LOC110483738,zinc finger protein 586-like,ZNF586,-like stripped
+LOC110483739,olfactory receptor 14A16-like,OR14A16,-like stripped
+LOC110483740,upstream stimulatory factor 2-like,USF2,-like stripped
+LOC110483758,"molybdopterin synthase catalytic subunit, transcript variant X2",MOCS2,exact
+LOC110483759,"molybdopterin synthase sulfur carrier subunit-like, transcript variant X3",MOCS2,-like stripped
+LOC110483773,vesicle-associated membrane protein 2-like,VAMP2,-like stripped
+LOC110483774,aurora kinase B,AURKB,exact
+LOC110483775,mediator of RNA polymerase II transcription subunit 25-like,MED25,-like stripped
+LOC110483785,rab GDP dissociation inhibitor beta,GDI2,exact
+LOC110483786,alpha-actinin-4-like,ACTN4,-like stripped
+LOC110483808,"extracellular serine/threonine protein kinase FAM20C, transcript variant X1",FAM20C,exact
+LOC110483810,arf-GAP with dual PH domain-containing protein 1,ADAP1,exact
+LOC110483820,endosome-associated-trafficking regulator 1-like,ENTR1,-like stripped
+LOC110483826,noggin,NOG,exact
+LOC110483828,urotensin-2 receptor-like,UTS2R,-like stripped
+LOC110483833,calpain-2 catalytic subunit,CAPN2,exact
+LOC110483887,spliceosome RNA helicase DDX39B,DDX39B,exact
+LOC110483889,structure-specific endonuclease subunit SLX1-like,SLX1A; SLX1B,-like stripped
+LOC110483890,SAGA-associated factor 29,SGF29,exact
+LOC110483891,diacylglycerol O-acyltransferase 1-like,DGAT1,-like stripped
+LOC110483892,protocadherin gamma-A5-like,PCDHGA5,-like stripped
+LOC110483893,protocadherin gamma-A7-like,PCDHGA7,-like stripped
+LOC110483896,protocadherin gamma-B5-like,PCDHGB5,-like stripped
+LOC110483897,olfactory receptor 14I1-like,OR14I1,-like stripped
+LOC110483898,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110483899,ras/Rap GTPase-activating protein SynGAP,SYNGAP1,exact
+LOC110483902,sodium/nucleoside cotransporter 1,SLC28A1,exact
+LOC110483906,"methylmalonyl-CoA epimerase, mitochondrial",MCEE,exact
+LOC110483917,"mucosa-associated lymphoid tissue lymphoma translocation protein 1 homolog, transcript variant X1",MALT1,exact
+LOC110483937,U3 small nucleolar ribonucleoprotein protein MPP10,MPHOSPH10,exact
+LOC110483938,mitotic-spindle organizing protein 2B,MZT2B,exact
+LOC110483942,C2 calcium-dependent domain-containing protein 4C,C2CD4C,exact
+LOC110483944,dual oxidase maturation factor 1,DUOXA1,exact
+LOC110483945,dual oxidase maturation factor 2,DUOXA2,exact
+LOC110483946,dual oxidase 2,DUOX2,exact
+LOC110483970,"cytochrome c oxidase subunit 7A2, mitochondrial",COX7A2,exact
+LOC110483974,transient receptor potential cation channel subfamily M member 1,TRPM1,exact
+LOC110483986,protocadherin gamma-B3,PCDHGB3,exact
+LOC110483987,"5-aminolevulinate synthase, erythroid-specific, mitochondrial",ALAS2,exact
+LOC110483989,"fatty acid-binding protein, liver",FABP1,exact
+LOC110483990,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110483992,proline-rich nuclear receptor coactivator 2,PNRC2,exact
+LOC110483994,filaggrin-2,FLG2,exact
+LOC110483996,"histone H3-like centromeric protein A, transcript variant X1",CENPA,exact
+LOC110484000,cyclin-dependent kinase 16-like,CDK16,-like stripped
+LOC110484008,ADP-ribosyl cyclase/cyclic ADP-ribose hydrolase 1,CD38,exact
+LOC110484036,"complement C1q tumor necrosis factor-related protein 7, transcript variant X6",C1QTNF7,exact
+LOC110484039,"ADP-ribosyl cyclase/cyclic ADP-ribose hydrolase 2, transcript variant X1",BST1,exact
+LOC110484057,"melanin-concentrating hormone receptor 1, transcript variant X1",MCHR1,exact
+LOC110484093,"SERTA domain-containing protein 2, transcript variant X1",SERTAD2,exact
+LOC110484103,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC110484104,nesprin-2,SYNE2,exact
+LOC110484123,"translocon-associated protein subunit beta, transcript variant X1",SSR2,exact
+LOC110484125,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110484126,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110484129,E3 ubiquitin-protein ligase BRE1B,RNF40,exact
+LOC110484130,transcription factor 4,TCF4,exact
+LOC110484131,methyl-CpG-binding domain protein 2,MBD2,exact
+LOC110484169,myosin-IIIb,MYO3B,exact
+LOC110484173,non-lysosomal glucosylceramidase,GBA2,exact
+LOC110484177,carbonic anhydrase 9,CA9,exact
+LOC110484179,gamma-secretase subunit Aph-1b,APH1B,exact
+LOC110484180,B-cell differentiation antigen CD72,CD72,exact
+LOC110484181,"phospholipid-transporting ATPase ID, transcript variant X1",ATP8B2,exact
+LOC110484188,receptor-type tyrosine-protein phosphatase kappa,PTPRK,exact
+LOC110484195,non-lysosomal glucosylceramidase-like,GBA2,-like stripped
+LOC110484196,non-lysosomal glucosylceramidase-like,GBA2,-like stripped
+LOC110484219,erythroid transcription factor-like,GATA1,-like stripped
+LOC110484220,pancreatic alpha-amylase,AMY2A,exact
+LOC110484224,protein phosphatase 1 regulatory subunit 12C-like,PPP1R12C,-like stripped
+LOC110484226,PDZ domain-containing protein GIPC1,GIPC1,exact
+LOC110484227,neurexin-2-beta,NRXN2,exact
+LOC110484279,platelet-activating factor receptor,PTAFR,exact
+LOC110484292,gap junction beta-5 protein,GJB5,exact
+LOC110484315,"protein argonaute-1, transcript variant X3",AGO1,exact
+LOC110484324,B-cell lymphoma 3 protein-like,BCL3,-like stripped
+LOC110484325,"olfactory receptor 14J1-like, transcript variant X2",OR14J1,-like stripped
+LOC110484329,arylsulfatase A,ARSA,exact
+LOC110484330,"valine--tRNA ligase, mitochondrial-like",VARS2,-like stripped
+LOC110484333,serine/threonine-protein kinase pim-1-like,PIM1,-like stripped
+LOC110484356,"bifunctional heparan sulfate N-deacetylase/N-sulfotransferase 3, transcript variant X1",NDST3,exact
+LOC110484379,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110484381,gametocyte-specific factor 1,GTSF1,exact
+LOC110484382,nck-associated protein 1-like,NCKAP1L,exact
+LOC110484388,leucine-rich repeat transmembrane protein FLRT1,FLRT1,exact
+LOC110484389,sarcoplasmic/endoplasmic reticulum calcium ATPase 1-like,ATP2A1,-like stripped
+LOC110484392,thioredoxin-like protein 1,TXNL1,exact
+LOC110484394,"WD repeat-containing protein 7, transcript variant X2",WDR7,exact
+LOC110484395,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110484397,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110484408,galanin receptor type 1,GALR1,exact
+LOC110484426,dipeptidase 2,DPEP2,exact
+LOC110484434,zinc finger protein 211-like,ZNF211,-like stripped
+LOC110484435,zinc finger protein 239-like,ZNF239,-like stripped
+LOC110484436,heat shock factor protein 1,HSF1,exact
+LOC110484437,protein FAM50A,FAM50A,exact
+LOC110484440,eukaryotic initiation factor 4A-I-like,EIF4A1,-like stripped
+LOC110484446,"ankyrin repeat domain-containing protein 40, transcript variant X1",ANKRD40,exact
+LOC110484447,"USP6 N-terminal-like protein, transcript variant X1",USP6NL,exact
+LOC110484448,GTPase HRas,HRAS,exact
+LOC110484461,mucin-5AC,MUC5AC,exact
+LOC110484475,mucin-5B,MUC5B,exact
+LOC110484493,malignant fibrous histiocytoma-amplified sequence 1-like,MFHAS1,-like stripped
+LOC110484520,secreted frizzled-related protein 2,SFRP2,exact
+LOC110484524,neurexin-2,NRXN2,exact
+LOC110484525,synaptosomal-associated protein 47,SNAP47,exact
+LOC110484528,zinc finger and BTB domain-containing protein 22,ZBTB22,exact
+LOC110484529,zinc finger protein 239,ZNF239,exact
+LOC110484531,sodium channel protein type 5 subunit alpha-like,SCN5A,-like stripped
+LOC110484537,solute carrier family 22 member 13,SLC22A13,exact
+LOC110484542,mitogen-activated protein kinase kinase kinase 3,MAP3K3,exact
+LOC110484544,solute carrier family 22 member 13,SLC22A13,exact
+LOC110484557,sodium channel protein type 5 subunit alpha,SCN5A,exact
+LOC110484562,sodium channel protein type 5 subunit alpha,SCN5A,exact
+LOC110484566,protein lin-37 homolog,LIN37,exact
+LOC110484567,"gamma-secretase subunit PEN-2, transcript variant X1",PSENEN,exact
+LOC110484569,probable RNA-binding protein 23,RBM23,exact
+LOC110484570,elongator complex protein 3-like,ELP3,-like stripped
+LOC110484571,forkhead box protein J1-like,FOXJ1,-like stripped
+LOC110484572,photoreceptor ankyrin repeat protein,ANKRD33,exact
+LOC110484605,"MOB-like protein phocein, transcript variant X2",MOB4,exact
+LOC110484625,caspase-8,CASP8,exact
+LOC110484629,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110484630,leucine-rich repeat-containing protein 14-like,LRRC14,-like stripped
+LOC110484631,protein arginine N-methyltransferase 1,PRMT1,exact
+LOC110484632,zinc finger protein 154-like,ZNF154,-like stripped
+LOC110484671,Golgi-associated PDZ and coiled-coil motif-containing protein,GOPC,exact
+LOC110484677,synaptotagmin-3,SYT3,exact
+LOC110484679,zinc finger protein 436-like,ZNF436,-like stripped
+LOC110484680,zinc finger protein OZF-like,ZNF146,-like stripped
+LOC110484682,protein spinster homolog 1,SPNS1,exact
+LOC110484687,CMRF35-like molecule 2,CD300E,exact
+LOC110484691,E3 ubiquitin-protein ligase TRIM39,TRIM39,exact
+LOC110484693,"cytochrome c oxidase assembly protein COX11, mitochondrial",COX11,exact
+LOC110484694,histone PARylation factor 1,HPF1,exact
+LOC110484710,structural maintenance of chromosomes protein 1A-like,SMC1A,-like stripped
+LOC110484711,U3 small nucleolar ribonucleoprotein protein IMP4-like,IMP4,-like stripped
+LOC110484713,"protein C19orf12 homolog, transcript variant X2",C19orf12,exact
+LOC110484723,"serine/threonine-protein kinase Sgk3, transcript variant X1",SGK3,exact
+LOC110484735,"cytochrome P450 7B1, transcript variant X3",CYP7B1,exact
+LOC110484743,aspartyl/asparaginyl beta-hydroxylase,ASPH,exact
+LOC110484757,"epidermal retinol dehydrogenase 2, transcript variant X2",SDR16C5,exact
+LOC110484788,cytochrome P450 7A1,CYP7A1,exact
+LOC110484803,epidermal retinol dehydrogenase 2,SDR16C5,exact
+LOC110484804,kinesin-like protein KIF20A,KIF20A,exact
+LOC110484827,tyrosine-protein kinase TXK,TXK,exact
+LOC110484829,vesicle-associated membrane protein 2,VAMP2,exact
+LOC110484839,"claudin-15, transcript variant X2",CLDN15,exact
+LOC110484855,transcription cofactor HES-6,HES6,exact
+LOC110484864,transcription cofactor HES-6,HES6,exact
+LOC110484869,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC110484900,serine/threonine-protein phosphatase 4 regulatory subunit 3B,PPP4R3B,exact
+LOC110484914,general transcription factor IIE subunit 1,GTF2E1,exact
+LOC110484917,"golgin subfamily B member 1, transcript variant X7",GOLGB1,exact
+LOC110484918,cytochrome P450 4V2,CYP4V2,exact
+LOC110484941,ectonucleoside triphosphate diphosphohydrolase 7,ENTPD7,exact
+LOC110484982,ubiquitin-conjugating enzyme E2 L5,UBE2L5,exact
+LOC110485004,aldehyde dehydrogenase family 3 member B1,ALDH3B1,exact
+LOC110485005,protein farnesyltransferase subunit beta,FNTB,exact
+LOC110485017,calcium-binding protein 2,CABP2,exact
+LOC110485024,bestrophin-1,BEST1,exact
+LOC110485025,olfactory receptor 4Q2,OR4Q2,exact
+LOC110485026,olfactory receptor 4S2-like,OR4S2,-like stripped
+LOC110485027,proto-oncogene Mas-like,MAS1,-like stripped
+LOC110485035,ankyrin repeat domain-containing protein 13D-like,ANKRD13D,-like stripped
+LOC110485038,glycine N-acyltransferase-like protein 3,GLYATL3,exact
+LOC110485039,glycine N-acyltransferase-like protein 3,GLYATL3,exact
+LOC110485048,cobalamin binding intrinsic factor-like,CBLIF,-like stripped
+LOC110485049,cobalamin binding intrinsic factor,CBLIF,exact
+LOC110485054,interferon-induced transmembrane protein 5-like,IFITM5,-like stripped
+LOC110485068,small kinetochore-associated protein-like,KNSTRN,-like stripped
+LOC110485075,membrane-spanning 4-domains subfamily A member 12,MS4A12,exact
+LOC116183099,myosin-6-like,MYH6,-like stripped
+LOC116183104,"keratin, type I cytoskeletal 15-like",KRT15,-like stripped
+LOC116183112,ETS domain-containing transcription factor ERF-like,ERFL,exact
+LOC116183113,aryl hydrocarbon receptor-like,AHR,-like stripped
+LOC116183114,UDP-N-acetylglucosamine transferase subunit ALG13 homolog,ALG13,exact
+LOC116183117,beta-microseminoprotein-like,MSMB,-like stripped
+LOC116183121,aspartyl/asparaginyl beta-hydroxylase-like,ASPH,-like stripped
+LOC116183122,"carbohydrate sulfotransferase 5-like, transcript variant X2",CHST5,-like stripped
+LOC116183126,zinc finger protein 239-like,ZNF239,-like stripped
+LOC116183127,zinc finger and SCAN domain-containing protein 2-like,ZSCAN2,-like stripped
+LOC116183133,C-type lectin domain family 2 member L-like,CLEC2L,-like stripped
+LOC116183143,anoctamin-2-like,ANO2,-like stripped
+LOC116183156,tetraspanin-7-like,TSPAN7,-like stripped
+LOC116183176,protein FAM237B-like,FAM237B,-like stripped
+LOC116183178,coiled-coil domain-containing protein 201-like,CCDC201,-like stripped
+LOC116183180,laminin subunit alpha-3-like,LAMA3,-like stripped
+LOC116183186,tigger transposable element-derived protein 3-like,TIGD3,-like stripped
+LOC116183201,"rho GTPase-activating protein 6-like, transcript variant X1",ARHGAP6,-like stripped
+LOC116183281,zinc finger protein 282-like,ZNF282,-like stripped
+LOC116183292,armadillo repeat-containing protein 3-like,ARMC3,-like stripped
+LOC116183308,UPF0500 protein C1orf216 homolog,C1orf216,exact
+LOC116183335,lymphocyte antigen 6E-like,LY6E,-like stripped
+LOC116183336,lymphocyte antigen 6E-like,LY6E,-like stripped
+LOC116183337,secreted Ly-6/uPAR-related protein 1-like,SLURP1,-like stripped
+LOC116183338,prostate stem cell antigen-like,PSCA,-like stripped
+LOC116183359,"rab3 GTPase-activating protein non-catalytic subunit-like, transcript variant X1",RAB3GAP2,-like stripped
+LOC116183371,collagen alpha-3(IX) chain-like,COL9A3,-like stripped
+LOC116183374,cadherin EGF LAG seven-pass G-type receptor 1-like,CELSR1,-like stripped
+LOC116183376,protocadherin-18-like,PCDH18,-like stripped
+LOC116183379,protocadherin Fat 3-like,FAT3,-like stripped
+LOC116183432,transforming growth factor beta activator LRRC32-like,LRRC32,-like stripped
+LOC116183448,frizzled-3-like,FZD3,-like stripped
+LOC116183487,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC116183500,dynein regulatory complex protein 1-like,DRC1,-like stripped
+LOC116183511,acrosin-like,ACR,-like stripped
+LOC116183544,progonadoliberin-2,GNRH2,exact
+LOC116183588,interleukin-8-like,CXCL8,-like stripped
+LOC116183590,C-X-C motif chemokine 2-like,CXCL2,-like stripped
+LOC116183674,TOG array regulator of axonemal microtubules protein 1-like,TOGARAM1,-like stripped
+LOC116183677,nesprin-2-like,SYNE2,-like stripped
+LOC116183699,TOG array regulator of axonemal microtubules protein 1-like,TOGARAM1,-like stripped
+LOC116183715,collagen alpha-1(III) chain-like,COL3A1,-like stripped
+LOC116183840,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116183841,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116183844,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116183919,protein patched homolog 1-like,PTCH1,-like stripped
+LOC116183947,protein spire homolog 1-like,SPIRE1,-like stripped
+LOC116183963,small ubiquitin-related modifier 3-like,SUMO3,-like stripped
+LOC116183964,serine palmitoyltransferase small subunit B-like,SPTSSB,-like stripped
+LOC116183969,galactose-3-O-sulfotransferase 2-like,GAL3ST2,-like stripped
+LOC116183970,galactose-3-O-sulfotransferase 2-like,GAL3ST2,-like stripped
+LOC116184004,probable E3 ubiquitin-protein ligase HERC1,HERC1,exact
+LOC116184006,transient receptor potential cation channel subfamily M member 1-like,TRPM1,-like stripped
+LOC116184007,transient receptor potential cation channel subfamily M member 1-like,TRPM1,-like stripped
+LOC116184014,"ubiquitin-like protein 7, transcript variant X1",UBL7,exact
+LOC116184034,leukotriene B4 receptor 1-like,LTB4R,-like stripped
+LOC116184134,protocadherin gamma-A10-like,PCDHGA10,-like stripped
+LOC116184135,proteinase-activated receptor 3-like,F2RL2,-like stripped
+LOC116184136,protocadherin-1-like,PCDH1,-like stripped
+LOC116184137,protocadherin gamma-A10-like,PCDHGA10,-like stripped
+LOC116184138,protocadherin beta-15-like,PCDHB15,-like stripped
+LOC116184198,ankyrin repeat domain-containing protein 7-like,ANKRD7,-like stripped
+LOC116184200,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116184217,ectonucleoside triphosphate diphosphohydrolase 2-like,ENTPD2,-like stripped
+LOC116184225,serine/arginine repetitive matrix protein 2-like,SRRM2,-like stripped
+LOC116184237,collagen alpha-2(XI) chain-like,COL11A2,-like stripped
+LOC116184263,CMRF35-like molecule 5,CD300LD,exact
+LOC116184271,bMERB domain-containing protein 1-like,BMERB1,-like stripped
+LOC116184278,myocardin-like,MYOCD,-like stripped
+LOC116184281,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116184283,maestro heat-like repeat-containing protein family member 6,MROH6,exact
+LOC116184289,neuferricin,CYB5D2,exact
+LOC116184293,C-C motif chemokine 7-like,CCL7,-like stripped
+LOC116184294,C-C motif chemokine 5-like,CCL5,-like stripped
+LOC116184310,C-C motif chemokine 5-like,CCL5,-like stripped
+LOC116184312,fibrinogen-like protein 1-like protein,FGL1,-like stripped
+LOC116184313,GAS2-like protein 2,GAS2L2,exact
+LOC116184348,E3 ubiquitin-protein ligase RNF182-like,RNF182,-like stripped
+LOC116184365,actin-like protein 10,ACTL10,exact
+LOC116184390,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC116184394,chymotrypsin-like elastase family member 2A,CELA2A,exact
+LOC116184412,gastrokine-1-like,GKN1,-like stripped
+LOC116184413,acrosin-like,ACR,-like stripped
+LOC116184421,U2 small nuclear ribonucleoprotein B''-like,SNRPB2,-like stripped
+LOC116184426,cAMP-dependent protein kinase inhibitor beta-like,PKIB,-like stripped
+LOC116184463,Fc receptor-like protein 2,FCRL2,exact
+LOC116184464,Fc receptor-like protein 4,FCRL4,exact
+LOC116184465,Fc receptor-like protein 2,FCRL2,exact
+LOC116184466,Fc receptor-like protein 2,FCRL2,exact
+LOC116184467,Fc receptor-like protein 1,FCRL1,exact
+LOC116184469,Fc receptor-like protein 4,FCRL4,exact
+LOC116184472,Fc receptor-like protein 4,FCRL4,exact
+LOC116184487,Fc receptor-like protein 2,FCRL2,exact
+LOC116184519,basic salivary proline-rich protein 2-like,PRB2,-like stripped
+LOC116184532,solute carrier family 35 member E1-like,SLC35E1,-like stripped
+LOC116184539,leucine-rich repeat-containing protein 25-like,LRRC25,-like stripped
+LOC116184543,spermatogenesis-associated serine-rich protein 2-like,SPATS2,-like stripped
+LOC116184578,ketosamine-3-kinase-like,FN3KRP,-like stripped
+LOC116184579,protein FAM240B-like,FAM240B,-like stripped
+LOC116184597,histone H2A type 2-C,H2AC20,exact
+LOC116184599,hydroxysteroid dehydrogenase-like protein 2,HSDL2,exact
+LOC116184603,IgGFc-binding protein-like,FCGBP,-like stripped
+LOC116184604,"inositol 1,4,5-trisphosphate receptor-interacting protein-like 1",ITPRIPL1,exact
+LOC116184605,serine/threonine-protein kinase PAK 3-like,PAK3,-like stripped
+LOC116184606,maestro heat-like repeat-containing protein family member 7,MROH7,exact
+LOC116184626,protein FAM240B-like,FAM240B,-like stripped
+LOC116184635,B-cell differentiation antigen CD72-like,CD72,-like stripped
+LOC116184641,serine/threonine-protein kinase PAK 3-like,PAK3,-like stripped
+LOC116184642,inhibitor of nuclear factor kappa-B kinase-interacting protein-like,IKBIP,-like stripped
+LOC116184660,ubiquitin-like modifier-activating enzyme 1,UBA1,exact
+LOC116184674,MAP/microtubule affinity-regulating kinase 4-like,MARK4,-like stripped
+LOC116184675,basic salivary proline-rich protein 1-like,PRB1,-like stripped
+LOC116184676,galectin-4-like,LGALS4,-like stripped
+LOC116184681,peptidyl-prolyl cis-trans isomerase FKBP2-like,FKBP2,-like stripped
+LOC116184685,delta(14)-sterol reductase TM7SF2-like,TM7SF2,-like stripped
+LOC116184690,protein spinster homolog 1-like,SPNS1,-like stripped
+LOC116184694,structure-specific endonuclease subunit SLX1-like,SLX1A; SLX1B,-like stripped
+LOC116184698,cip1-interacting zinc finger protein-like,CIZ1,-like stripped
+LOC116184700,zinc finger protein 668-like,ZNF668,-like stripped
+LOC116184702,"beta-1,3-galactosyltransferase 2-like",B3GALT2,-like stripped
+LOC116184705,mucin-5AC-like,MUC5AC,-like stripped
+LOC116184706,zinc finger protein 551-like,ZNF551,-like stripped
+LOC116184708,MAGE-like protein 2,MAGEL2,exact
+LOC116184711,"nascent polypeptide-associated complex subunit alpha, muscle-specific form-like",NACA,-like stripped
+LOC116184718,leucine-rich repeat LGI family member 4-like,LGI4,-like stripped
+LOC116184727,lysosomal thioesterase PPT2-like,PPT2,-like stripped
+LOC116184728,2-acylglycerol O-acyltransferase 3-like,MOGAT3,-like stripped
+LOC116184739,reticulocalbin-3-like,RCN3,-like stripped
+LOC116184740,maestro heat-like repeat-containing protein family member 9,MROH9,exact
+LOC116184741,mediator of RNA polymerase II transcription subunit 25-like,MED25,-like stripped
+LOC116184744,solute carrier family 12 member 4-like,SLC12A4,-like stripped
+LOC116184746,hydroxyproline dehydrogenase-like,PRODH2,-like stripped
+LOC116184747,spermatogenesis-associated protein 16-like,SPATA16,-like stripped
+LOC116184748,coiled-coil domain-containing protein 171-like,CCDC171,-like stripped
+LOC116184755,26S proteasome regulatory subunit 6B-like,PSMC4,-like stripped
+LOC116184756,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184761,"transportin-2-like, transcript variant X1",TNPO2,-like stripped
+LOC116184765,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184767,PDZ domain-containing protein GIPC1-like,GIPC1,-like stripped
+LOC116184772,tapasin-like,TAPBP,-like stripped
+LOC116184780,fibroblast growth factor 11-like,FGF11,-like stripped
+LOC116184782,serine/threonine-protein kinase pim-1-like,PIM1,-like stripped
+LOC116184783,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184784,rRNA 2'-O-methyltransferase fibrillarin-like,FBL,-like stripped
+LOC116184785,interferon regulatory factor 9-like,IRF9,-like stripped
+LOC116184788,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184789,rhodopsin kinase GRK1-like,GRK1,-like stripped
+LOC116184790,zinc finger protein 576-like,ZNF576,-like stripped
+LOC116184792,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184793,fibrous sheath CABYR-binding protein-like,FSCB,-like stripped
+LOC116184796,"glutamate receptor ionotropic, NMDA 2D-like",GRIN2D,-like stripped
+LOC116184797,maestro heat-like repeat-containing protein family member 7,MROH7,exact
+LOC116184800,T-cell surface glycoprotein CD8 alpha chain-like,CD8A,-like stripped
+LOC116184801,zinc finger protein 239-like,ZNF239,-like stripped
+LOC116184802,olfactory receptor 14J1-like,OR14J1,-like stripped
+LOC116184806,"TBC1 domain family member 30-like, transcript variant X2",TBC1D30,-like stripped
+LOC116184809,A disintegrin and metalloproteinase with thrombospondin motifs 20-like,ADAMTS20,-like stripped

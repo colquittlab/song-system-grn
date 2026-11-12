@@ -18,7 +18,9 @@ Consumers of `obj_hybrid_labels.qs2`:
 - `snrna/trees/celltypes_hclust_all_hybrid.qmd`
 - `snrna/trees/celltypes_hclust_glut_robustness_hybrid.qmd`
 - `snrna/reduction_viz/combined_all_umap_hybrid.R`
+- `snrna/reduction_viz/combined_all_umap_glut_hybrid.R`
 - `snrna/deg/dotplot_manual_markers_hybrid.qmd`
+- `snrna/deg/song-surround_deg_glut_hybrid.qmd` (also reads the excitatory embedding above)
 - `snrna/integration/colquitt2021_label_transfer.qmd`
 
 Change a label or an exclusion in `hybrid_division_naming.qmd`, re-render it, then re-render those.
