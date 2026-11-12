@@ -43,7 +43,10 @@ Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the 
 difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
 bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
 
-Spans: domain (default), 1p5mb, gw (genome-wide reference).
+Spans: domain (default), 1p5mb, gw (genome-wide reference), or set:<name> for a region BED
+written by panelE_sets.py (results/panelE/<name>.bed: the rebuilt Fig. 6E set and the filter
+ablation); set windows are centred on the region midpoint and outputs go to results/panelE/
+with the set name in the file name.
     python phylop_density.py [--center snapatac] [--smooth K] [domain 1p5mb gw]
 Writes results/<span>/phylop_density_{peaks,summary}.tsv and
 results/compare_mafb_spans/fig_phylop_density.{png,pdf}.
@@ -148,14 +151,19 @@ def boot(df, t, rng=None):
                 [(f"frac>{q:g}", f"n>{q:g}|{pa}|{t}", f"n>{q:g}|{pb}|{t}") for q in BOOT_Q]
     X = {k: (df[a].values, df[b].values) for k, a, b in stat_cols}
     obs = {k: xb.sum() / nB.sum() - xa.sum() / nA.sum() for k, (xa, xb) in X.items()}
-    N = len(df); draws = {k: np.empty(NBOOT) for k in X}
+    N = len(df); draws = {k: np.full(NBOOT, np.nan) for k in X}
     for i in range(NBOOT):
         ix = rng.integers(0, N, N); a, b = nA[ix].sum(), nB[ix].sum()
+        if a == 0 or b == 0: continue                 # a draw with no bases in one contrast is undefined
         for k, (xa, xb) in X.items(): draws[k][i] = xb[ix].sum() / b - xa[ix].sum() / a
     out = {}
     for k in X:
-        d = draws[k]; lo, hi = np.percentile(d, [2.5, 97.5])
-        p = min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()) + 1 / NBOOT)
+        d = draws[k][np.isfinite(draws[k])]
+        if len(d) < 100:
+            lo = hi = p = np.nan
+        else:
+            lo, hi = np.percentile(d, [2.5, 97.5])
+            p = min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()) + 1 / len(d))
         out.update({f"base_{k}_RA": X[k][0].sum() / nA.sum(), f"base_{k}_G4": X[k][1].sum() / nB.sum(),
                     f"base_{k}_diff": obs[k], f"base_{k}_lo": lo, f"base_{k}_hi": hi, f"base_{k}_p": p})
     return out
@@ -168,7 +176,13 @@ def suffix(how):
 def run(span, how="element"):
     EL = elem_coords(); CLS = classes(); sfx = suffix(how)
     SI = snap_index() if how == "snapatac" else None
-    if span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
+    where = span
+    if span.startswith("set:"):                       # region BED from panelE_sets.py
+        nm = span[4:]; where = "panelE"; sfx = f"_{nm}{sfx}"
+        b = pd.read_csv(result(f"{nm}.bed", "panelE"), sep="\t", header=None, names=["c", "s", "e", "n", "k"])
+        EL = {n: (c, s, e) for c, s, e, n in zip(b.c, b.s, b.e, b.n)}; CLS = dict(zip(b.n, b.k)); SI = None
+    if span.startswith("set:"): names = list(EL)
+    elif span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
     else: names = list(EL)
     bws = {k: pyBigWig.open(p) for k, p in {**PHYLOP, **FRAG}.items()}
@@ -199,7 +213,7 @@ def run(span, how="element"):
         rows.append(r)
         if span == "gw" and i % 5000 == 0: print(f"    {span}: {i}/{len(names)}", flush=True)
     df = pd.DataFrame(rows)
-    df.to_csv(result(f"phylop_density_peaks{sfx}.tsv", span), sep="\t", index=False, float_format="%.4g")
+    df.to_csv(result(f"phylop_density_peaks{sfx}.tsv", where), sep="\t", index=False, float_format="%.4g")
     if SI is not None:
         print(f"  {span}: centred on " + ", ".join(f"{k} {v}" for k, v in df.centred_on.value_counts().items())
               + f"; |shift| median {df['shift'].abs().median():.0f} bp, 90th pct {df['shift'].abs().quantile(.9):.0f} bp", flush=True)
@@ -209,7 +223,7 @@ def run(span, how="element"):
         mw = stats.mannwhitneyu(A, B, alternative="two-sided") if len(A) and len(B) else None
         rb = (2 * mw.statistic / (len(A) * len(B)) - 1) if mw else np.nan
         bA, bB = (np.concatenate(base[(p, t)]) if base[(p, t)] else np.array([]) for p in PAIRS)
-        summ.append(dict(span=span, centring=how, track=t, n_peaks=len(df),
+        summ.append(dict(span=span.replace("set:", ""), centring=how, track=t, n_peaks=len(df),
                          n_peaks_RA=len(A), n_peaks_G4=len(B), n_bases_RA=len(bA), n_bases_G4=len(bB),
                          median_peakmean_RA=np.median(A) if len(A) else np.nan,
                          median_peakmean_G4=np.median(B) if len(B) else np.nan,
@@ -220,7 +234,7 @@ def run(span, how="element"):
                          **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()},
                          **boot(df, t)))
     S = pd.DataFrame(summ)
-    S.to_csv(result(f"phylop_density_summary{sfx}.tsv", span), sep="\t", index=False, float_format="%.4g")
+    S.to_csv(result(f"phylop_density_summary{sfx}.tsv", where), sep="\t", index=False, float_format="%.4g")
     print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
     return df, base, S
 
@@ -234,6 +248,7 @@ def main():
         i = args.index("--smooth"); K = int(args[i + 1]); del args[i:i + 2]
     sfx = suffix(how)
     spans = args or ["domain", "1p5mb", "gw"]
+    if all(sp.startswith("set:") for sp in spans): sfx = "_panelE" + sfx
     out = {sp: run(sp, how) for sp in spans}
     fig, axs = plt.subplots(len(spans), len(PHYLOP), figsize=(1.8 * len(PHYLOP) + .2, 1.05 * len(spans) + .3),
                             squeeze=False)
@@ -250,7 +265,7 @@ def main():
             ax.axvline(0, color="#9AA3AE", lw=.3)
             ax.set_ylim(0, ax.get_ylim()[1] * 1.95)          # headroom for the annotation
             s = S[S.track == t].iloc[0]
-            ax.set_title(f"{SPAN_LABEL[sp]} · {t}", loc="left", pad=2)
+            ax.set_title(f"{SPAN_LABEL.get(sp, sp.replace('set:', ''))} · {t}", loc="left", pad=2)
             ax.text(.98, .95, f"peaks {s.n_peaks_RA}/{s.n_peaks_G4}\nphyloP>2: {100*s['base_frac>2_RA']:.0f}% / {100*s['base_frac>2_G4']:.0f}%"
                     f"\nΔ {100*s['base_frac>2_diff']:+.1f} [{100*s['base_frac>2_lo']:+.1f}, {100*s['base_frac>2_hi']:+.1f}]"
                     + ("\nbootstrap p < 0.001" if s['base_frac>2_p'] < 1e-3 else f"\nbootstrap p = {s['base_frac>2_p']:.2g}"),
