@@ -46,6 +46,17 @@ Track set. --tracks perbase swaps in the matched-neutral per-base phyloP tracks
 tree, i.e. oscine-lineage-specific constraint, not conservation within oscines. Outputs then
 carry _perbase.
 
+Window. --window W restricts each profile to a centred W-bp window (default 2000, i.e.
+±1,000 bp as in the notebook); --window 500 is the element itself, --window 200 its central
+±100 bp. Small windows also stop adjacent DARs' profiles overlapping. Outputs carry _w<W>.
+
+Effect size. --lfc X keeps only elements whose own contrast's Log2FC exceeds X (Glut-RA vs
+Glut-Arco-1 for RA_over_Arco, GABA-MGE-PVALB-2 vs GABA-LGE-1 for GABA4_over_GABA1; hybrid ArchR
+tables exported by export_dar.R). G4 DARs are more strongly differential than RA DARs (domain
+median Log2FC 2.9 vs 1.7), and a stronger difference puts more bases over the difference
+threshold, so the cutoff also changes how the classes compare. Not applied to set: spans
+(panelE_sets.py builds its own). Outputs carry _lfc<X>.
+
 Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the fragment
 difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
 bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
@@ -82,6 +93,8 @@ TRACK_SETS = {"3model": dict(PHYLOP),
               "perbase": {"whole tree (matched)": f"{PB}/wholetree_perbase_lsd2.bw",
                           "oscine lineage, birdAnc222 (matched)": f"{PB}/subtree222_perbase_lsd2.bw"}}
 TRACKS = "3model"
+LFC_MIN = None
+DART = "/private/warm-archive/colquittlab/assembly/tracks_lark/panelE_inputs"
 FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
 PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
 COL = {"Glut-RA − Glut-Arco-1": "#D6604D", "GABA-4-1 − GABA-1-1": "#4393C3"}
@@ -181,8 +194,19 @@ def boot(df, t, rng=None):
     return out
 
 
+def lfc_of():
+    """element -> Log2FC in its own class's contrast"""
+    out = {}; EL = elem_coords(); CLS = classes()
+    for cl, con in (("RA_over_Arco", "ra"), ("GABA4_over_GABA1", "pvalb2_lge1")):
+        d = pd.read_csv(f"{DART}/dar_{con}.tsv", sep="\t", usecols=["chrom", "end", "Log2FC"])
+        m = dict(zip(zip(d.chrom, d.end), d.Log2FC))
+        for n, (c, s, e) in EL.items():
+            if CLS.get(n) == cl: out[n] = m.get((c, e), np.nan)
+    return out
+
+
 def suffix(how):
-    return ("_perbase" if TRACKS == "perbase" else "") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
+    return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
 
 
 def run(span, how="element"):
@@ -197,6 +221,9 @@ def run(span, how="element"):
     elif span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
     else: names = list(EL)
+    if LFC_MIN is not None and not span.startswith("set:"):
+        L = lfc_of(); n0 = len(names); names = [n for n in names if L.get(n, np.nan) > LFC_MIN]
+        print(f"  {span}: Log2FC > {LFC_MIN:g} keeps {len(names)} of {n0} elements", flush=True)
     bws = {k: pyBigWig.open(p) for k, p in {**PHYLOP, **FRAG}.items()}
     size = {k: bw.chroms() for k, bw in bws.items()}
     base = {(p, t): [] for p in PAIRS for t in PHYLOP}       # base-level phyloP at high-diff bins
@@ -252,13 +279,17 @@ def run(span, how="element"):
 
 
 def main():
-    global K, TRACKS, PHYLOP
+    global K, TRACKS, PHYLOP, PAD, LFC_MIN
     args = sys.argv[1:]; how = "element"
     if "--tracks" in args:
         i = args.index("--tracks"); TRACKS = args[i + 1]; del args[i:i + 2]
         PHYLOP = TRACK_SETS[TRACKS]
     if "--center" in args:
         i = args.index("--center"); how = args[i + 1]; del args[i:i + 2]
+    if "--lfc" in args:
+        i = args.index("--lfc"); LFC_MIN = float(args[i + 1]); del args[i:i + 2]
+    if "--window" in args:
+        i = args.index("--window"); PAD = int(args[i + 1]) // 2; del args[i:i + 2]
     if "--smooth" in args:
         i = args.index("--smooth"); K = int(args[i + 1]); del args[i:i + 2]
     sfx = suffix(how)
