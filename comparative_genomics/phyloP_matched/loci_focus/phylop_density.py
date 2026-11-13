@@ -38,6 +38,10 @@ Centring. By default each window is centred on the 501-bp ArchR element. With
 it overlaps most, a GABA4_over_GABA1 element the GABA-4-1.bed peak; an element with no
 overlapping peak falls back to the summit of its up cluster's fragment signal (21-bp
 rolling mean) within the element. Outputs then carry a _snapcenter suffix.
+With --center summit each window is instead centred on the summit of the up cluster's fragment
+signal (21-bp rolling mean) inside the SnapATAC2 peak the element overlaps most (or inside the
+element if it overlaps none) -- the SnapATAC peak files carry no summit column, and their widths
+(142-2,843 bp) put the midpoint well off the summit for wide peaks. Outputs carry _summit.
 
 Track set. --tracks perbase swaps in the matched-neutral per-base phyloP tracks
 (phyloP_matched/perbase/tracks; phyloP LRT CONACC against the matched neutral model):
@@ -170,14 +174,18 @@ def snap_index():
     return out
 
 
-def centre(n, c, s, e, cls, SI, bws, size):
-    """(centre, how): SnapATAC peak midpoint, else fragment summit within the element"""
+def centre(n, c, s, e, cls, SI, bws, size, summit=False):
+    """(centre, how): SnapATAC peak midpoint (or, with summit, the up cluster's fragment summit
+    inside that peak), else the fragment summit within the element"""
     cl = UPCL.get(cls)
     if cl and c in SI[cl]:
         S, E = SI[cl][c]; i0 = max(0, np.searchsorted(S, s) - 50); i1 = np.searchsorted(S, e)
         ov = [(min(E[i], e) - max(S[i], s), i) for i in range(i0, i1) if E[i] > s and S[i] < e]
         if ov:
-            i = max(ov)[1]; return (S[i] + E[i]) // 2, "snapatac"
+            i = max(ov)[1]
+            if not summit: return (S[i] + E[i]) // 2, "snapatac"
+            f = rollmean(vals(bws[cl], c, int(S[i]), int(E[i]), size[cl][c]), 21)
+            if f.max() > 0: return int(S[i]) + int(np.argmax(f)), "snapatac summit"
     if cl:
         f = rollmean(vals(bws[cl], c, s, e, size[cl][c]), 21)
         if f.max() > 0: return s + int(np.argmax(f)), "fragment summit"
@@ -280,12 +288,12 @@ def elem_means(df, t):
 
 def suffix(how):
     return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") \
-        + ("_matchlfc" if MATCH == "lfc" else "") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
+        + ("_matchlfc" if MATCH == "lfc" else "") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "_summit" if how == "summit" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
 
 
 def run(span, how="element"):
     EL = elem_coords(); CLS = classes(); sfx = suffix(how)
-    SI = snap_index() if how == "snapatac" else None
+    SI = snap_index() if how in ("snapatac", "summit") else None
     where = span
     if span.startswith("set:"):                       # region BED from panelE_sets.py
         nm = span[4:]; where = "panelE"; sfx = f"_{nm}{sfx}"
@@ -312,7 +320,7 @@ def run(span, how="element"):
     for i, n in enumerate(sorted(names)):
         c, s, e = EL[n]
         if any(c not in size[k] for k in bws): continue
-        mid, via = centre(n, c, s, e, CLS.get(n, ""), SI, bws, size) if SI else (s + (e - s) // 2, "element centre")
+        mid, via = centre(n, c, s, e, CLS.get(n, ""), SI, bws, size, how == "summit") if SI else (s + (e - s) // 2, "element centre")
         a, b = mid - PAD, mid + PAD
         ph = {t: rollmean(vals(bws[t], c, a, b, size[t][c])) for t in PHYLOP}
         fr = {k: vals(bws[k], c, a, b, size[k][c]) for k in FRAG}

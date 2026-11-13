@@ -6,8 +6,9 @@
 ## pooled over each class's bases with 95% peak-cluster bootstrap intervals; filled = all
 ## elements, open = Log2FC-matched.
 ##
-##   Rscript plot_phylop_summary.R [Q=1] [window="500 bp"]
-## Writes results/compare_mafb_spans/fig_phylop_summary_{3model,perbase}_<window>_q<Q>.{pdf,png}.
+##   Rscript plot_phylop_summary.R [Q=1] [window="500 bp"] [centring="element centre"]
+## centring: "element centre" | "SnapATAC midpoint" | "SnapATAC summit"
+## Writes results/compare_mafb_spans/fig_phylop_summary_{3model,perbase}_<window>[_<centring>]_q<Q>.{pdf,png}.
 suppressMessages({library(ggplot2); library(dplyr); library(tidyr)})
 ## the repo's renv may be unavailable off its home machine; find the theme relative to this script
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
@@ -19,10 +20,11 @@ source(.theme)
 args <- commandArgs(trailingOnly = TRUE)
 q <- if (length(args) >= 1) args[1] else "1"
 win <- if (length(args) >= 2) args[2] else "500 bp"
+cen <- if (length(args) >= 3) args[3] else "element centre"
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/compare_mafb_spans"
 
 d <- read.delim(file.path(res, sprintf("phylop_summary_q%s.tsv", q)), check.names = FALSE) %>%
-  filter(window == win) %>%
+  filter(window == win, centring == cen) %>%
   mutate(span = factor(span, levels = c("DHX35–TOP1 domain", "MAFB ±1.5 Mb", "genome-wide"),
                        labels = c("domain", "±1.5 Mb", "genome-wide")),
          cls = factor(cls, levels = c("RA", "G4"), labels = c("Glut-RA", "GABA-4")),
@@ -58,8 +60,9 @@ for (ts in unique(long$tracks)) {
           legend.text = element_text(size = FIG_PT_AXIS_TEXT),
           legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(1, "pt"),
           axis.text.x = element_text(angle = 30, hjust = 1))
-  stem <- sprintf("fig_phylop_summary_%s_%s_q%s", ifelse(ts == "3-model", "3model", "perbase"),
-                  gsub(" ", "", win), q)
+  ctag <- c("element centre" = "", "SnapATAC midpoint" = "_snapmid", "SnapATAC summit" = "_summit")[[cen]]
+  stem <- sprintf("fig_phylop_summary_%s_%s%s_q%s", ifelse(ts == "3-model", "3model", "perbase"),
+                  gsub(" ", "", win), ctag, q)
   fig_save(p, file.path(res, stem), width = 1.15 * length(trk) + 0.5, height = 2.6)
   message("wrote ", file.path(res, stem), ".pdf/.png")
 }

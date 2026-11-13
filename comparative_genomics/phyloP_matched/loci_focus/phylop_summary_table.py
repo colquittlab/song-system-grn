@@ -28,6 +28,7 @@ TRACKS = {"": ["avian all", "vert. all", "oscine (Anc218)"],
           "_perbase": ["whole tree (matched)", "oscine lineage, birdAnc222 (matched)"]}
 WINDOWS = {"": "2 kb", "_w500": "500 bp", "_w200": "200 bp"}
 SETS = {"": "all", "_matchlfc": "Log2FC-matched"}
+CENTERS = {"": "element centre", "_snapcenter": "SnapATAC midpoint", "_summit": "SnapATAC summit"}
 
 
 def main():
@@ -35,8 +36,9 @@ def main():
     for tr, tracks in TRACKS.items():
         for st, stlab in SETS.items():
             for w, wlab in WINDOWS.items():
+              for ce, celab in CENTERS.items():
                 for sp, splab in SPANS.items():
-                    stem = f"{tr}{st}{w}_nosmooth"
+                    stem = f"{tr}{st}{w}{ce}_nosmooth"
                     pk, sm = (f"{F}/results/{sp}/phylop_density_{k}{stem}.tsv" for k in ("peaks", "summary"))
                     if not (os.path.exists(pk) and os.path.exists(sm)): continue
                     d = pd.read_csv(pk, sep="\t"); S = pd.read_csv(sm, sep="\t").set_index("track")
@@ -53,7 +55,7 @@ def main():
                                 if n[ix].sum(): bp.append(100 * tn[ix].sum() / n[ix].sum())
                                 if tn[ix].sum(): bm.append(ts[ix].sum() / tn[ix].sum())
                             s = S.loc[t]
-                            rows.append(dict(tracks="per-base matched" if tr else "3-model", track=t, set=stlab, window=wlab,
+                            rows.append(dict(tracks="per-base matched" if tr else "3-model", track=t, set=stlab, window=wlab, centring=celab,
                                              span=splab, cls=cl, n_elements=int(keep.sum()), n_bases=int(n.sum()),
                                              pct=pct, pct_lo=np.percentile(bp, 2.5) if bp else np.nan,
                                              pct_hi=np.percentile(bp, 97.5) if bp else np.nan,
