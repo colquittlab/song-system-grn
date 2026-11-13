@@ -32,9 +32,9 @@ d <- read.delim(file.path(res, sprintf("phylop_summary_q%s.tsv", q)), check.name
 
 long <- bind_rows(
   d %>% transmute(tracks, track, set, span, cls, value = pct, lo = pct_lo, hi = pct_hi,
-                  measure = sprintf("%% bases phyloP > %s", q)),
+                  measure = if (as.numeric(q) < 0) sprintf("%% bases phyloP < %s", q) else sprintf("%% bases phyloP > %s", q)),
   d %>% transmute(tracks, track, set, span, cls, value = mean, lo = mean_lo, hi = mean_hi,
-                  measure = sprintf("mean phyloP, bases > %s", q))
+                  measure = if (as.numeric(q) < 0) sprintf("mean phyloP, bases < %s", q) else sprintf("mean phyloP, bases > %s", q))
 ) %>% mutate(measure = factor(measure, levels = unique(measure)))
 
 cls_col <- c("Glut-RA" = FIG_PAL[[2]], "GABA-4" = FIG_PAL[[1]])

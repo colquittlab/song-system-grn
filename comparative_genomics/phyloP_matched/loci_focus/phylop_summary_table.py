@@ -6,8 +6,8 @@ From the per-element tables written by phylop_density.py (unsmoothed runs), for 
 (all; Log2FC-matched) and for each class separately -- Glut-RA activity bases (Glut-RA minus
 Glut-Arco-1 fragment difference > 5) and GABA-4 activity bases (GABA-4-1 minus GABA-1-1) --
 computes, pooled over that class's high-difference bases:
-  pct   percentage with phyloP > Q
-  mean  mean phyloP of the bases with phyloP > Q
+  pct   percentage with phyloP > Q   (Q < 0: percentage with phyloP < Q -- acceleration)
+  mean  mean phyloP of those bases
 each with a 95% peak-cluster bootstrap interval (elements resampled with all their bases).
 The G4 - RA difference and its p come from the same run's summary table.
 
@@ -32,7 +32,8 @@ CENTERS = {"": "element centre", "_snapcenter": "SnapATAC midpoint", "_summit": 
 
 
 def main():
-    q = f"{Q:g}"; rows = []; rng = np.random.default_rng(5)
+    q = f"{abs(Q):g}"; rows = []; rng = np.random.default_rng(5)
+    op = "<-" if Q < 0 else ">"                       # column operator in the per-element tables
     for tr, tracks in TRACKS.items():
         for st, stlab in SETS.items():
             for w, wlab in WINDOWS.items():
@@ -43,9 +44,9 @@ def main():
                     if not (os.path.exists(pk) and os.path.exists(sm)): continue
                     d = pd.read_csv(pk, sep="\t"); S = pd.read_csv(sm, sep="\t").set_index("track")
                     for t in tracks:
-                        if f"tn>{q}|{PAIRS['RA']}|{t}" not in d: continue
+                        if f"tn{op}{q}|{PAIRS['RA']}|{t}" not in d: continue
                         for cl, pr in PAIRS.items():
-                            n = d[f"nbins|{pr}"].values; tn = d[f"tn>{q}|{pr}|{t}"].values; ts = d[f"ts>{q}|{pr}|{t}"].values
+                            n = d[f"nbins|{pr}"].values; tn = d[f"tn{op}{q}|{pr}|{t}"].values; ts = d[f"ts{op}{q}|{pr}|{t}"].values
                             keep = n > 0; n, tn, ts = n[keep], tn[keep], ts[keep]
                             pct = 100 * tn.sum() / n.sum() if n.sum() else np.nan
                             mean = ts.sum() / tn.sum() if tn.sum() else np.nan
@@ -61,10 +62,10 @@ def main():
                                              pct_hi=np.percentile(bp, 97.5) if bp else np.nan,
                                              mean=mean, mean_lo=np.percentile(bm, 2.5) if bm else np.nan,
                                              mean_hi=np.percentile(bm, 97.5) if bm else np.nan,
-                                             pct_diff_p=s.get(f"base_frac>{q}_p", np.nan),
-                                             mean_diff_p=s.get(f"tailmean>{q}_p", np.nan)))
+                                             pct_diff_p=s.get(f"base_frac>{q}_p" if Q > 0 else f"base_acc<-{q}_p", np.nan),
+                                             mean_diff_p=s.get(f"tailmean>{q}_p" if Q > 0 else f"accmean<-{q}_p", np.nan)))
     D = pd.DataFrame(rows)
-    out = result(f"phylop_summary_q{q}.tsv", "compare_mafb_spans")
+    out = result(f"phylop_summary_q{Q:g}.tsv", "compare_mafb_spans")
     D.to_csv(out, sep="\t", index=False, float_format="%.4g")
     print(f"  wrote {out}: {len(D)} rows")
 

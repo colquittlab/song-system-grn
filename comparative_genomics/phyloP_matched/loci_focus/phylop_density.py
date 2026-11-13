@@ -70,6 +70,12 @@ high-difference bases whose phyloP exceeds the threshold (pooled over bases), G4
 peak-cluster bootstrap interval -- how strongly constrained the constrained bases are,
 alongside the tail fractions (how many there are).
 
+Acceleration. The mirror of the constraint tails: for thresholds in ACC_Q, the share of
+high-difference bases with phyloP < -q and the mean phyloP of those bases (more negative =
+stronger acceleration), G4 minus RA with peak-cluster bootstrap intervals (columns base_acc<-q_*
+and accmean<-q_*). On the subtree track, negative scores are acceleration on the oscine lineage
+relative to the rest of the tree.
+
 Element means. Every summary also reports, for N in ELEM_N, each element's mean phyloP over its
 high-difference bases, using only elements with >= N such bases; RA vs G4 compared per element
 (difference of means with a 95% bootstrap interval over elements, and Mann-Whitney). Each
@@ -115,6 +121,7 @@ LFC_MIN = None
 MATCH = None
 ELEM_N = (20, 50, 100)
 TAILMEAN_Q = (0.0, 1.0, 2.0)
+ACC_Q = (1.0, 2.0)
 DART = "/private/warm-archive/colquittlab/assembly/tracks_lark/panelE_inputs"
 FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
 PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
@@ -268,6 +275,31 @@ def tail_means(df, t, rng=None):
     return out
 
 
+def ratio_boot(df, num, den, rng):
+    """G4 - RA in sum(num)/sum(den), each from per-peak columns; peak-cluster bootstrap"""
+    pa, pb = PAIRS; N = len(df)
+    xa, ya = df[num.format(pa)].values, df[den.format(pa)].values
+    xb, yb = df[num.format(pb)].values, df[den.format(pb)].values
+    A = xa.sum() / ya.sum() if ya.sum() else np.nan; B = xb.sum() / yb.sum() if yb.sum() else np.nan
+    d = []
+    for _ in range(NBOOT):
+        ix = rng.integers(0, N, N); a, b = ya[ix].sum(), yb[ix].sum()
+        if a and b: d.append(xb[ix].sum() / b - xa[ix].sum() / a)
+    d = np.array(d); ok = len(d) >= 100
+    return dict(RA=A, G4=B, diff=B - A, lo=np.percentile(d, 2.5) if ok else np.nan,
+                hi=np.percentile(d, 97.5) if ok else np.nan,
+                p=min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()) + 1 / len(d)) if ok else np.nan)
+
+
+def accel(df, t):
+    rng = np.random.default_rng(17); out = {}
+    for q in ACC_Q:
+        for lab, num, den in ((f"base_acc<-{q:g}", f"tn<-{q:g}|{{}}|{t}", "nbins|{}"),
+                              (f"accmean<-{q:g}", f"ts<-{q:g}|{{}}|{t}", f"tn<-{q:g}|{{}}|{t}")):
+            out.update({f"{lab}_{k}": v for k, v in ratio_boot(df, num, den, rng).items()})
+    return out
+
+
 def elem_means(df, t):
     out = {}; rng = np.random.default_rng(11); pa, pb = PAIRS
     for N in ELEM_N:
@@ -339,6 +371,9 @@ def run(span, how="element"):
                 for q in TAILMEAN_Q:
                     sel = ph[t][m][ph[t][m] > q]
                     r[f"tn>{q:g}|{p}|{t}"] = int(len(sel)); r[f"ts>{q:g}|{p}|{t}"] = float(sel.sum())
+                for q in ACC_Q:
+                    sel = ph[t][m][ph[t][m] < -q]
+                    r[f"tn<-{q:g}|{p}|{t}"] = int(len(sel)); r[f"ts<-{q:g}|{p}|{t}"] = float(sel.sum())
                 if m.any(): base[(p, t)].append(ph[t][m])
         for t in PHYLOP: r[f"phylop_center100|{t}"] = float(ph[t][PAD - 50:PAD + 50].mean())
         rows.append(r)
@@ -363,7 +398,7 @@ def run(span, how="element"):
                          median_base_RA=np.median(bA) if len(bA) else np.nan,
                          median_base_G4=np.median(bB) if len(bB) else np.nan,
                          **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()},
-                         **boot(df, t), **tail_means(df, t), **elem_means(df, t)))
+                         **boot(df, t), **tail_means(df, t), **accel(df, t), **elem_means(df, t)))
     S = pd.DataFrame(summ)
     S.to_csv(result(f"phylop_density_summary{sfx}.tsv", where), sep="\t", index=False, float_format="%.4g")
     print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
