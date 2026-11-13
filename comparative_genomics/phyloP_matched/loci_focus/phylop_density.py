@@ -57,6 +57,20 @@ median Log2FC 2.9 vs 1.7), and a stronger difference puts more bases over the di
 threshold, so the cutoff also changes how the classes compare. Not applied to set: spans
 (panelE_sets.py builds its own). Outputs carry _lfc<X>.
 
+Matching. --match lfc pairs each RA element 1:1 with the G4 element nearest in own-contrast
+Log2FC (greedy, without replacement, caliper 0.25), dropping the unpaired, so both classes
+carry the same distribution of accessibility change. Outputs carry _matchlfc.
+
+Tail mean. Every summary reports, for thresholds in TAILMEAN_Q, the mean phyloP of the
+high-difference bases whose phyloP exceeds the threshold (pooled over bases), G4 minus RA with a
+peak-cluster bootstrap interval -- how strongly constrained the constrained bases are,
+alongside the tail fractions (how many there are).
+
+Element means. Every summary also reports, for N in ELEM_N, each element's mean phyloP over its
+high-difference bases, using only elements with >= N such bases; RA vs G4 compared per element
+(difference of means with a 95% bootstrap interval over elements, and Mann-Whitney). Each
+element counts once, unlike the base-weighted fractions.
+
 Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the fragment
 difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
 bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
@@ -94,6 +108,9 @@ TRACK_SETS = {"3model": dict(PHYLOP),
                           "oscine lineage, birdAnc222 (matched)": f"{PB}/subtree222_perbase_lsd2.bw"}}
 TRACKS = "3model"
 LFC_MIN = None
+MATCH = None
+ELEM_N = (20, 50, 100)
+TAILMEAN_Q = (0.0, 1.0, 2.0)
 DART = "/private/warm-archive/colquittlab/assembly/tracks_lark/panelE_inputs"
 FRAG = {k: f"{T}/fragment/{k}-fragment-bin1-smoothNone.bw" for k in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
 PAIRS = {"Glut-RA − Glut-Arco-1": ("Glut-RA", "Glut-Arco-1"), "GABA-4-1 − GABA-1-1": ("GABA-4-1", "GABA-1-1")}
@@ -205,8 +222,65 @@ def lfc_of():
     return out
 
 
+def match_lfc(names, L, CLS, cal=0.25):
+    """1:1 nearest-Log2FC matching of RA to G4 elements, greedy without replacement"""
+    ra = sorted((L[n], n) for n in names if CLS.get(n) == "RA_over_Arco" and np.isfinite(L.get(n, np.nan)))
+    g4 = sorted((L[n], n) for n in names if CLS.get(n) == "GABA4_over_GABA1" and np.isfinite(L.get(n, np.nan)))
+    gv = np.array([v for v, _ in g4]); used = np.zeros(len(g4), bool); keep = []
+    # match the scarcer high-Log2FC RA elements first, so they are not crowded out
+    for v, n in sorted(ra, reverse=True):
+        if not len(gv): break
+        j0 = np.searchsorted(gv, v); best = None
+        for j in range(max(0, j0 - 200), min(len(gv), j0 + 200)):
+            if used[j]: continue
+            dlt = abs(gv[j] - v)
+            if dlt <= cal and (best is None or dlt < best[0]): best = (dlt, j)
+        if best: used[best[1]] = True; keep += [n, g4[best[1]][1]]
+    return keep
+
+
+def tail_means(df, t, rng=None):
+    """G4 - RA in mean phyloP over high-difference bases with phyloP > q; peak-cluster bootstrap"""
+    rng = rng or np.random.default_rng(13); pa, pb = PAIRS; out = {}; N = len(df)
+    for q in TAILMEAN_Q:
+        na, sa = df[f"tn>{q:g}|{pa}|{t}"].values, df[f"ts>{q:g}|{pa}|{t}"].values
+        nb, sb = df[f"tn>{q:g}|{pb}|{t}"].values, df[f"ts>{q:g}|{pb}|{t}"].values
+        mA = sa.sum() / na.sum() if na.sum() else np.nan; mB = sb.sum() / nb.sum() if nb.sum() else np.nan
+        d = []
+        for _ in range(NBOOT):
+            ix = rng.integers(0, N, N); a, b = na[ix].sum(), nb[ix].sum()
+            if a and b: d.append(sb[ix].sum() / b - sa[ix].sum() / a)
+        d = np.array(d)
+        ok = len(d) >= 100
+        out.update({f"tailmean>{q:g}_RA": mA, f"tailmean>{q:g}_G4": mB, f"tailmean>{q:g}_nbases_RA": int(na.sum()),
+                    f"tailmean>{q:g}_nbases_G4": int(nb.sum()), f"tailmean>{q:g}_diff": mB - mA,
+                    f"tailmean>{q:g}_lo": np.percentile(d, 2.5) if ok else np.nan,
+                    f"tailmean>{q:g}_hi": np.percentile(d, 97.5) if ok else np.nan,
+                    f"tailmean>{q:g}_p": min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()) + 1 / len(d)) if ok else np.nan})
+    return out
+
+
+def elem_means(df, t):
+    out = {}; rng = np.random.default_rng(11); pa, pb = PAIRS
+    for N in ELEM_N:
+        A = (df[f"sum|{pa}|{t}"] / df[f"nbins|{pa}"])[df[f"nbins|{pa}"] >= N].values
+        B = (df[f"sum|{pb}|{t}"] / df[f"nbins|{pb}"])[df[f"nbins|{pb}"] >= N].values
+        r = {f"elemN{N}_n_RA": len(A), f"elemN{N}_n_G4": len(B),
+             f"elemN{N}_mean_RA": A.mean() if len(A) else np.nan, f"elemN{N}_mean_G4": B.mean() if len(B) else np.nan}
+        if len(A) >= 3 and len(B) >= 3:
+            dd = np.array([rng.choice(B, len(B)).mean() - rng.choice(A, len(A)).mean() for _ in range(NBOOT)])
+            r.update({f"elemN{N}_diff": B.mean() - A.mean(), f"elemN{N}_lo": np.percentile(dd, 2.5),
+                      f"elemN{N}_hi": np.percentile(dd, 97.5),
+                      f"elemN{N}_p_mw": stats.mannwhitneyu(B, A, alternative="two-sided").pvalue})
+        else:
+            r.update({f"elemN{N}_diff": np.nan, f"elemN{N}_lo": np.nan, f"elemN{N}_hi": np.nan, f"elemN{N}_p_mw": np.nan})
+        out.update(r)
+    return out
+
+
 def suffix(how):
-    return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
+    return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") \
+        + ("_matchlfc" if MATCH == "lfc" else "") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
 
 
 def run(span, how="element"):
@@ -221,9 +295,16 @@ def run(span, how="element"):
     elif span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
     else: names = list(EL)
-    if LFC_MIN is not None and not span.startswith("set:"):
-        L = lfc_of(); n0 = len(names); names = [n for n in names if L.get(n, np.nan) > LFC_MIN]
-        print(f"  {span}: Log2FC > {LFC_MIN:g} keeps {len(names)} of {n0} elements", flush=True)
+    if (LFC_MIN is not None or MATCH) and not span.startswith("set:"):
+        L = lfc_of()
+        if LFC_MIN is not None:
+            n0 = len(names); names = [n for n in names if L.get(n, np.nan) > LFC_MIN]
+            print(f"  {span}: Log2FC > {LFC_MIN:g} keeps {len(names)} of {n0} elements", flush=True)
+        if MATCH == "lfc":
+            n0 = len(names); names = match_lfc(names, L, CLS)
+            ra = [L[n] for n in names if CLS[n] == "RA_over_Arco"]; g4 = [L[n] for n in names if CLS[n] == "GABA4_over_GABA1"]
+            print(f"  {span}: Log2FC matching keeps {len(ra)} RA + {len(g4)} G4 of {n0}; median Log2FC "
+                  f"RA {np.median(ra):.2f}, G4 {np.median(g4):.2f}", flush=True)
     bws = {k: pyBigWig.open(p) for k, p in {**PHYLOP, **FRAG}.items()}
     size = {k: bw.chroms() for k, bw in bws.items()}
     base = {(p, t): [] for p in PAIRS for t in PHYLOP}       # base-level phyloP at high-diff bins
@@ -247,6 +328,9 @@ def run(span, how="element"):
                 # per-peak sufficient statistics for the base-weighted bootstrap
                 r[f"sum|{p}|{t}"] = float(ph[t][m].sum())
                 for q in BOOT_Q: r[f"n>{q:g}|{p}|{t}"] = int((ph[t][m] > q).sum())
+                for q in TAILMEAN_Q:
+                    sel = ph[t][m][ph[t][m] > q]
+                    r[f"tn>{q:g}|{p}|{t}"] = int(len(sel)); r[f"ts>{q:g}|{p}|{t}"] = float(sel.sum())
                 if m.any(): base[(p, t)].append(ph[t][m])
         for t in PHYLOP: r[f"phylop_center100|{t}"] = float(ph[t][PAD - 50:PAD + 50].mean())
         rows.append(r)
@@ -271,7 +355,7 @@ def run(span, how="element"):
                          median_base_RA=np.median(bA) if len(bA) else np.nan,
                          median_base_G4=np.median(bB) if len(bB) else np.nan,
                          **{k: v for q in TAILS for k, v in tail(df, bA, bB, t, q).items()},
-                         **boot(df, t)))
+                         **boot(df, t), **tail_means(df, t), **elem_means(df, t)))
     S = pd.DataFrame(summ)
     S.to_csv(result(f"phylop_density_summary{sfx}.tsv", where), sep="\t", index=False, float_format="%.4g")
     print(S.to_string(index=False, float_format=lambda v: f"{v:.3g}"), flush=True)
@@ -279,13 +363,15 @@ def run(span, how="element"):
 
 
 def main():
-    global K, TRACKS, PHYLOP, PAD, LFC_MIN
+    global K, TRACKS, PHYLOP, PAD, LFC_MIN, MATCH
     args = sys.argv[1:]; how = "element"
     if "--tracks" in args:
         i = args.index("--tracks"); TRACKS = args[i + 1]; del args[i:i + 2]
         PHYLOP = TRACK_SETS[TRACKS]
     if "--center" in args:
         i = args.index("--center"); how = args[i + 1]; del args[i:i + 2]
+    if "--match" in args:
+        i = args.index("--match"); MATCH = args[i + 1]; del args[i:i + 2]
     if "--lfc" in args:
         i = args.index("--lfc"); LFC_MIN = float(args[i + 1]); del args[i:i + 2]
     if "--window" in args:
