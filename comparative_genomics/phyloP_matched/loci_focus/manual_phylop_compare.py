@@ -16,6 +16,10 @@ for G4) within the region:
   hidiff     bases with up-cluster minus reference-cluster fragment difference > 5 (the
              programmatic filter; Glut-RA - Glut-Arco-1, GABA-4-1 - GABA-1-1)
   accw       mean phyloP and share > 1 weighted by the up cluster's fragment signal
+Continuity (the eye discounts scattered constrained bases):
+  block      % of bases whose 11-bp rolling-mean phyloP > 1 (and accessibility-weighted, accw_block)
+  clust      % of bases with phyloP > 1 lying in runs >= 10 bp (1-bp gaps bridged)
+  runmax     longest such run (bp)
 Reported:
   * Spearman correlation of each score with the visual rating (0-3)
   * RA vs G4 on these same regions, by eye (share rated moderate/strong) and by score (MW)
@@ -80,6 +84,21 @@ def main():
             g["accw_pct1"].append(100 * ((v > 1) * w).sum() / ws if ws else np.nan)
             g["accw_mean"].append((v * w).sum() / ws if ws else np.nan)
         for s_, x in g.items(): m[f"{k}|{s_}"] = x
+        cb = {"block": [], "accw_block": [], "clust": [], "runmax": []}
+        for (c, s, e), f in zip(zip(m.chrom, m.start, m.end), fr):
+            v = np.nan_to_num(np.array(bw.values(c, s, e), float))
+            sm = np.convolve(v, np.ones(11) / 11, "same"); blk = sm > 1
+            cb["block"].append(100 * blk.mean())
+            w = f["up"]; cb["accw_block"].append(100 * (blk * w).sum() / w.sum() if w.sum() else np.nan)
+            hi = v > 1
+            hi = hi | (np.r_[False, hi[:-1]] & np.r_[hi[1:], False])        # bridge single-base gaps
+            runs, n0 = [], 0
+            for x in np.r_[hi, False]:
+                if x: n0 += 1
+                elif n0: runs.append(n0); n0 = 0
+            cb["clust"].append(100 * sum(r for r in runs if r >= 10) / len(v))
+            cb["runmax"].append(max(runs) if runs else 0)
+        for s_, x in cb.items(): m[f"{k}|{s_}"] = x
     el = pd.read_csv(f"{F}/allelem_cls.bed", sep="\t", header=None, names=["c", "s", "e", "n", "k"])
     el = el[el.c == "chr20"]
     m["loci_focus_DARs"] = [",".join(f"{n}({k[:2]})" for n, k in zip(*[el[(el.e > s) & (el.s < e)][x] for x in ("n", "k")]))
@@ -90,7 +109,8 @@ def main():
     rows = []
     for rating, tracks in (("whole_r", list(TRACKS)), ("oscine_r", list(TRACKS))):
         for k in tracks:
-            for s_ in ("mean", "pct1", "pct2", "best50", "summit_pct1", "summit_mean", "hidiff_pct1", "hidiff_mean", "accw_pct1", "accw_mean"):
+            for s_ in ("mean", "pct1", "pct2", "best50", "summit_pct1", "summit_mean", "hidiff_pct1", "hidiff_mean", "accw_pct1", "accw_mean",
+                       "block", "accw_block", "clust", "runmax"):
                 ok = m[f"{k}|{s_}"].notna()
                 rho, p = stats.spearmanr(m[rating][ok], m[f"{k}|{s_}"][ok])
                 rows.append(dict(visual=rating.replace("_r", ""), track=k, score=s_, spearman=rho, p=p))
@@ -100,7 +120,7 @@ def main():
         print(f"  visual '{vis}':")
         for k in TRACKS:
             a = A[(A.visual == vis) & (A.track == k)].set_index("score")
-            print(f"    {k:32s} " + "  ".join(f"{s_} {a.loc[s_, 'spearman']:+.2f}" for s_ in ("pct1", "best50", "summit_pct1", "hidiff_pct1", "accw_pct1", "accw_mean")))
+            print(f"    {k:32s} " + "  ".join(f"{s_} {a.loc[s_, 'spearman']:+.2f}" for s_ in ("pct1", "summit_pct1", "accw_pct1", "block", "accw_block", "clust", "runmax")))
 
     print("\n== RA vs G4 on these 58 regions")
     for vis in ("whole_r", "oscine_r"):
@@ -110,7 +130,7 @@ def main():
         a, b = m[m["class"] == "RA"][vis], m[m["class"] == "G4"][vis]
         print(f"    MW on ratings G4 vs RA: p = {stats.mannwhitneyu(b, a).pvalue:.3g}")
     for k in TRACKS:
-        for s_ in ("pct1", "summit_pct1", "hidiff_pct1", "accw_pct1"):
+        for s_ in ("pct1", "summit_pct1", "accw_pct1", "block", "accw_block", "clust"):
             a, b = m[m["class"] == "RA"][f"{k}|{s_}"].dropna(), m[m["class"] == "G4"][f"{k}|{s_}"].dropna()
             print(f"  {k:32s} {s_:6s} RA median {a.median():6.2f}  G4 median {b.median():6.2f}  MW p = {stats.mannwhitneyu(b, a).pvalue:.3g}")
     print(f"\n  regions overlapping a loci_focus DAR element: {(m.loci_focus_DARs != '').sum()} of {len(m)}")
