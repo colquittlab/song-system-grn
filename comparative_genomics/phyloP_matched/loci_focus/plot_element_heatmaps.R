@@ -10,8 +10,10 @@
 ##   2. profile heatmaps in the same row order: whole-tree | oscine phyloP | accessibility difference
 ## Cluster composition by class is tested with Fisher's exact test.
 ##
-##   Rscript plot_element_heatmaps.R [k=4] [byclass]
-## byclass: rows split first by class (RA, G4), then by the same (shared) clusters within each.
+##   Rscript plot_element_heatmaps.R [k=4] [byclass] [rule]
+## byclass: rows split first by class (RA, G4, both), then by the same (shared) clusters within each.
+## rule: rows split by the rule-based classes of element_rule_classes.py (deep+oscine, deep, oscine,
+## weak; full-extent scores, thresholds calibrated on the visual ratings) in place of the clusters.
 ## Writes results/mafb_domain/fig_element_heatmap_{summary,profiles}_k<k>[_byclass].{pdf,png} and
 ## element_clusters_k<k>.tsv.
 suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table)})
@@ -23,19 +25,24 @@ args <- commandArgs(trailingOnly = TRUE)
 k <- if (length(args) >= 1) as.integer(args[1]) else 4L
 byclass <- "byclass" %in% args; tag <- if (byclass) "_byclass" else ""
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
-S <- fread(file.path(res, "element_summaries.tsv"))
+S <- fread(file.path(res, "element_rule_classes.tsv"))   # element_summaries.tsv plus rule classes
+rule <- "rule" %in% args; if (rule) tag <- paste0(tag, "_rule")
 P <- lapply(c(whole = "whole", oscine = "oscine", access = "access"), function(t) {
   m <- as.matrix(read.delim(gzfile(file.path(res, sprintf("element_profiles_%s.tsv.gz", t))), check.names = FALSE)[, -1])
   rownames(m) <- S$element; m })
 
 feat <- c(whole_pct1 = "whole % > 1", whole_mean = "whole mean", whole_block = "whole block %", whole_acc = "whole % < -1",
           osc_pct1 = "oscine % > 1", osc_mean = "oscine mean", osc_block = "oscine block %", osc_acc = "oscine % < -1")
+Xc <- scale(as.matrix(S[, names(feat), with = FALSE]))   # clustering features (summit +/-100 bp)
+if (rule) feat <- c(feat, whole_ext_block = "whole block % (extent)", osc_ext_pct1 = "oscine % > 1 (extent)")
 X <- scale(as.matrix(S[, names(feat), with = FALSE])); colnames(X) <- feat; rownames(X) <- S$element
-hc <- hclust(dist(X), method = "ward.D2")
+hc <- hclust(dist(Xc), method = "ward.D2")
 cl <- cutree(hc, k = k)
 ## number clusters by mean whole-tree constraint so the order reads high to low
 ord <- order(-tapply(S$whole_pct1, cl, mean)); cl <- match(cl, ord)
 S[, cluster := cl]
+RULES <- c("deep+oscine", "deep", "oscine", "weak")
+grp <- if (rule) match(S$rule, RULES) else S$cluster; glab <- if (rule) RULES else paste0("C", seq_len(k))
 
 ## composition and per-cluster summaries
 tab <- table(cluster = S$cluster, class = S$cls)
@@ -43,8 +50,9 @@ ft <- if (all(dim(tab) > 1)) fisher.test(tab, simulate.p.value = TRUE, B = 1e5)$
 summ <- S[, c(list(n = .N, RA = sum(cls == "RA"), G4 = sum(cls == "G4"), both = sum(cls == "both")),
               lapply(.SD, function(v) round(mean(v), 2))), by = cluster, .SDcols = c(names(feat), "log2fc")][order(cluster)]
 print(summ); message(sprintf("class x cluster Fisher p = %.3g (k = %d, %d lobes)", ft, k, nrow(S)))
-fwrite(S[, .(element, cls, cluster, chrom, summit, peak_start, peak_end, n_lobes, lobe, forced, log2fc, log2fc_ra, log2fc_g4, fdr,
-             whole_pct1, whole_mean, whole_block, whole_acc, osc_pct1, osc_mean, osc_block, osc_acc)],
+fwrite(S[, .(element, cls, cluster, rule, chrom, summit, peak_start, peak_end, ext_start, ext_end, n_lobes, lobe, forced,
+             log2fc, log2fc_ra, log2fc_g4, fdr, whole_pct1, whole_mean, whole_block, whole_acc, osc_pct1, osc_mean, osc_block,
+             osc_acc, whole_ext_pct1, whole_ext_block, whole_ext_mean, osc_ext_pct1, osc_ext_block, osc_ext_mean, thr_whole, thr_oscine)],
        file.path(res, sprintf("element_clusters_k%d.tsv", k)), sep = "\t")
 
 ## annotations
@@ -54,23 +62,23 @@ ra <- rowAnnotation(class = S$cls, `Log2FC` = S$log2fc, `multi-part` = ifelse(S$
                                `multi-part` = c(yes = "#5f5f5f", no = "#e6e5e1")),
                     annotation_name_gp = gpar(fontsize = 5), annotation_name_side = "top", simple_anno_size = unit(2, "mm"),
                     annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
-split <- factor(paste0("C", S$cluster), levels = paste0("C", seq_len(k)))
+split <- factor(glab[grp], levels = glab)
 ## rows: by cluster, then in dendrogram order within each cluster
-rord <- hc$order[order(S$cluster[hc$order])]
+rord <- hc$order[order(grp[hc$order])]
 if (byclass) {
   ## class first (RA, G4, both), then the shared clusters; label slices with their sizes
-  lv <- as.vector(t(outer(c("RA", "G4", "both"), paste0("C", seq_len(k)), paste)))
-  key <- paste(S$cls, paste0("C", S$cluster)); n <- table(key)
+  lv <- as.vector(t(outer(c("RA", "G4", "both"), glab, paste)))
+  key <- paste(S$cls, glab[grp]); n <- table(key)
   lv <- lv[lv %in% names(n)]
   split <- factor(key, levels = lv, labels = sprintf("%s (%d)", lv, n[lv]))
-  rord <- hc$order[order(match(S$cls[hc$order], c("RA", "G4", "both")), S$cluster[hc$order])]
+  rord <- hc$order[order(match(S$cls[hc$order], c("RA", "G4", "both")), grp[hc$order])]
 }
 ht_opt$TITLE_PADDING <- unit(1, "mm")
 
 h1 <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
               cluster_rows = FALSE, row_order = rord, row_split = split, cluster_columns = FALSE,
               show_row_names = FALSE, column_names_gp = gpar(fontsize = 5), row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(if (byclass) 0.8 else 1, "mm"),
-              left_annotation = ra, column_title = "constraint at the accessibility summit (±100 bp)",
+              left_annotation = ra, column_title = if (rule) "constraint: summit ±100 bp | full extent (rule features)" else "constraint at the accessibility summit (±100 bp)",
               column_title_gp = gpar(fontsize = 6),
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 save_ht <- function(ht, stem, w, h) {
@@ -81,7 +89,7 @@ save_ht <- function(ht, stem, w, h) {
   }
   message("wrote ", file.path(res, stem), ".pdf/.png")
 }
-save_ht(h1, sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 6.2 else 4.6)
+save_ht(h1, if (rule) paste0("fig_element_heatmap_summary", tag) else sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 6.2 else 4.6)
 
 ## profiles in the same order
 pos <- as.integer(colnames(P$whole)); lab <- ifelse(pos %% 250 == 0, as.character(pos), "")
@@ -98,4 +106,4 @@ alim <- as.numeric(quantile(abs(P$access), 0.98))
 h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +
       mk(P$access, "access. diff", c(0, alim), "accessibility (up − ref)", c(FIG_DIV_MID, "#2b2b2b"))
-save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)
+save_ht(h2, if (rule) paste0("fig_element_heatmap_profiles", tag) else sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)

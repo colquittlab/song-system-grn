@@ -9,7 +9,9 @@
 ## (hybrid labels; ra links for RA, gaba links for G4; r >= 0.2 file) whose linked peak, resized to
 ## 500 bp about its centre, overlaps the element's SnapATAC peak. Grey = no MAFB link at r >= 0.2.
 ##
-##   Rscript plot_element_scatter.R [mean|pct1|block]
+##   Rscript plot_element_scatter.R [mean|pct1|block|ext]
+##   ext  the rule-class scores over each lobe's full extent, accessibility-weighted (x whole-tree
+##        block %, y oscine % > 1), with the element_rule_classes.py thresholds dashed
 ##   mean   mean phyloP; pct1  % of bases with phyloP > 1; block  % of bases in 11-bp blocks with
 ##   mean phyloP > 1 (continuity). Panels share axis limits within a measure.
 ## Writes results/mafb_domain/fig_element_scatter_whole_vs_oscine[_<measure>]_p2g.{pdf,png} and element_p2g_mafb.tsv.
@@ -22,7 +24,8 @@ res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matche
 args <- commandArgs(trailingOnly = TRUE)
 ms <- if (length(args)) args[1] else "mean"
 MS <- list(mean = c("whole_mean", "osc_mean", "mean phyloP", ""), pct1 = c("whole_pct1", "osc_pct1", "% bases phyloP > 1", "_pct1"),
-           block = c("whole_block", "osc_block", "% bases in 11-bp blocks > 1", "_block"))[[ms]]
+           block = c("whole_block", "osc_block", "% bases in 11-bp blocks > 1", "_block"),
+           ext = c("whole_ext_block", "osc_ext_pct1", "", "_ext"))[[ms]]
 d <- fread(file.path(res, "element_clusters_k4.tsv"))
 d[, `:=`(xv = get(MS[1]), yv = get(MS[2]))]
 ## peak-to-gene correlation with MAFB, per element, from its own class's link set
@@ -46,13 +49,16 @@ ttl <- setNames(sprintf("%s  (n = %d, rho = %.2f)", lab$cls, lab$n, lab$rho), as
 p <- ggplot(d[order(!is.na(p2g_r), p2g_r)], aes(xv, yv, colour = p2g_r)) +
   geom_hline(yintercept = 0, colour = FIG_AXIS, linewidth = 0.3) +
   geom_vline(xintercept = 0, colour = FIG_AXIS, linewidth = 0.3) +
+  {if (ms == "ext") list(geom_vline(xintercept = d$thr_whole[1], colour = FIG_INK_SECONDARY, linewidth = 0.3, linetype = 2),
+                         geom_hline(yintercept = d$thr_oscine[1], colour = FIG_INK_SECONDARY, linewidth = 0.3, linetype = 2))} +
   geom_point(size = 1.0, alpha = 0.9, stroke = 0) +
   scale_colour_gradient(low = "#cfe0f3", high = "#0b3a73", limits = c(0.2, 0.9), na.value = FIG_NEUTRAL_FILL,
                         name = "MAFB p2g r", breaks = c(0.2, 0.5, 0.8)) +
   scale_x_continuous(limits = lim_x, expand = fig_expand()) +
   scale_y_continuous(limits = lim_y, expand = fig_expand()) +
   facet_wrap(~cls, nrow = 1, labeller = as_labeller(ttl)) +
-  labs(x = sprintf("whole tree: %s (summit ±100 bp)", MS[3]), y = sprintf("oscine lineage: %s", MS[3])) +
+  labs(x = if (ms == "ext") "whole tree: % bases in 11-bp blocks > 1 (full extent)" else sprintf("whole tree: %s (summit ±100 bp)", MS[3]),
+       y = if (ms == "ext") "oscine lineage: % bases > 1 (full extent)" else sprintf("oscine lineage: %s", MS[3])) +
   theme_fig() +
   theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY),
         panel.spacing = unit(4, "mm"), aspect.ratio = 1,
@@ -63,4 +69,4 @@ fig_save(p, file.path(res, stem), width = 5.8, height = 2.0)
 message("wrote ", file.path(res, stem), ".pdf/.png")
 print(lab[, .(cls, n, rho = round(rho, 2))])
 print(d[, .(lobes = .N, linked = sum(!is.na(p2g_r)), median_r = round(median(p2g_r, na.rm = TRUE), 2)), by = cls])
-fwrite(d[, .(element, cls, cluster, p2g_r)], file.path(res, "element_p2g_mafb.tsv"), sep = "\t")
+fwrite(d[, .(element, cls, cluster, rule, p2g_r)], file.path(res, "element_p2g_mafb.tsv"), sep = "\t")
