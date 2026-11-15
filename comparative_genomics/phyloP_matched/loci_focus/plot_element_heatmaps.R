@@ -89,10 +89,12 @@ mk <- function(m, nm, lim, title, cols, left = NULL) Heatmap(pmax(pmin(m, lim[2]
   cluster_columns = FALSE, show_row_names = FALSE, column_labels = lab, column_names_gp = gpar(fontsize = 5),
   column_names_rot = 0, column_title = title, column_title_gp = gpar(fontsize = 6), row_title_gp = gpar(fontsize = 6), row_title_rot = 0,
   use_raster = TRUE, raster_quality = 3, width = unit(28, "mm"), left_annotation = left,
-  heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
+  heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5),
+                              at = if (length(cols) == 3) c(lim[1], 0, lim[2]) else c(0, lim[2]),
+                              labels = round(if (length(cols) == 3) c(lim[1], 0, lim[2]) else c(0, lim[2]), 1)))
 div <- c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)
 alim <- as.numeric(quantile(abs(P$access), 0.98))
-h2 <- mk(P$whole, "whole phyloP", c(-3, 3), "whole tree", div, left = ra) +
+h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +
       mk(P$access, "access. diff", c(0, alim), "accessibility (up − ref)", c(FIG_DIV_MID, "#2b2b2b"))
 save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 5.6 else 4.6)
