@@ -9,8 +9,9 @@
 ##   2. profile heatmaps in the same row order: whole-tree | oscine phyloP | accessibility difference
 ## Cluster composition by class is tested with Fisher's exact test.
 ##
-##   Rscript plot_element_heatmaps.R [k=4]
-## Writes results/mafb_domain/fig_element_heatmap_{summary,profiles}_k<k>.{pdf,png} and
+##   Rscript plot_element_heatmaps.R [k=4] [byclass]
+## byclass: rows split first by class (RA, G4), then by the same (shared) clusters within each.
+## Writes results/mafb_domain/fig_element_heatmap_{summary,profiles}_k<k>[_byclass].{pdf,png} and
 ## element_clusters_k<k>.tsv.
 suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table)})
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
@@ -19,6 +20,7 @@ source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../conf
 
 args <- commandArgs(trailingOnly = TRUE)
 k <- if (length(args) >= 1) as.integer(args[1]) else 4L
+byclass <- "byclass" %in% args; tag <- if (byclass) "_byclass" else ""
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_summaries.tsv"))
 P <- lapply(c(whole = "whole", oscine = "oscine", access = "access"), function(t) {
@@ -54,11 +56,19 @@ ra <- rowAnnotation(class = S$cls, `Log2FC` = S$log2fc, `multi-part` = ifelse(S$
 split <- factor(paste0("C", S$cluster), levels = paste0("C", seq_len(k)))
 ## rows: by cluster, then in dendrogram order within each cluster
 rord <- hc$order[order(S$cluster[hc$order])]
+if (byclass) {
+  ## class first (RA, G4), then the shared clusters; label slices with their sizes
+  lv <- as.vector(t(outer(c("RA", "G4"), paste0("C", seq_len(k)), paste)))
+  key <- paste(S$cls, paste0("C", S$cluster)); n <- table(key)
+  lv <- lv[lv %in% names(n)]
+  split <- factor(key, levels = lv, labels = sprintf("%s (%d)", lv, n[lv]))
+  rord <- hc$order[order(match(S$cls[hc$order], c("RA", "G4")), S$cluster[hc$order])]
+}
 ht_opt$TITLE_PADDING <- unit(1, "mm")
 
 h1 <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
               cluster_rows = FALSE, row_order = rord, row_split = split, cluster_columns = FALSE,
-              show_row_names = FALSE, column_names_gp = gpar(fontsize = 5), row_title_gp = gpar(fontsize = 6),
+              show_row_names = FALSE, column_names_gp = gpar(fontsize = 5), row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(if (byclass) 0.8 else 1, "mm"),
               left_annotation = ra, column_title = "constraint at the accessibility summit (±100 bp)",
               column_title_gp = gpar(fontsize = 6),
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
@@ -70,14 +80,14 @@ save_ht <- function(ht, stem, w, h) {
   }
   message("wrote ", file.path(res, stem), ".pdf/.png")
 }
-save_ht(h1, sprintf("fig_element_heatmap_summary_k%d", k), 3.6, 4.6)
+save_ht(h1, sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 5.6 else 4.6)
 
 ## profiles in the same order
 pos <- as.integer(colnames(P$whole)); lab <- ifelse(pos %% 250 == 0, as.character(pos), "")
 mk <- function(m, nm, lim, title, cols, left = NULL) Heatmap(pmax(pmin(m, lim[2]), lim[1]), name = nm,
   col = if (length(cols) == 3) colorRamp2(c(lim[1], 0, lim[2]), cols) else colorRamp2(c(0, lim[2]), cols), cluster_rows = FALSE, row_order = rord, row_split = split,
   cluster_columns = FALSE, show_row_names = FALSE, column_labels = lab, column_names_gp = gpar(fontsize = 5),
-  column_names_rot = 0, column_title = title, column_title_gp = gpar(fontsize = 6), row_title_gp = gpar(fontsize = 6),
+  column_names_rot = 0, column_title = title, column_title_gp = gpar(fontsize = 6), row_title_gp = gpar(fontsize = 6), row_title_rot = 0,
   use_raster = TRUE, raster_quality = 3, width = unit(28, "mm"), left_annotation = left,
   heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 div <- c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)
@@ -85,4 +95,4 @@ alim <- as.numeric(quantile(abs(P$access), 0.98))
 h2 <- mk(P$whole, "whole phyloP", c(-3, 3), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +
       mk(P$access, "access. diff", c(0, alim), "accessibility (up − ref)", c(FIG_DIV_MID, "#2b2b2b"))
-save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d", k), 6.2, 4.6)
+save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 5.6 else 4.6)
