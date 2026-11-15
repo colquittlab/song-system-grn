@@ -12,10 +12,13 @@ class or "both"). Classes:
   deep          whole >= Tw
   oscine        oscine >= To
   weak          neither
+Lobes overlapping rule_override.bed (next to this script) take the rule set there by eye
+(column rule_by = eye).
 
     python element_rule_classes.py
 Writes results/mafb_domain/element_rule_classes.tsv and prints thresholds, agreement and counts.
 """
+from pathlib import Path
 import numpy as np, pandas as pd
 from scipy import stats
 
@@ -64,6 +67,13 @@ def main():
             print(f"      disagree: {x.region:34s} {x.cls:2s} rated {getattr(x, t + '_r'):8s} score {getattr(x, t):5.1f}")
     S["deep"] = S[SC["whole"]] >= T["whole"]; S["osc"] = S[SC["oscine"]] >= T["oscine"]
     S["rule"] = np.select([S.deep & S.osc, S.deep, S.osc], ORDER[:3], ORDER[3])
+    S["rule_by"] = "threshold"
+    for l in open(Path(__file__).with_name("rule_override.bed")):   # rules set by eye
+        if l.startswith("#") or not l.strip(): continue
+        c, a, b, q = l.rstrip("\n").split("\t")[:4]; assert q in ORDER, q
+        hit = (S.chrom == c) & (S.ext_start < int(b)) & (S.ext_end > int(a))
+        S.loc[hit, "rule"], S.loc[hit, "rule_by"] = q, "eye"
+        print(f"  override: {c}:{int(a) + 1:,}-{b} -> {q} ({hit.sum()} lobe(s))")
     S["thr_whole"], S["thr_oscine"] = T["whole"], T["oscine"]
     S.drop(columns=["deep", "osc"]).to_csv(f"{R}/element_rule_classes.tsv", sep="\t", index=False, float_format="%.3f")
     tab = pd.crosstab(S.rule, S.cls).reindex(ORDER).fillna(0).astype(int)
