@@ -10,10 +10,12 @@
 ##   2. profile heatmaps in the same row order: whole-tree | oscine phyloP | accessibility difference
 ## Cluster composition by class is tested with Fisher's exact test.
 ##
-##   Rscript plot_element_heatmaps.R [k=4] [byclass] [rule]
+##   Rscript plot_element_heatmaps.R [k=4] [byclass] [rule] [labels]
 ## byclass: rows split first by class (RA, G4, both), then by the same (shared) clusters within each.
 ## rule: rows split by the rule-based classes of element_rule_classes.py (deep+oscine, deep, oscine,
 ## weak; full-extent scores, thresholds calibrated on the visual ratings) in place of the clusters.
+## labels: profiles only, one 2-mm row per lobe labelled with its scored extent (1-based, browser
+## coordinates), lobe number and rule class; written as ..._labels.{pdf,png}.
 ## Writes results/mafb_domain/fig_element_heatmap_{summary,profiles}_k<k>[_byclass].{pdf,png} and
 ## element_clusters_k<k>.tsv.
 suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table)})
@@ -27,6 +29,7 @@ byclass <- "byclass" %in% args; tag <- if (byclass) "_byclass" else ""
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_rule_classes.tsv"))   # element_summaries.tsv plus rule classes
 rule <- "rule" %in% args; if (rule) tag <- paste0(tag, "_rule")
+labels <- "labels" %in% args                        # coordinate row labels, tall layout for browsing
 P <- lapply(c(whole = "whole", oscine = "oscine", access = "access"), function(t) {
   m <- as.matrix(read.delim(gzfile(file.path(res, sprintf("element_profiles_%s.tsv.gz", t))), check.names = FALSE)[, -1])
   rownames(m) <- S$element; m })
@@ -106,4 +109,12 @@ alim <- as.numeric(quantile(abs(P$access), 0.98))
 h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +
       mk(P$access, "access. diff", c(0, alim), "accessibility (up − ref)", c(FIG_DIV_MID, "#2b2b2b"))
+if (labels) {
+  lbl <- sprintf("%s:%s-%s%s  %s  %s", S$chrom, format(S$ext_start + 1, big.mark = ",", trim = TRUE),
+                 format(S$ext_end, big.mark = ",", trim = TRUE), ifelse(S$n_lobes > 1, sprintf(" (lobe %d/%d)", S$lobe, S$n_lobes), ""),
+                 S$cls, S$rule)
+  h2 <- h2 + rowAnnotation(coords = anno_text(lbl, gp = gpar(fontsize = 5, fontfamily = "mono")))
+  save_ht(h2, paste0("fig_element_heatmap_profiles", tag, "_labels"), 9.0, 1.4 + nrow(S) * 2 / 25.4)
+  quit(save = "no")
+}
 save_ht(h2, if (rule) paste0("fig_element_heatmap_profiles", tag) else sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)
