@@ -5,6 +5,7 @@
 ## centred on accessibility summits. Lobes are clustered (Ward, Euclidean) on z-scored summaries
 ## over the summit +/-100 bp -- whole-tree and oscine-lineage (Anc222) phyloP: % > 1, mean, block %
 ## (continuity), % < -1 (acceleration) -- and drawn as
+## Classes: RA, G4, and both (an RA and a G4 peak overlapping each other, merged).
 ##   1. a summary heatmap split by cluster, annotated with class, Log2FC and multi-part status
 ##   2. profile heatmaps in the same row order: whole-tree | oscine phyloP | accessibility difference
 ## Cluster composition by class is tested with Fisher's exact test.
@@ -39,15 +40,15 @@ S[, cluster := cl]
 ## composition and per-cluster summaries
 tab <- table(cluster = S$cluster, class = S$cls)
 ft <- if (all(dim(tab) > 1)) fisher.test(tab, simulate.p.value = TRUE, B = 1e5)$p.value else NA
-summ <- S[, c(list(n = .N, RA = sum(cls == "RA"), G4 = sum(cls == "G4")),
+summ <- S[, c(list(n = .N, RA = sum(cls == "RA"), G4 = sum(cls == "G4"), both = sum(cls == "both")),
               lapply(.SD, function(v) round(mean(v), 2))), by = cluster, .SDcols = c(names(feat), "log2fc")][order(cluster)]
 print(summ); message(sprintf("class x cluster Fisher p = %.3g (k = %d, %d lobes)", ft, k, nrow(S)))
-fwrite(S[, .(element, cls, cluster, chrom, summit, peak_start, peak_end, n_lobes, lobe, forced, log2fc, fdr,
+fwrite(S[, .(element, cls, cluster, chrom, summit, peak_start, peak_end, n_lobes, lobe, forced, log2fc, log2fc_ra, log2fc_g4, fdr,
              whole_pct1, whole_mean, whole_block, whole_acc, osc_pct1, osc_mean, osc_block, osc_acc)],
        file.path(res, sprintf("element_clusters_k%d.tsv", k)), sep = "\t")
 
 ## annotations
-cls_col <- c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]])
+cls_col <- c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])
 ra <- rowAnnotation(class = S$cls, `Log2FC` = S$log2fc, `multi-part` = ifelse(S$n_lobes > 1, "yes", "no"),
                     col = list(class = cls_col, `Log2FC` = colorRamp2(c(0, 2, 4), c("#f0efec", "#9a9a9a", "#3a3a3a")),
                                `multi-part` = c(yes = "#5f5f5f", no = "#e6e5e1")),
@@ -57,12 +58,12 @@ split <- factor(paste0("C", S$cluster), levels = paste0("C", seq_len(k)))
 ## rows: by cluster, then in dendrogram order within each cluster
 rord <- hc$order[order(S$cluster[hc$order])]
 if (byclass) {
-  ## class first (RA, G4), then the shared clusters; label slices with their sizes
-  lv <- as.vector(t(outer(c("RA", "G4"), paste0("C", seq_len(k)), paste)))
+  ## class first (RA, G4, both), then the shared clusters; label slices with their sizes
+  lv <- as.vector(t(outer(c("RA", "G4", "both"), paste0("C", seq_len(k)), paste)))
   key <- paste(S$cls, paste0("C", S$cluster)); n <- table(key)
   lv <- lv[lv %in% names(n)]
   split <- factor(key, levels = lv, labels = sprintf("%s (%d)", lv, n[lv]))
-  rord <- hc$order[order(match(S$cls[hc$order], c("RA", "G4")), S$cluster[hc$order])]
+  rord <- hc$order[order(match(S$cls[hc$order], c("RA", "G4", "both")), S$cluster[hc$order])]
 }
 ht_opt$TITLE_PADDING <- unit(1, "mm")
 
@@ -80,7 +81,7 @@ save_ht <- function(ht, stem, w, h) {
   }
   message("wrote ", file.path(res, stem), ".pdf/.png")
 }
-save_ht(h1, sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 5.6 else 4.6)
+save_ht(h1, sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 6.2 else 4.6)
 
 ## profiles in the same order
 pos <- as.integer(colnames(P$whole)); lab <- ifelse(pos %% 250 == 0, as.character(pos), "")
@@ -97,4 +98,4 @@ alim <- as.numeric(quantile(abs(P$access), 0.98))
 h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +
       mk(P$access, "access. diff", c(0, alim), "accessibility (up − ref)", c(FIG_DIV_MID, "#2b2b2b"))
-save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 5.6 else 4.6)
+save_ht(h2, sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)

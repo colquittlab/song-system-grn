@@ -1,0 +1,4 @@
+# SnapATAC2 peaks dropped by element_profiles.py on inspection (0-based, any overlap).
+# chrom  start  end  class (RA | G4 | any; the class whose candidate peak is dropped)  note
+chr20	12894569	12894772	G4	GABA-4-1 peak, not a true peak (2026-11-14)
+chr20	12953330	12953999	RA	not differential between Glut-RA and Glut-CACNA1H-1 (Arco-1) by eye (2026-11-14)

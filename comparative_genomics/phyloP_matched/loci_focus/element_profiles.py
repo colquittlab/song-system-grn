@@ -3,8 +3,15 @@
 
 Elements are SnapATAC2 cluster peaks (Glut-RA.bed for RA, GABA-4-1.bed for G4) in the span that
 overlap an ArchR DAR of their own contrast (hybrid tables; FDR < 0.1, Log2FC > 0) -- the
-"SnapATAC DARs" of the visual assessment. Unlike the loci_focus classes, elements up in both
-contrasts are kept. Each peak is split into lobes at its up-cluster fragment summits: peaks
+"SnapATAC DARs" of the visual assessment. An RA peak and a G4 peak that overlap each other are
+merged into one "both" element spanning their union; a peak called in only one cluster but
+overlapping DARs of both contrasts is also "both". Peaks listed in excluded_peaks.bed (judged
+on inspection not to be true or differential peaks) are dropped from the class named there, and
+elements containing lobes drawn by eye in manual_lobes.bed take those lobes (centred on each
+drawn interval; the 1-bp pileup can be a plateau where the browser track shows lobes) instead of the automatic split, and
+class_override.bed sets the class of elements judged by eye (lobes from the RA and G4 up-cluster signals,
+each scaled to its maximum, summed; Log2FC = the larger of the two; accessibility profile = mean
+of the two up-minus-reference differences). Each peak is split into lobes at its up-cluster fragment summits: peaks
 labelled bipartite / tripartite in the visual assessment get 2 / 3 lobes (the strongest summits
 >= 150 bp apart); other peaks split where the 51-bp smoothed fragment signal has summits >= 150 bp
 apart, each >= 30% of the strongest, with a dip between neighbours below 80% of the lower one
@@ -23,6 +30,7 @@ and the up-cluster minus reference-cluster fragment difference.
 Writes results/<span>/element_summaries.tsv and element_profiles_{whole,oscine,access}.tsv.gz.
 """
 import sys
+from pathlib import Path
 import numpy as np, pandas as pd, pyBigWig
 from scipy.signal import find_peaks
 
@@ -80,47 +88,90 @@ def main():
     W = wide_elements() if span == "1p5mb" else None
     keep = {n: c for n, c in EL.items() if (in_domain(c) if span == "domain" else n in W)}
     lfc = {}
-    dar = {}
+    dar, dar_all = {}, {}
     for k, (cl, up, ref, con) in CLS.items():
         d = pd.read_csv(f"{T}/panelE_inputs/dar_{con}.tsv", sep="\t")
-        d = d[(d.FDR < 0.1) & (d.Log2FC > 0)]; d["start"] = d.start - 1
+        d["start"] = d.start - 1; dar_all[k] = d
+        d = d[(d.FDR < 0.1) & (d.Log2FC > 0)]
         dar[k] = d[[(in_domain((c, s, e)) if span == "domain" else False) for c, s, e in zip(d.chrom, d.start, d.end)]]
     bw = {k: pyBigWig.open(p) for k, p in PHY.items()}
     fb = {x: pyBigWig.open(f"{T}/fragment/{x}-fragment-bin1-smoothNone.bw") for x in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
-    rows, prof = [], {"whole": [], "oscine": [], "access": []}
+    # candidate peaks per class: SnapATAC2 peaks of the up cluster overlapping an own-contrast DAR,
+    # less peaks judged on inspection not to be true peaks (excluded_peaks.bed, next to this script)
+    xb = [l.split("\t")[:4] for l in open(Path(__file__).with_name("excluded_peaks.bed")) if not l.startswith("#")]
+    bad = lambda k, c, s, e: any(c == x and s < int(b) and int(a) < e and q in (k, "any") for x, a, b, q in xb)
+    rd = lambda f: [l.rstrip("\n").split("\t") for l in open(Path(__file__).with_name(f)) if not l.startswith("#") and l.strip()]
+    ml = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("manual_lobes.bed")]
+    co = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("class_override.bed")]
+    cand = {}
     for k, (cl, up, ref, con) in CLS.items():
         sp = pd.read_csv(f"{T}/snapatac_peaks/{up}.bed", sep="\t", header=None, usecols=[0, 1, 2], names=["c", "s", "e"])
-        D = dar[k]
+        D = dar[k]; cand[k] = []
         for c, s, e in sp.itertuples(index=False):
             ov = D[(D.chrom == c) & (D.start < e) & (D.end > s)]
-            if ov.empty: continue
-            acc = vals(fb[up], c, s, e)
-            ls = lobes(acc, FORCE.get((s, e)))
-            for j, i in enumerate(ls):
-                mid = s + i; a, b = mid - PROF, mid + PROF
-                ph = {t: vals(bw[t], c, a, b) for t in PHY}
-                df = roll(vals(fb[up], c, a, b) - vals(fb[ref], c, a, b), 11)
-                core = slice(PROF - CORE, PROF + CORE)
-                r = dict(element=f"{k}:{c}:{s + 1}-{e}" + (f"#{j + 1}" if len(ls) > 1 else ""), cls=k, chrom=c,
-                         peak_start=s, peak_end=e, peak_width=e - s, n_lobes=len(ls), lobe=j + 1, summit=mid,
-                         dars=",".join(f"{a}-{b}" for a, b in zip(ov.start, ov.end)), log2fc=ov.Log2FC.max(), fdr=ov.FDR.min(),
-                         forced=(s, e) in FORCE)
-                for t, lab in (("whole", "whole"), ("oscine", "osc")):
-                    v = ph[t][core]
-                    r[f"{lab}_pct1"] = 100 * (v > 1).mean(); r[f"{lab}_mean"] = v.mean()
-                    r[f"{lab}_block"] = 100 * (roll(ph[t], 11)[core] > 1).mean(); r[f"{lab}_acc"] = 100 * (v < -1).mean()
-                    prof[t].append(roll(ph[t], 11))
-                prof["access"].append(df)
-                rows.append(r)
+            if not ov.empty and not bad(k, c, s, e): cand[k].append((c, s, e, ov))
+    # RA and G4 peaks that overlap each other become one "both" element over their union
+    pair = {(i, j) for i, a in enumerate(cand["RA"]) for j, b in enumerate(cand["G4"]) if a[0] == b[0] and a[1] < b[2] and b[1] < a[2]}
+    pi, pj = {i for i, _ in pair}, {j for _, j in pair}
+    assert len(pi) == len(pair) == len(pj), "RA/G4 peak overlaps are not one-to-one"
+    # an unpaired peak that also overlaps a DAR of the other contrast (no SnapATAC peak called in that
+    # cluster) is "both" too
+    elems = []
+    for k, o, used in (("RA", "G4", pi), ("G4", "RA", pj)):
+        for i, (c, s, e, ov) in enumerate(cand[k]):
+            if i in used: continue
+            D = dar[o]; oo = D[(D.chrom == c) & (D.start < e) & (D.end > s)]
+            q = [z for x, a, b, z in co if x == c and a < e and s < b]
+            if q and q[0] == "both" and not len(oo):     # class set by eye: record the other contrast's DAR whatever its FDR
+                A = dar_all[o]; oo = A[(A.chrom == c) & (A.start < e) & (A.end > s)]
+            if q and q[0] != "both": elems.append((q[0], c, s, e, {q[0]: ov}))
+            else: elems.append(("both", c, s, e, {k: ov, o: oo}, (s, e), (s, e)) if len(oo) else (k, c, s, e, {k: ov}))
+    for i, j in sorted(pair):
+        a, b = cand["RA"][i], cand["G4"][j]
+        elems.append(("both", a[0], min(a[1], b[1]), max(a[2], b[2]), {"RA": a[3], "G4": b[3]}, (a[1], a[2]), (b[1], b[2])))
+    rows, prof = [], {"whole": [], "oscine": [], "access": []}
+    for el in elems:
+        k, c, s, e, ovs = el[:5]
+        ks = [x for x in ("RA", "G4") if x in ovs]
+        if k == "both":
+            # lobes on RA and G4 accessibility, each scaled to its own maximum, summed
+            acc = sum(v / v.max() if v.max() > 0 else v for v in (vals(fb[CLS[x][1]], c, s, e) for x in ks))
+            nf = max(FORCE.get(el[5], 0), FORCE.get(el[6], 0)) or None
+        else:
+            acc = vals(fb[CLS[k][1]], c, s, e); nf = FORCE.get((s, e))
+        man = sorted((max(a, s) - s, min(b, e) - s, q) for x, a, b, q in ml if x == c and a < e and b > s)
+        if man:                                          # lobes drawn by eye: centred on each drawn interval
+            ls = [(a + b) // 2 for a, b, q in man]; nf = len(man)
+        else:
+            ls = lobes(acc, nf)
+        for j, i in enumerate(ls):
+            mid = s + i; a, b = mid - PROF, mid + PROF
+            ph = {t: vals(bw[t], c, a, b) for t in PHY}
+            df = np.mean([roll(vals(fb[CLS[x][1]], c, a, b) - vals(fb[CLS[x][2]], c, a, b), 11) for x in ks], axis=0)
+            core = slice(PROF - CORE, PROF + CORE)
+            r = dict(element=f"{k}:{c}:{s + 1}-{e}" + (f"#{j + 1}" if len(ls) > 1 else ""), cls=k, chrom=c,
+                     peak_start=s, peak_end=e, peak_width=e - s, n_lobes=len(ls), lobe=j + 1, summit=mid,
+                     dars=";".join(f"{x}:" + ",".join(f"{p}-{q}" for p, q in zip(ovs[x].start, ovs[x].end)) for x in ks),
+                     log2fc=max(ovs[x].Log2FC.max() for x in ks), fdr=min(ovs[x].FDR.min() for x in ks),
+                     log2fc_ra=ovs["RA"].Log2FC.max() if "RA" in ovs else np.nan,
+                     log2fc_g4=ovs["G4"].Log2FC.max() if "G4" in ovs else np.nan,
+                     forced=nf is not None)
+            for t, lab in (("whole", "whole"), ("oscine", "osc")):
+                v = ph[t][core]
+                r[f"{lab}_pct1"] = 100 * (v > 1).mean(); r[f"{lab}_mean"] = v.mean()
+                r[f"{lab}_block"] = 100 * (roll(ph[t], 11)[core] > 1).mean(); r[f"{lab}_acc"] = 100 * (v < -1).mean()
+                prof[t].append(roll(ph[t], 11))
+            prof["access"].append(df)
+            rows.append(r)
     S = pd.DataFrame(rows)
     S.to_csv(result("element_summaries.tsv", span), sep="\t", index=False, float_format="%.3f")
     for t, M in prof.items():
         pd.DataFrame(np.array(M), index=S.element, columns=np.arange(-PROF, PROF)).to_csv(
             result(f"element_profiles_{t}.tsv.gz", span), sep="\t", float_format="%.3f")
     print(f"  {span}: {len(S)} lobes from {S.drop_duplicates(['cls', 'peak_start']).shape[0]} SnapATAC peaks; "
-          + ", ".join(f"{k} {int((S.cls == k).sum())} lobes" for k in CLS)
+          + ", ".join(f"{k} {int((S.cls == k).sum())} lobes" for k in ("RA", "G4", "both"))
           + f"; split peaks {S[S.n_lobes > 1].drop_duplicates(['cls', 'peak_start']).shape[0]}")
-    got = {k: len(set(",".join(S[S.cls == k].dars).split(","))) for k in CLS}
+    got = {k: len({d for x in S.dars for part in x.split(";") if part.startswith(k + ":") for d in part[len(k) + 1:].split(",")}) for k in CLS}
     print("  ArchR DARs (FDR < 0.1, Log2FC > 0) covered by a SnapATAC peak: " + ", ".join(f"{k} {got[k]}/{len(dar[k])}" for k in CLS))
 
 

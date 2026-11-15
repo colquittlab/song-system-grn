@@ -1,0 +1,5 @@
+# Elements whose class is set by eye; element_profiles.py gives any element overlapping these the
+# class named here. For "both", the other contrast's DAR statistics are recorded whatever their FDR.
+# chrom  start  end  class (RA | G4 | both)  note
+chr20	12978405	12978702	both	RA peak, G4 accessibility up by eye (ArchR G4 Log2FC 0.34, FDR 0.90) (2026-11-14)
+chr20	13127495	13128165	both	RA peak, both by eye (2026-11-14)
