@@ -12,6 +12,9 @@ class or "both"). Classes:
   deep          whole >= Tw
   oscine        oscine >= To
   weak          neither
+Alternative (column mb): per tree, lobes are split in two by Ward clustering on z-scored full-extent
+mean and block % (accessibility-weighted), and the high / low calls of the two trees are crossed
+into the same four classes; no ratings are used.
 Lobes overlapping rule_override.bed (next to this script) take the rule set there by eye
 (column rule_by = eye).
 
@@ -21,6 +24,7 @@ Writes results/mafb_domain/element_rule_classes.tsv and prints thresholds, agree
 from pathlib import Path
 import numpy as np, pandas as pd
 from scipy import stats
+from scipy.cluster.hierarchy import linkage, fcluster
 
 F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus"
 R = f"{F}/results/mafb_domain"
@@ -68,16 +72,26 @@ def main():
     S["deep"] = S[SC["whole"]] >= T["whole"]; S["osc"] = S[SC["oscine"]] >= T["oscine"]
     S["rule"] = np.select([S.deep & S.osc, S.deep, S.osc], ORDER[:3], ORDER[3])
     S["rule_by"] = "threshold"
+    # alternative: per tree, split lobes in two (Ward) on z-scored full-extent mean and block %, and
+    # cross the two calls (column mb); the "high" group is the one with the larger mean z
+    hi = {}
+    for t, cols in (("whole", ["whole_ext_mean", "whole_ext_block"]), ("oscine", ["osc_ext_mean", "osc_ext_block"])):
+        X = S[cols].values; X = (X - X.mean(0)) / X.std(0)
+        lab = fcluster(linkage(X, "ward"), 2, "maxclust"); top = pd.Series(X.mean(1)).groupby(lab).mean().idxmax()
+        hi[t] = lab == top
+        print(f"  mb {t}: high group {hi[t].sum()} lobes; lowest high-group mean {S.loc[hi[t], cols[0]].min():.2f}, block {S.loc[hi[t], cols[1]].min():.1f}")
+    S["mb"] = np.select([hi["whole"] & hi["oscine"], hi["whole"], hi["oscine"]], ORDER[:3], ORDER[3])
     for l in open(Path(__file__).with_name("rule_override.bed")):   # rules set by eye
         if l.startswith("#") or not l.strip(): continue
         c, a, b, q = l.rstrip("\n").split("\t")[:4]; assert q in ORDER, q
         hit = (S.chrom == c) & (S.ext_start < int(b)) & (S.ext_end > int(a))
-        S.loc[hit, "rule"], S.loc[hit, "rule_by"] = q, "eye"
+        S.loc[hit, "rule"], S.loc[hit, "mb"], S.loc[hit, "rule_by"] = q, q, "eye"
         print(f"  override: {c}:{int(a) + 1:,}-{b} -> {q} ({hit.sum()} lobe(s))")
     S["thr_whole"], S["thr_oscine"] = T["whole"], T["oscine"]
     S.drop(columns=["deep", "osc"]).to_csv(f"{R}/element_rule_classes.tsv", sep="\t", index=False, float_format="%.3f")
     tab = pd.crosstab(S.rule, S.cls).reindex(ORDER).fillna(0).astype(int)
-    print(tab.assign(total=tab.sum(1)).to_string())
+    print(tab.assign(total=tab.sum(axis=1)).to_string())
+    print(pd.crosstab(pd.Categorical(S.mb, ORDER), pd.Categorical(S.rule, ORDER), rownames=["mb"], colnames=["rule"]).to_string())
     print(f"  class x rule Fisher-Freeman-Halton (RA vs G4, chi2 approx) p = {stats.chi2_contingency(tab[['RA', 'G4']])[1]:.3g}")
 
 

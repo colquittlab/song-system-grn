@@ -16,6 +16,8 @@
 ## weak; full-extent scores, thresholds calibrated on the visual ratings) in place of the clusters.
 ## labels: profiles only, one 2-mm row per lobe labelled with its scored extent (1-based, browser
 ## coordinates), lobe number and rule class; written as ..._labels.{pdf,png}.
+## mb: rows split by the per-tree mean + block % classes (element_rule_classes.py, column mb) and
+## ordered within each by Ward clustering on those four full-extent features.
 ## Writes results/mafb_domain/fig_element_heatmap_{summary,profiles}_k<k>[_byclass].{pdf,png} and
 ## element_clusters_k<k>.tsv.
 suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table)})
@@ -30,14 +32,17 @@ res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matche
 S <- fread(file.path(res, "element_rule_classes.tsv"))   # element_summaries.tsv plus rule classes
 rule <- "rule" %in% args; if (rule) tag <- paste0(tag, "_rule")
 labels <- "labels" %in% args                        # coordinate row labels, tall layout for browsing
+mb <- "mb" %in% args; if (mb) tag <- paste0(tag, "_mb")
 P <- lapply(c(whole = "whole", oscine = "oscine", access = "access"), function(t) {
   m <- as.matrix(read.delim(gzfile(file.path(res, sprintf("element_profiles_%s.tsv.gz", t))), check.names = FALSE)[, -1])
   rownames(m) <- S$element; m })
 
 feat <- c(whole_pct1 = "whole % > 1", whole_mean = "whole mean", whole_block = "whole block %", whole_acc = "whole % < -1",
           osc_pct1 = "oscine % > 1", osc_mean = "oscine mean", osc_block = "oscine block %", osc_acc = "oscine % < -1")
-Xc <- scale(as.matrix(S[, names(feat), with = FALSE]))   # clustering features (summit +/-100 bp)
-if (rule) feat <- c(feat, whole_ext_block = "whole block % (extent)", osc_ext_pct1 = "oscine % > 1 (extent)")
+if (mb) feat <- c(whole_ext_mean = "whole mean", whole_ext_block = "whole block %",
+                 osc_ext_mean = "oscine mean", osc_ext_block = "oscine block %")   # full extent, acc.-weighted
+Xc <- scale(as.matrix(S[, names(feat), with = FALSE]))   # row-order features (summit +/-100 bp; mb: extent)
+if (rule && !mb) feat <- c(feat, whole_ext_block = "whole block % (extent)", osc_ext_pct1 = "oscine % > 1 (extent)")
 X <- scale(as.matrix(S[, names(feat), with = FALSE])); colnames(X) <- feat; rownames(X) <- S$element
 hc <- hclust(dist(Xc), method = "ward.D2")
 cl <- cutree(hc, k = k)
@@ -46,6 +51,7 @@ ord <- order(-tapply(S$whole_pct1, cl, mean)); cl <- match(cl, ord)
 S[, cluster := cl]
 RULES <- c("deep+oscine", "deep", "oscine", "weak")
 grp <- if (rule) match(S$rule, RULES) else S$cluster; glab <- if (rule) RULES else paste0("C", seq_len(k))
+if (mb) { grp <- match(S$mb, RULES); glab <- RULES }   # per-tree mean + block % clusters (element_rule_classes.py)
 
 ## composition and per-cluster summaries
 tab <- table(cluster = S$cluster, class = S$cls)
@@ -53,7 +59,7 @@ ft <- if (all(dim(tab) > 1)) fisher.test(tab, simulate.p.value = TRUE, B = 1e5)$
 summ <- S[, c(list(n = .N, RA = sum(cls == "RA"), G4 = sum(cls == "G4"), both = sum(cls == "both")),
               lapply(.SD, function(v) round(mean(v), 2))), by = cluster, .SDcols = c(names(feat), "log2fc")][order(cluster)]
 print(summ); message(sprintf("class x cluster Fisher p = %.3g (k = %d, %d lobes)", ft, k, nrow(S)))
-fwrite(S[, .(element, cls, cluster, rule, chrom, summit, peak_start, peak_end, ext_start, ext_end, n_lobes, lobe, forced,
+if (!mb) fwrite(S[, .(element, cls, cluster, rule, mb, chrom, summit, peak_start, peak_end, ext_start, ext_end, n_lobes, lobe, forced,
              log2fc, log2fc_ra, log2fc_g4, fdr, whole_pct1, whole_mean, whole_block, whole_acc, osc_pct1, osc_mean, osc_block,
              osc_acc, whole_ext_pct1, whole_ext_block, whole_ext_mean, osc_ext_pct1, osc_ext_block, osc_ext_mean, thr_whole, thr_oscine)],
        file.path(res, sprintf("element_clusters_k%d.tsv", k)), sep = "\t")
@@ -81,7 +87,7 @@ ht_opt$TITLE_PADDING <- unit(1, "mm")
 h1 <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
               cluster_rows = FALSE, row_order = rord, row_split = split, cluster_columns = FALSE,
               show_row_names = FALSE, column_names_gp = gpar(fontsize = 5), row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(if (byclass) 0.8 else 1, "mm"),
-              left_annotation = ra, column_title = if (rule) "constraint: summit ±100 bp | full extent (rule features)" else "constraint at the accessibility summit (±100 bp)",
+              left_annotation = ra, column_title = if (mb) "full extent, accessibility-weighted (clustering features)" else if (rule) "constraint: summit ±100 bp | full extent (rule features)" else "constraint at the accessibility summit (±100 bp)",
               column_title_gp = gpar(fontsize = 6),
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 save_ht <- function(ht, stem, w, h) {
@@ -92,7 +98,7 @@ save_ht <- function(ht, stem, w, h) {
   }
   message("wrote ", file.path(res, stem), ".pdf/.png")
 }
-save_ht(h1, if (rule) paste0("fig_element_heatmap_summary", tag) else sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 6.2 else 4.6)
+save_ht(h1, if (rule || mb) paste0("fig_element_heatmap_summary", tag) else sprintf("fig_element_heatmap_summary_k%d%s", k, tag), 3.8, if (byclass) 6.2 else 4.6)
 
 ## profiles in the same order
 pos <- as.integer(colnames(P$whole)); lab <- ifelse(pos %% 250 == 0, as.character(pos), "")
@@ -112,9 +118,9 @@ h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
 if (labels) {
   lbl <- sprintf("%s:%s-%s%s  %s  %s", S$chrom, format(S$ext_start + 1, big.mark = ",", trim = TRUE),
                  format(S$ext_end, big.mark = ",", trim = TRUE), ifelse(S$n_lobes > 1, sprintf(" (lobe %d/%d)", S$lobe, S$n_lobes), ""),
-                 S$cls, S$rule)
+                 S$cls, if (mb) S$mb else S$rule)
   h2 <- h2 + rowAnnotation(coords = anno_text(lbl, gp = gpar(fontsize = 5, fontfamily = "mono")))
   save_ht(h2, paste0("fig_element_heatmap_profiles", tag, "_labels"), 9.0, 1.4 + nrow(S) * 2 / 25.4)
   quit(save = "no")
 }
-save_ht(h2, if (rule) paste0("fig_element_heatmap_profiles", tag) else sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)
+save_ht(h2, if (rule || mb) paste0("fig_element_heatmap_profiles", tag) else sprintf("fig_element_heatmap_profiles_k%d%s", k, tag), 6.4, if (byclass) 6.2 else 4.6)

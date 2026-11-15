@@ -9,7 +9,8 @@ G4 or both (an RA and a G4 peak overlapping each other, or a peak overlapping DA
 
     python element_cluster_bed.py
 Writes results/mafb_domain/
-  element_rules.bed and element_rule_{deep_oscine,deep,oscine,weak}.bed   rule classes
+  element_rules.bed and element_rule_{deep_oscine,deep,oscine,weak}.bed   threshold rule classes
+  element_mbs.bed and element_mb_{deep_oscine,deep,oscine,weak}.bed       mean + block % cluster classes
   element_classes.bed                                                    all lobes, coloured by class
   element_clusters_{C1_C2,C1,C2}.bed                                     Ward clusters C1 and C2
 """
@@ -45,20 +46,21 @@ def main():
                   + (f"|lobe{r.lobe}/{r.n_lobes}" if r.n_lobes > 1 else ""))
             fh.write("\t".join(map(str, (r.chrom, r.peak_start, r.peak_end, nm, 0, ".", max(r.peak_start, r.summit - CORE),
                                           min(r.peak_end, r.summit + CORE), CLS_COL[r.cls]))) + "\n")
-    # rule classes: full extent, coloured by rule
-    with open(f"{R}/element_rules.bed", "w") as fh0:
-        fh0.write(f'track name="MAFB_elem_rule" description="MAFB domain elements by constraint rule class (full scored extent)" itemRgb="On"\n')
+    # rule classes (thresholds: col rule; per-tree mean + block % clusters: col mb): full extent, coloured by class
+    for col_, stem, what in (("rule", "rule", "threshold rule class"), ("mb", "mb", "mean + block % cluster class")):
+      with open(f"{R}/element_{stem}s.bed", "w") as fh0:
+        fh0.write(f'track name="MAFB_elem_{stem}" description="MAFB domain elements by {what} (full scored extent)" itemRgb="On"\n')
         for rc, col in RULE_COL.items():
-            x = a[a.rule == rc]; tag = rc.replace("+", "_")
-            with open(f"{R}/element_rule_{tag}.bed", "w") as fh:
-                fh.write(f'track name="MAFB_{tag}" description="MAFB domain elements, rule class {rc} (full scored extent)" itemRgb="On"\n')
+            x = a[a[col_] == rc]; tag = rc.replace("+", "_")
+            with open(f"{R}/element_{stem}_{tag}.bed", "w") as fh:
+                fh.write(f'track name="MAFB_{stem}_{tag}" description="MAFB domain elements, {what} {rc} (full scored extent)" itemRgb="On"\n')
                 for r in x.itertuples(index=False):
                     p2g = "NA" if pd.isna(r.p2g_r) else f"{r.p2g_r:.2f}"
-                    nm = (f"{r.cls}|{rc}|whole_block={r.whole_ext_block:.0f}|osc%>1={r.osc_ext_pct1:.0f}|p2g={p2g}"
+                    nm = (f"{r.cls}|{rc}|whole mean={r.whole_ext_mean:.1f} block={r.whole_ext_block:.0f}|osc mean={r.osc_ext_mean:.2f} block={r.osc_ext_block:.0f} %>1={r.osc_ext_pct1:.0f}|p2g={p2g}"
                           + (f"|lobe{r.lobe}/{r.n_lobes}" if r.n_lobes > 1 else ""))
                     line = "\t".join(map(str, (r.chrom, r.ext_start, r.ext_end, nm, 0, ".", r.ext_start, r.ext_end, col))) + "\n"
                     fh.write(line); fh0.write(line)
-            print(f"  element_rule_{tag}.bed: {len(x)} lobes (" + ", ".join(f"{k} {(x.cls == k).sum()}" for k in CLS_COL) + ")")
+            print(f"  element_{stem}_{tag}.bed: {len(x)} lobes (" + ", ".join(f"{k} {(x.cls == k).sum()}" for k in CLS_COL) + ")")
     print(f"  element_classes.bed: {len(a)} lobes (" + ", ".join(f"{k} {(a.cls == k).sum()}" for k in CLS_COL) + ")")
     for keep, tag in (((1, 2), "C1_C2"), ((1,), "C1"), ((2,), "C2")):
         x = B[B[9].isin(keep)].iloc[:, :9]
