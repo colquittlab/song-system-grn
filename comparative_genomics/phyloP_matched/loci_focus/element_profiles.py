@@ -29,6 +29,7 @@ Per lobe, over the summit +/-100 bp (matched per-base phyloP tracks):
 and over the lobe's full extent (ext_start-ext_end: the peak, cut between lobes at the smoothed
 accessibility minimum, or the drawn interval), weighted by accessibility:
   whole_ext_pct1 / _block / _mean,  osc_ext_pct1 / _block / _mean
+  acc_ra_ext / acc_g4_ext   mean Glut-RA / GABA-4-1 fragment signal over the extent (unweighted)
 plus log2fc (own-contrast Log2FC of the overlapping DAR) and profiles over the summit +/-500 bp
 (11-bp rolling means): whole-tree phyloP, oscine phyloP, accessibility difference.
 
@@ -179,6 +180,8 @@ def main():
                 r[f"{lab}_ext_pct1"] = 100 * (w * (x > 1)).sum() / w.sum(); r[f"{lab}_ext_block"] = 100 * (w * (blk > 1)).sum() / w.sum()
                 r[f"{lab}_ext_mean"] = (w * x).sum() / w.sum()
             r["ext_start"], r["ext_end"] = s + ext[j][0], s + ext[j][1]
+            for x, nm in (("Glut-RA", "acc_ra_ext"), ("GABA-4-1", "acc_g4_ext")):   # mean fragment signal over the extent
+                r[nm] = vals(fb[x], c, s + ext[j][0], s + ext[j][1]).mean()
             prof["access"].append(df)
             rows.append(r)
     S = pd.DataFrame(rows)
