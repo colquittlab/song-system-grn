@@ -30,6 +30,9 @@ and over the lobe's full extent (ext_start-ext_end: the peak, cut between lobes 
 accessibility minimum, or the drawn interval), weighted by accessibility:
   whole_ext_pct1 / _block / _mean,  osc_ext_pct1 / _block / _mean
   acc_ra_ext / acc_g4_ext   mean Glut-RA / GABA-4-1 fragment signal over the extent (unweighted)
+  osc_depth / nonosc_depth  alignment depth: mean fraction of oscine (145) / non-oscine (217) genomes
+                            with a base aligned, over the extent (per-base tracks, domain_depth.py)
+  *_depth_min50             the lowest 50-bp rolling mean of that depth within the extent
 plus log2fc (own-contrast Log2FC of the overlapping DAR) and profiles over the summit +/-500 bp
 (11-bp rolling means): whole-tree phyloP, oscine phyloP, accessibility difference.
 
@@ -185,6 +188,15 @@ def main():
             prof["access"].append(df)
             rows.append(r)
     S = pd.DataFrame(rows)
+    # alignment depth per lobe from the per-base clade depth tracks (domain_depth.py): mean over the
+    # extent, and the lowest 50-bp rolling mean (a low-depth patch anywhere in the lobe)
+    dbw = {x: pyBigWig.open(f"{F}/results/mafb_domain/depth_{x}.bw") for x in ("osc", "nonosc")}
+    for x, bw_ in dbw.items():
+        mean_, min_ = [], []
+        for c, a, b in zip(S.chrom, S.ext_start, S.ext_end):
+            v = np.array(bw_.values(c, int(a), int(b)), float)
+            mean_.append(np.nanmean(v)); min_.append(np.nanmin(np.convolve(v, np.ones(50) / 50, "valid")) if len(v) >= 50 else np.nanmin(v))
+        S[f"{x}_depth"], S[f"{x}_depth_min50"] = mean_, min_
     S.to_csv(result("element_summaries.tsv", span), sep="\t", index=False, float_format="%.3f")
     for t, M in prof.items():
         pd.DataFrame(np.array(M), index=S.element, columns=np.arange(-PROF, PROF)).to_csv(
