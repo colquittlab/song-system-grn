@@ -16,6 +16,8 @@ Curation by eye, in files next to this script:
                         its interval (the 1-bp pileup can be a plateau where the track shows lobes)
   class_override.bed    class set by eye
   lobe_count.bed        number of lobes by eye, split at the strongest summits >= 150 bp apart
+  excluded_lobes.bed    single lobes dropped (>= half of the lobe's extent inside an interval); the
+                        peak's other lobes keep their numbering
 Otherwise peaks are split into lobes at fragment summits: peaks labelled bipartite / tripartite in
 the visual assessment get 2 / 3 lobes (strongest summits >= 150 bp apart); others split where
 the 51-bp smoothed signal has summits >= 150 bp apart, each >= 30% of the strongest, with a dip
@@ -114,6 +116,7 @@ def main():
     ml = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("manual_lobes.bed")]
     co = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("class_override.bed")]
     lc = [(x, int(a), int(b), int(q)) for x, a, b, q, *_ in rd("lobe_count.bed")]
+    xl = [(x, int(a), int(b)) for x, a, b, *_ in rd("excluded_lobes.bed")]
     cand = {}
     for k, (cl, up, ref, con) in CLS.items():
         sp = pd.read_csv(f"{T}/snapatac_peaks/{up}.bed", sep="\t", header=None, usecols=[0, 1, 2], names=["c", "s", "e"])
@@ -162,6 +165,8 @@ def main():
             ext = list(zip([0] + cut, cut + [e - s]))
         ph_ext = {t: vals(bw[t], c, s - 5, e + 5) for t in PHY}
         for j, i in enumerate(ls):
+            lo_, hi_ = s + ext[j][0], s + ext[j][1]       # drop lobes judged by eye (excluded_lobes.bed)
+            if any(x == c and min(b, hi_) - max(a, lo_) >= 0.5 * (hi_ - lo_) for x, a, b in xl): continue
             mid = s + i; a, b = mid - PROF, mid + PROF
             ph = {t: vals(bw[t], c, a, b) for t in PHY}
             df = np.mean([roll(vals(fb[CLS[x][1]], c, a, b) - vals(fb[CLS[x][2]], c, a, b), 11) for x in ks], axis=0)
