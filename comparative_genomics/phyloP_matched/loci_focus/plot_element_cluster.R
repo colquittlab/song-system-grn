@@ -7,6 +7,8 @@
 ## Rows are labelled with the lobe's scored extent (1-based) and class (RA, G4, both).
 ##
 ##   Rscript plot_element_cluster.R [k=4] [depth=T] [noacc]
+## nolabels drops the row labels and the group column and widens the class column (outputs carry
+## _nolabels).
 ## thr splits rows by the rating-calibrated threshold classes (element_threshold_classes.py; implies
 ## noacc), ordered within each by Ward on the two features, z-scored on all lobes so colours match
 ## across depth filters; outputs fig_element_cluster_thr_noacc[_depth<T>].
@@ -27,8 +29,10 @@ k <- if (length(args) && grepl("^[0-9]+$", args[1])) as.integer(args[1]) else 4L
 dmin <- sub("^depth=", "", grep("^depth=", args, value = TRUE)); dmin <- if (length(dmin)) as.numeric(dmin) else NA
 noacc <- "noacc" %in% args                         # cluster on the two phyloP means only
 thr <- "thr" %in% args                               # split rows by threshold classes (element_threshold_classes.py)
+nolab <- "nolabels" %in% args                        # no row labels or group column; wider class column
 if (thr) noacc <- TRUE
-tag <- paste0(if (thr) "_thr" else "", if (noacc) "_noacc" else "", if (is.na(dmin)) "" else sprintf("_depth%g", dmin))
+tag <- paste0(if (thr) "_thr" else "", if (noacc) "_noacc" else "", if (is.na(dmin)) "" else sprintf("_depth%g", dmin),
+              if (nolab) "_nolabels" else "")
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_rule_classes.tsv"))
 S0 <- copy(S)                                        # full set, for fixed z-scaling in thr mode
@@ -69,8 +73,12 @@ gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c816
 if (thr) nm <- THR
 if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^deep", nm), "#c8161a",
                             ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f"))), nm)
-ra <- rowAnnotation(group = S$group, class = S$cls,
-                    col = list(group = gcol, class = c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])),
+CCOL <- c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])
+ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
+                    annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),
+                    annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5))) else
+      rowAnnotation(group = S$group, class = S$cls,
+                    col = list(group = gcol, class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(2, "mm"),
                     annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 if (noacc) {
@@ -90,7 +98,7 @@ if (noacc) {
           show_row_names = FALSE,
           column_title = if (thr) NULL else paste0(sprintf("Ward, z-scored (k = %d)", k), if (is.na(dmin)) "" else sprintf(", depth >= %g", dmin)),
           column_title_gp = gpar(fontsize = 6))) +
-        one(2, "oscine mean phyloP", list(right_annotation = ra, row_labels = lbl,
+        one(2, "oscine mean phyloP", list(right_annotation = ra, row_labels = lbl, show_row_names = !nolab,
           row_names_gp = gpar(fontsize = 5, fontfamily = "mono")))
 } else {
 ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
@@ -103,7 +111,7 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DI
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 }
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
-W <- if (noacc) 6.0 else 5.2
+W <- if (nolab) 4.2 else if (noacc) 6.0 else 5.2
 for (dev in c("pdf", "png")) {
   f <- file.path(res, if (thr) sprintf("fig_element_cluster%s.%s", tag, dev) else sprintf("fig_element_cluster_k%d%s.%s", k, tag, dev))
   if (dev == "pdf") cairo_pdf(f, width = W, height = h, family = FIG_FONT) else png(f, width = W, height = h, units = "in", res = 600, family = FIG_FONT)
