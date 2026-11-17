@@ -9,7 +9,9 @@
 ## (hybrid labels; ra links for RA, gaba links for G4; r >= 0.2 file) whose linked peak, resized to
 ## 500 bp about its centre, overlaps the element's SnapATAC peak. Grey = no MAFB link at r >= 0.2.
 ##
-##   Rscript plot_element_scatter.R [mean|pct1|block|ext]
+##   Rscript plot_element_scatter.R [mean|pct1|block|ext] [depth=T]
+##   depth=T keeps lobes with every 50-bp window aligned in >= T of oscine and non-oscine genomes
+##        (element_profiles.py); axis limits stay those of all lobes; outputs carry _depth<T>
 ##   ext  the rule-class scores over each lobe's full extent, accessibility-weighted (x whole-tree
 ##        block %, y oscine % > 1), with the element_rule_classes.py thresholds dashed
 ##   mean   mean phyloP; pct1  % of bases with phyloP > 1; block  % of bases in 11-bp blocks with
@@ -22,11 +24,13 @@ source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../conf
 
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 args <- commandArgs(trailingOnly = TRUE)
-ms <- if (length(args)) args[1] else "mean"
+ms <- if (length(args) && !grepl("=", args[1])) args[1] else "mean"
+dmin <- sub("^depth=", "", grep("^depth=", args, value = TRUE)); dmin <- if (length(dmin)) as.numeric(dmin) else NA
 MS <- list(mean = c("whole_mean", "osc_mean", "mean phyloP", ""), pct1 = c("whole_pct1", "osc_pct1", "% bases phyloP > 1", "_pct1"),
            block = c("whole_block", "osc_block", "% bases in 11-bp blocks > 1", "_block"),
            ext = c("whole_ext_block", "osc_ext_pct1", "", "_ext"))[[ms]]
 d <- fread(file.path(res, "element_clusters_k4.tsv"))
+d <- merge(d, fread(file.path(res, "element_rule_classes.tsv"))[, .(element, osc_depth_min50, nonosc_depth_min50)], by = "element")
 d[, `:=`(xv = get(MS[1]), yv = get(MS[2]))]
 ## peak-to-gene correlation with MAFB, per element, from its own class's link set
 p2g_dir <- "/private/home/bcolquit/group/song-system-grn/multiome/archr/peaks2geneslinks_hybrid"
@@ -38,10 +42,14 @@ links <- rbindlist(lapply(c(RA = "ra", G4 = "gaba"), function(x) {
 }), idcol = "cls")
 d[, p2g_r := mapply(function(k, c, a, b) { x <- links[(cls == k | k == "both") & chrom == c & s < b & e > a, r]; if (length(x)) max(x) else NA_real_ },
                     cls, chrom, peak_start, peak_end)]
-d[, cls := factor(cls, levels = c("RA", "G4", "both"), labels = c("Glut-RA DARs", "GABA-4 DARs", "RA + GABA-4 DARs"))]
+d[, cls := factor(cls, levels = c("RA", "G4", "both"), labels = c("Glut-RA DARs", "GABA-4 DARs", "shared DARs"))]
 pad <- function(r) r + c(-1, 1) * 0.04 * diff(r)
 lim_x <- pad(range(d$xv)); lim_y <- pad(range(d$yv))
 if (ms != "mean") { lim_x[1] <- min(lim_x[1], 0); lim_y[1] <- min(lim_y[1], 0) }
+if (!is.na(dmin)) {                                  # axis limits stay those of all lobes
+  n0 <- nrow(d); d <- d[osc_depth_min50 >= dmin & nonosc_depth_min50 >= dmin]
+  message(sprintf("depth >= %g across the lobe (every 50-bp window, both clades) keeps %d of %d lobes", dmin, nrow(d), n0))
+}
 lab <- d[, .(n = .N, rho = cor(xv, yv, method = "spearman")), by = cls]
 ## n and rho go in the panel titles, so no point can sit under them
 ttl <- setNames(sprintf("%s  (n = %d, rho = %.2f)", lab$cls, lab$n, lab$rho), as.character(lab$cls))
@@ -64,9 +72,9 @@ p <- ggplot(d[order(!is.na(p2g_r), p2g_r)], aes(xv, yv, colour = p2g_r)) +
         panel.spacing = unit(4, "mm"), aspect.ratio = 1,
         legend.key.width = unit(2, "mm"), legend.key.height = unit(6, "mm"),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT))
-stem <- paste0("fig_element_scatter_whole_vs_oscine", MS[4], "_p2g")
+stem <- paste0("fig_element_scatter_whole_vs_oscine", MS[4], "_p2g", if (is.na(dmin)) "" else sprintf("_depth%g", dmin))
 fig_save(p, file.path(res, stem), width = 5.8, height = 2.0)
 message("wrote ", file.path(res, stem), ".pdf/.png")
 print(lab[, .(cls, n, rho = round(rho, 2))])
 print(d[, .(lobes = .N, linked = sum(!is.na(p2g_r)), median_r = round(median(p2g_r, na.rm = TRUE), 2)), by = cls])
-fwrite(d[, .(element, cls, cluster, rule, p2g_r)], file.path(res, "element_p2g_mafb.tsv"), sep = "\t")
+if (is.na(dmin)) fwrite(d[, .(element, cls, cluster, rule, p2g_r)], file.path(res, "element_p2g_mafb.tsv"), sep = "\t")

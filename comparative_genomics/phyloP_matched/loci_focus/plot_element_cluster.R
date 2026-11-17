@@ -6,7 +6,9 @@
 ## mixture BIC favours one cluster; Ward silhouettes ~0.22), so the groups are bins along gradients.
 ## Rows are labelled with the lobe's scored extent (1-based) and class (RA, G4, both).
 ##
-##   Rscript plot_element_cluster.R [k=4] [depth=T]
+##   Rscript plot_element_cluster.R [k=4] [depth=T] [noacc]
+## noacc clusters on (and shows) the two phyloP means only, naming groups from their centroids
+## (deep / oscine when above average on that track, else weak); outputs carry _noacc.
 ## depth=T keeps only lobes with no low-depth patch: every 50-bp window of the lobe aligned in >= T of
 ## oscine and of non-oscine genomes (osc_depth_min50, nonosc_depth_min50; element_profiles.py);
 ## outputs carry _depth<T>.
@@ -19,7 +21,8 @@ source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../conf
 args <- commandArgs(trailingOnly = TRUE)
 k <- if (length(args) && !grepl("=", args[1])) as.integer(args[1]) else 4L
 dmin <- sub("^depth=", "", grep("^depth=", args, value = TRUE)); dmin <- if (length(dmin)) as.numeric(dmin) else NA
-tag <- if (is.na(dmin)) "" else sprintf("_depth%g", dmin)
+noacc <- "noacc" %in% args                         # cluster on the two phyloP means only
+tag <- paste0(if (noacc) "_noacc" else "", if (is.na(dmin)) "" else sprintf("_depth%g", dmin))
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_rule_classes.tsv"))
 if (!is.na(dmin)) {                                  # confidently aligned lobes only
@@ -30,12 +33,17 @@ if (!is.na(dmin)) {                                  # confidently aligned lobes
 S[, `:=`(lacc_ra = log1p(acc_ra_ext), lacc_g4 = log1p(acc_g4_ext))]
 feat <- c(whole_ext_mean = "whole-tree mean phyloP", osc_ext_mean = "oscine mean phyloP",
           lacc_ra = "RA accessibility", lacc_g4 = "G4 accessibility")
+if (noacc) feat <- feat[1:2]
 X <- scale(as.matrix(S[, names(feat), with = FALSE])); colnames(X) <- feat
 hc <- hclust(dist(X), method = "ward.D2")
 cl <- cutree(hc, k = k)
 ## number groups in dendrogram order (top to bottom)
 cl <- match(cl, unique(cl[hc$order])); nm <- paste0("C", seq_len(k)); S[, group := nm[cl]]
 cz <- apply(X, 2, function(v) tapply(v, cl, mean))
+if (noacc) {                                         # name from centroids: above-average whole tree / oscine
+  nm <- ifelse(cz[, 1] > 0 & cz[, 2] > 0, "deep+oscine", ifelse(cz[, 1] > 0, "deep", ifelse(cz[, 2] > 0, "oscine", "weak")))
+  nm <- make.unique(nm, sep = " "); S[, group := nm[cl]]
+}
 print(data.table(group = nm, n = as.vector(table(cl)), round(cz, 2)))
 fwrite(S[, .(element, cls, group, chrom, ext_start, ext_end, n_lobes, lobe, whole_ext_mean, osc_ext_mean,
              acc_ra_ext, acc_g4_ext)], file.path(res, sprintf("element_cluster_k%d%s.tsv", k, tag)), sep = "\t")
@@ -44,6 +52,8 @@ lbl <- sprintf("%s:%s-%s%s  %s", S$chrom, format(S$ext_start + 1, big.mark = ","
                format(S$ext_end, big.mark = ",", trim = TRUE),
                ifelse(S$n_lobes > 1, sprintf(" (lobe %d/%d)", S$lobe, S$n_lobes), ""), S$cls)
 gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c8161a", "#5f5f5f", "#9a9a9a")[seq_len(k)], nm)
+if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^deep", nm), "#c8161a",
+                            ifelse(grepl("^oscine", nm), "#1baf7a", "#9a9a9a"))), nm)
 ra <- rowAnnotation(group = S$group, class = S$cls,
                     col = list(group = gcol, class = c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(2, "mm"),
