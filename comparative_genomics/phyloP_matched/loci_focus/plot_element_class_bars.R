@@ -7,19 +7,28 @@
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
-##   Rscript plot_element_class_bars.R
-## Writes results/mafb_domain/fig_element_class_bars.{pdf,png}.
+##   Rscript plot_element_class_bars.R [oscany]
+## oscany combines deep+oscine and oscine into "any oscine" (any oscine-lineage constraint), next to
+## "deep only" and "weak", and reports per DAR class the share with any oscine constraint (RA vs G4,
+## Fisher's exact test); outputs carry _oscany.
+## Writes results/mafb_domain/fig_element_class_bars[_oscany].{pdf,png}.
 suppressMessages({library(ggplot2); library(data.table)})
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
 source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../config/figure_theme.R")) else
   here::here("config/figure_theme.R"))
 
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
+oscany <- "oscany" %in% commandArgs(trailingOnly = TRUE)
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
 PCOL <- c("deep+oscine" = "#7a3ca0", deep = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
 d[, dar := factor(CLS[cls], levels = CLS)]
 d[, phy := factor(thr_class, levels = c("deep+oscine", "deep", "oscine", "weak"))]
+if (oscany) {
+  d[, phy := factor(fcase(thr_class %in% c("deep+oscine", "oscine"), "any oscine", thr_class == "deep", "deep only", default = "weak"),
+                    levels = c("any oscine", "deep only", "weak"))]
+  PCOL <- c("any oscine" = "#1baf7a", "deep only" = "#c8161a", weak = "#5f5f5f")
+}
 sets <- list("all lobes" = d, "depth ≥ 0.8" = d[osc_depth_min50 >= 0.8 & nonosc_depth_min50 >= 0.8],
              "depth ≥ 0.9" = d[osc_depth_min50 >= 0.9 & nonosc_depth_min50 >= 0.9])
 n <- rbindlist(lapply(names(sets), function(s) sets[[s]][, .N, by = .(phy, dar)][, set := s]))
@@ -27,6 +36,13 @@ n <- n[CJ(phy = levels(d$phy), dar = levels(d$dar), set = names(sets)), on = .(p
 n[, set := factor(set, levels = names(sets), labels = sprintf("%s (n = %d)", names(sets), sapply(sets, nrow)))]
 n[, phy := factor(phy, levels = levels(d$phy))]; n[, dar := factor(dar, levels = CLS)]
 print(dcast(n, set + phy ~ dar, value.var = "N"))
+if (oscany) for (s in names(sets)) {                 # share with any oscine constraint, RA vs G4
+  x <- sets[[s]]; f <- function(k) x[cls == k, c(sum(phy == "any oscine"), .N)]
+  r <- f("RA"); g <- f("G4"); b <- f("both")
+  ft <- fisher.test(matrix(c(r[1], r[2] - r[1], g[1], g[2] - g[1]), 2))
+  message(sprintf("%-12s any oscine: RA %d/%d (%.0f%%), G4 %d/%d (%.0f%%), shared %d/%d (%.0f%%); RA vs G4 Fisher p = %.2g",
+                  s, r[1], r[2], 100 * r[1] / r[2], g[1], g[2], 100 * g[1] / g[2], b[1], b[2], 100 * b[1] / b[2], ft$p.value))
+}
 
 pd <- position_dodge(width = 0.8)
 p <- ggplot(n, aes(dar, N, fill = phy)) +
@@ -41,5 +57,6 @@ p <- ggplot(n, aes(dar, N, fill = phy)) +
         panel.grid.major.x = element_blank(), panel.spacing = unit(4, "mm"),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
-fig_save(p, file.path(res, "fig_element_class_bars"), width = 5.6, height = 2.1)
-message("wrote ", file.path(res, "fig_element_class_bars"), ".pdf/.png")
+stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "")
+fig_save(p, file.path(res, stem), width = 5.6, height = 2.1)
+message("wrote ", file.path(res, stem), ".pdf/.png")
