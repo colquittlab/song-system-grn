@@ -10,7 +10,7 @@ here rather than by the hub's trackDb):
 All four accessibility tracks share a fixed y axis, 0 to ACC_MAX (default 30; values above are
 clipped). With ACC_MAX=pair, Glut-RA/Glut-Arco-1 and GABA-4-1/GABA-1-1 instead each share 0 to 1.05 x the
 pair's maximum over the view. phyloP limits follow the hub (oscine -3:3, whole tree -4:6). Vertical guidelines and the
-descriptions above tracks are off; the peak is highlighted in grey. The UCSC API key is read from
+descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub default); the peak is highlighted in grey. The UCSC API key is read from
 ~/.ucsc_api_key (never stored here).
 
     ACC_MAX=30 python ucsc_dar_batch.py [flank_bp=10000] [first N peaks]
@@ -29,16 +29,17 @@ ACC = [("Glut-RA", "227,26,28", "RA"), ("Glut-Arco-1", "251,154,153", "RA"),
 PHY = [("phyloP oscine", f"{BASE}/{GENOME}/comparative/subtree222_perbase_lsd2.bw", "63,107,69", "154,123,36", "-3:3"),
        ("phyloP all 363", f"{BASE}/{GENOME}/comparative/wholetree_perbase_lsd2.bw", "33,102,172", "178,24,43", "-4:6")]
 PIX = 1200
+HEIGHT = 45                                          # track height (px): 1.5 x the hub default of 30
 
 
 def custom_text(lim):
     t = []
     for name, col, pair in ACC:
         t.append(f'track type=bigWig name="{name} ATAC" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
-                 f'autoScale=off viewLimits=0:{lim[pair]:g} alwaysZero=on maxHeightPixels=128:30:11 visibility=full')
+                 f'autoScale=off viewLimits=0:{lim[pair]:g} alwaysZero=on maxHeightPixels=128:{HEIGHT}:11 visibility=full')
     for name, url, col, alt, vl in PHY:
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
-                 f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:30:11 visibility=full')
+                 f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:{HEIGHT}:11 visibility=full')
     return "\n".join(t)
 
 
