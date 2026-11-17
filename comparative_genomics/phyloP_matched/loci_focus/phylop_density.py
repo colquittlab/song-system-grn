@@ -81,6 +81,12 @@ high-difference bases, using only elements with >= N such bases; RA vs G4 compar
 (difference of means with a 95% bootstrap interval over elements, and Mann-Whitney). Each
 element counts once, unlike the base-weighted fractions.
 
+Alignment depth. --depth T keeps only elements aligned in at least a fraction T of oscine (Anc222
+clade, 145) and of non-oscine (217) genomes: the mean fraction of each clade with a non-gap base
+over the 501-bp element (depth_scan; element_depth.py). Low depth lowers phyloP both technically
+(missing data) and biologically (indel turnover in unconstrained sequence), so this compares
+confidently assessed elements only. Not applied to set: spans. Outputs carry _depth<T>.
+
 Smoothing. --smooth K sets the rolling-mean window applied to phyloP and to the fragment
 difference (default 11, as in the notebook); --smooth 1 uses raw per-base values for both, so
 bases are also selected on unsmoothed accessibility. Outputs then carry _nosmooth.
@@ -119,6 +125,8 @@ TRACK_SETS = {"3model": dict(PHYLOP),
 TRACKS = "3model"
 LFC_MIN = None
 MATCH = None
+DEPTH_MIN = None
+DEPTH_SCAN = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/depth_scan/out"
 ELEM_N = (20, 50, 100)
 TAILMEAN_Q = (0.0, 1.0, 2.0)
 ACC_Q = (1.0, 2.0)
@@ -318,8 +326,20 @@ def elem_means(df, t):
     return out
 
 
+def depth_of():
+    """element -> (oscine depth, non-oscine depth), cached from the depth_scan chunks"""
+    cache = result("archr_peak_depth.tsv.gz", "gw")
+    try: A = pd.read_csv(cache, sep="\t", index_col=0)
+    except (OSError, EOFError, pd.errors.ParserError):   # missing or partial: rebuild
+        import glob
+        A = pd.concat(pd.read_csv(f, sep="\t", header=None, usecols=[0, 5, 6], names=["eid", "osc_depth", "nonosc_depth"])
+                      for f in glob.glob(f"{DEPTH_SCAN}/*.tsv")).drop_duplicates("eid").set_index("eid")
+        import os; tmp = f"{cache}.{os.getpid()}.tmp"; A.to_csv(tmp, sep="\t", float_format="%.4f", compression="gzip"); os.replace(tmp, cache)
+    return A
+
+
 def suffix(how):
-    return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") \
+    return ("_perbase" if TRACKS == "perbase" else "") + ("" if LFC_MIN is None else f"_lfc{LFC_MIN:g}") + ("" if DEPTH_MIN is None else f"_depth{DEPTH_MIN:g}") \
         + ("_matchlfc" if MATCH == "lfc" else "") + ("" if PAD == 1000 else f"_w{2 * PAD}") + ("_snapcenter" if how == "snapatac" else "_summit" if how == "summit" else "") + ("_nosmooth" if K <= 1 else ("" if K == 11 else f"_smooth{K}"))
 
 
@@ -335,6 +355,11 @@ def run(span, how="element"):
     elif span == "domain": names = [n for n, c in EL.items() if in_domain(c)]
     elif span == "1p5mb": W = wide_elements(); names = [n for n in EL if n in W]
     else: names = list(EL)
+    if DEPTH_MIN is not None and not span.startswith("set:"):
+        A = depth_of(); n0 = len(names)
+        names = [n for n in names if n in A.index and A.at[n, "osc_depth"] >= DEPTH_MIN and A.at[n, "nonosc_depth"] >= DEPTH_MIN]
+        print(f"  {span}: depth >= {DEPTH_MIN:g} in both clades keeps {len(names)} of {n0} elements ("
+              + ", ".join(f"{k} {sum(CLS.get(n) == k for n in names)}" for k in ("RA_over_Arco", "GABA4_over_GABA1")) + ")", flush=True)
     if (LFC_MIN is not None or MATCH) and not span.startswith("set:"):
         L = lfc_of()
         if LFC_MIN is not None:
@@ -406,7 +431,7 @@ def run(span, how="element"):
 
 
 def main():
-    global K, TRACKS, PHYLOP, PAD, LFC_MIN, MATCH
+    global K, TRACKS, PHYLOP, PAD, LFC_MIN, MATCH, DEPTH_MIN
     args = sys.argv[1:]; how = "element"
     if "--tracks" in args:
         i = args.index("--tracks"); TRACKS = args[i + 1]; del args[i:i + 2]
@@ -417,6 +442,8 @@ def main():
         i = args.index("--match"); MATCH = args[i + 1]; del args[i:i + 2]
     if "--lfc" in args:
         i = args.index("--lfc"); LFC_MIN = float(args[i + 1]); del args[i:i + 2]
+    if "--depth" in args:
+        i = args.index("--depth"); DEPTH_MIN = float(args[i + 1]); del args[i:i + 2]
     if "--window" in args:
         i = args.index("--window"); PAD = int(args[i + 1]) // 2; del args[i:i + 2]
     if "--smooth" in args:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Are weakly constrained DAR peaks songbird-specific sequence? Per-clade alignment depth vs phyloP.
 
-For each genome-wide DAR peak (results/gw/dar_peak_repeats.tsv.gz; element_repeats.py), alignment
+For each genome-wide DAR peak (results/genome_wide/dar_peak_repeats.tsv.gz; element_repeats.py), alignment
 depth is taken from the 363-way per-element depth scan (depth_scan/out; element_depth.py): the mean
 fraction of oscine (Anc222 clade, 145) and non-oscine (217) genomes with a non-gap base, over each
 500-bp ArchR peak; a SnapATAC peak takes the overlap-weighted mean over the ArchR peaks it overlaps.
@@ -13,14 +13,14 @@ phastCons posterior on the oscine-only sub-alignment (phastcons_clade/v2; chr20 
 conservation within oscines without that contrast.
 
     python dar_peak_depth.py
-Writes results/gw/dar_peak_depth.tsv.gz.
+Writes results/genome_wide/dar_peak_depth.tsv.gz.
 """
 import glob
 from collections import defaultdict
 import numpy as np, pandas as pd, pyBigWig
 from scipy import stats
 
-R = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/gw"
+R = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/genome_wide"
 DS = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/depth_scan/out"
 PC = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/phastcons_clade/v2/results"
 

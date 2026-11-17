@@ -19,7 +19,7 @@ third on both, "constrained" = upper third on either. Composition is compared be
 (Mann-Whitney; Fisher for any-TE overlap and for each TE class), within each class.
 
     python element_repeats.py [k=4]
-Writes results/mafb_domain/element_repeats.tsv and results/gw/dar_peak_repeats.tsv(.gz).
+Writes results/mafb_domain/element_repeats.tsv and results/genome_wide/dar_peak_repeats.tsv.gz.
 """
 import os, subprocess, sys, tempfile
 from collections import defaultdict
@@ -147,7 +147,7 @@ def main():
     Q = pd.concat(out).dropna(subset=["whole", "oscine"]).reset_index(drop=True)
     print(f"\n  genome-wide DAR peaks with phyloP: " + ", ".join(f"{c} {n}" for c, n in Q.cls.value_counts().items()))
     Q = composition(Q, fa, te)
-    os.makedirs(f"{R}/gw", exist_ok=True); Q.to_csv(f"{R}/gw/dar_peak_repeats.tsv.gz", sep="\t", index=False, float_format="%.3f")
+    Q.to_csv(f"{R}/genome_wide/dar_peak_repeats.tsv.gz", sep="\t", index=False, float_format="%.3f")
     for cl in ("RA", "G4"):
         q = Q[Q.cls == cl]; w3 = q.whole.quantile([1 / 3, 2 / 3]).values; o3 = q.oscine.quantile([1 / 3, 2 / 3]).values
         weak = q[(q.whole <= w3[0]) & (q.oscine <= o3[0])]; con = q[(q.whole >= w3[1]) | (q.oscine >= o3[1])]
