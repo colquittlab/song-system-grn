@@ -10,7 +10,8 @@
 ##   Rscript plot_element_class_bars.R [oscany]
 ## oscany combines deep+oscine and oscine into "any oscine" (any oscine-lineage constraint), next to
 ## "deep only" and "weak", and reports per DAR class the share with any oscine constraint (RA vs G4,
-## Fisher's exact test); outputs carry _oscany.
+## Fisher's exact test); outputs carry _oscany. Without it, the class mix is tested RA vs G4 (and with
+## shared) by Fisher's exact test (simulated p, 1e6) and each class RA vs G4 by Fisher's exact test.
 ## Writes results/mafb_domain/fig_element_class_bars[_oscany].{pdf,png}.
 suppressMessages({library(ggplot2); library(data.table)})
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
@@ -36,6 +37,20 @@ n <- n[CJ(phy = levels(d$phy), dar = levels(d$dar), set = names(sets)), on = .(p
 n[, set := factor(set, levels = names(sets), labels = sprintf("%s (n = %d)", names(sets), sapply(sets, nrow)))]
 n[, phy := factor(phy, levels = levels(d$phy))]; n[, dar := factor(dar, levels = CLS)]
 print(dcast(n, set + phy ~ dar, value.var = "N"))
+if (!oscany) {                                       # exact tests of the class mix, and per class RA vs G4
+  set.seed(1)
+  for (s in names(sets)) {
+    x <- sets[[s]]; t2 <- table(x[cls %in% c("RA", "G4"), .(phy, cls = factor(cls, c("RA", "G4")))])
+    t3 <- table(x[, .(phy, cls = factor(cls, c("RA", "G4", "both")))])
+    message(sprintf("%s (n = %d): class mix RA vs G4 Fisher p = %.3g; RA vs G4 vs shared p = %.3g (simulated, 1e6)", s, nrow(x),
+                    fisher.test(t2, simulate.p.value = TRUE, B = 1e6)$p.value, fisher.test(t3, simulate.p.value = TRUE, B = 1e6)$p.value))
+    for (k in levels(x$phy)) {
+      a <- t2[k, "RA"]; na <- sum(t2[, "RA"]); b <- t2[k, "G4"]; nb <- sum(t2[, "G4"])
+      message(sprintf("    %-12s RA %2d/%-2d (%3.0f%%)  G4 %2d/%-2d (%3.0f%%)  Fisher p = %.3g", k, a, na, 100 * a / na, b, nb, 100 * b / nb,
+                      fisher.test(matrix(c(a, na - a, b, nb - b), 2))$p.value))
+    }
+  }
+}
 if (oscany) for (s in names(sets)) {                 # share with any oscine constraint, RA vs G4
   x <- sets[[s]]; f <- function(k) x[cls == k, c(sum(phy == "any oscine"), .N)]
   r <- f("RA"); g <- f("G4"); b <- f("both")
