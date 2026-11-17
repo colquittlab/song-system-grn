@@ -7,7 +7,9 @@
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
-##   Rscript plot_element_class_bars.R [oscany]
+##   Rscript plot_element_class_bars.R [oscany] [pct]
+## pct scales each bar to the % of its DAR class's lobes (per panel), keeping the count above the bar;
+## outputs carry _pct.
 ## oscany combines deep+oscine and oscine into "any oscine" (any oscine-lineage constraint), next to
 ## "deep only" and "weak", and reports per DAR class the share with any oscine constraint (RA vs G4,
 ## Fisher's exact test); outputs carry _oscany. Without it, the class mix is tested RA vs G4 (and with
@@ -20,6 +22,7 @@ source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../conf
 
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 oscany <- "oscany" %in% commandArgs(trailingOnly = TRUE)
+pct <- "pct" %in% commandArgs(trailingOnly = TRUE)    # bar height = % of the DAR class's lobes; count above
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
 PCOL <- c("deep+oscine" = "#7a3ca0", deep = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
@@ -36,6 +39,7 @@ n <- rbindlist(lapply(names(sets), function(s) sets[[s]][, .N, by = .(phy, dar)]
 n <- n[CJ(phy = levels(d$phy), dar = levels(d$dar), set = names(sets)), on = .(phy, dar, set)][is.na(N), N := 0L]
 n[, set := factor(set, levels = names(sets), labels = sprintf("%s (n = %d)", names(sets), sapply(sets, nrow)))]
 n[, phy := factor(phy, levels = levels(d$phy))]; n[, dar := factor(dar, levels = CLS)]
+n[, P := if (sum(N)) 100 * N / sum(N) else 0, by = .(set, dar)]
 print(dcast(n, set + phy ~ dar, value.var = "N"))
 if (!oscany) {                                       # exact tests of the class mix, and per class RA vs G4
   set.seed(1)
@@ -60,18 +64,18 @@ if (oscany) for (s in names(sets)) {                 # share with any oscine con
 }
 
 pd <- position_dodge(width = 0.8)
-p <- ggplot(n, aes(dar, N, fill = phy)) +
+p <- ggplot(n, aes(dar, if (pct) P else N, fill = phy)) +
   geom_col(position = pd, width = 0.72, colour = FIG_SURFACE, linewidth = 0.25) +
   geom_text(aes(label = N), position = pd, vjust = -0.4, size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY) +
   scale_fill_manual(values = PCOL, name = "phyloP class") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
   facet_wrap(~set, nrow = 1) +
-  labs(x = "DAR class", y = "elements (lobes)") +
+  labs(x = "DAR class", y = if (pct) "% of the DAR class's elements (lobes)" else "elements (lobes)") +
   theme_fig() +
   theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY),
         panel.grid.major.x = element_blank(), panel.spacing = unit(4, "mm"),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
-stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "")
+stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", if (pct) "_pct" else "")
 fig_save(p, file.path(res, stem), width = 5.6, height = 2.1)
 message("wrote ", file.path(res, stem), ".pdf/.png")
