@@ -7,7 +7,8 @@
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
-##   Rscript plot_element_class_bars.R [oscany] [pct | stack]
+##   Rscript plot_element_class_bars.R [oscany] [pct | stack | horiz]
+## horiz draws the stacked bars horizontally, panels one above another; outputs carry _hstack.
 ## pct scales each bar to the % of its DAR class's lobes (per panel), keeping the count above the bar;
 ## outputs carry _pct. stack draws one 100% stacked bar per DAR class (counts inside segments of >= 6%,
 ## totals above); outputs carry _stack.
@@ -25,6 +26,8 @@ res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matche
 oscany <- "oscany" %in% commandArgs(trailingOnly = TRUE)
 pct <- "pct" %in% commandArgs(trailingOnly = TRUE)    # bar height = % of the DAR class's lobes; count above
 stack <- "stack" %in% commandArgs(trailingOnly = TRUE) # one stacked 100% bar per DAR class
+horiz <- "horiz" %in% commandArgs(trailingOnly = TRUE) # horizontal stacked bars, panels stacked vertically
+if (horiz) stack <- TRUE
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
@@ -74,7 +77,8 @@ p <- if (stack) {
     geom_col(width = 0.7, colour = FIG_SURFACE, linewidth = 0.4) +
     geom_text(aes(label = ifelse(P >= 6, N, "")), position = position_stack(vjust = 0.5),
               size = FIG_PT_AXIS_TEXT / .pt, colour = "white") +
-    geom_text(data = tot, aes(dar, 100, label = sprintf("n = %d", N)), inherit.aes = FALSE, vjust = -0.5,
+    geom_text(data = tot, aes(dar, 100, label = sprintf("n = %d", N)), inherit.aes = FALSE,
+              vjust = if (horiz) 0.5 else -0.5, hjust = if (horiz) -0.15 else 0.5,
               size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY)
 } else {
   ggplot(n, aes(dar, if (pct) P else N, fill = phy)) +
@@ -84,13 +88,19 @@ p <- if (stack) {
 p <- p +
   scale_fill_manual(values = PCOL, name = "phyloP class") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.12)), breaks = if (stack) seq(0, 100, 25) else waiver()) +
-  facet_wrap(~set, nrow = 1) +
+  facet_wrap(~set, nrow = if (horiz) 3 else 1) +
   labs(x = "DAR class", y = if (pct) "% of the DAR class's elements (lobes)" else "elements (lobes)") +
   theme_fig() +
   theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY),
         panel.grid.major.x = element_blank(), panel.spacing = unit(4, "mm"),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
-stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", if (stack) "_stack" else if (pct) "_pct" else "")
-fig_save(p, file.path(res, stem), width = 5.6, height = 2.1)
+if (horiz) {                                         # RA at the top; the stack reads left to right in legend order
+  p <- p + coord_flip() + scale_x_discrete(limits = unname(rev(CLS))) +
+    guides(fill = guide_legend(reverse = TRUE)) +
+    theme(panel.grid.major.x = element_line(colour = "grey88", linewidth = 0.25), panel.grid.major.y = element_blank(),
+          legend.position = "bottom")
+}
+stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", if (horiz) "_hstack" else if (stack) "_stack" else if (pct) "_pct" else "")
+fig_save(p, file.path(res, stem), width = if (horiz) 3.6 else 5.6, height = if (horiz) 3.4 else 2.1)
 message("wrote ", file.path(res, stem), ".pdf/.png")
