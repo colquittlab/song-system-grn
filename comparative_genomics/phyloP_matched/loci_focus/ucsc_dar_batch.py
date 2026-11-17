@@ -7,12 +7,13 @@ this order, as custom tracks pointing at the hub's bigWig files (so order, colou
 here rather than by the hub's trackDb):
   Glut-RA, Glut-Arco-1, GABA-4-1, GABA-1-1 accessibility (insertion, 10-bp bins, 20-bp smoothing)
   oscine-lineage phyloP (subtree birdAnc222) and whole-tree phyloP (363 birds), per base
-Glut-RA/Glut-Arco-1 share a fixed scale, as do GABA-4-1/GABA-1-1: 0 to 1.05 x the pair's maximum over
-the view. phyloP limits follow the hub (oscine -3:3, whole tree -4:6). Vertical guidelines and the
+All four accessibility tracks share a fixed y axis, 0 to ACC_MAX (default 30; values above are
+clipped). With ACC_MAX=pair, Glut-RA/Glut-Arco-1 and GABA-4-1/GABA-1-1 instead each share 0 to 1.05 x the
+pair's maximum over the view. phyloP limits follow the hub (oscine -3:3, whole tree -4:6). Vertical guidelines and the
 descriptions above tracks are off; the peak is highlighted in grey. The UCSC API key is read from
 ~/.ucsc_api_key (never stored here).
 
-    python ucsc_dar_batch.py [flank_bp=10000] [first N peaks]
+    ACC_MAX=30 python ucsc_dar_batch.py [flank_bp=10000] [first N peaks]
 Writes results/ucsc/dar_peaks_flank<F>/<nn>_<class>_chr20_<start>-<end>.pdf and dar_peaks_flank<F>.pdf
 (all pages, in genome order).
 """
@@ -69,16 +70,20 @@ def main():
     S = pd.read_csv(f"{R}/mafb_domain/element_summaries.tsv", sep="\t")
     P = S.drop_duplicates(["chrom", "peak_start", "peak_end"]).sort_values("peak_start")[["cls", "chrom", "peak_start", "peak_end"]]
     if first: P = P.head(first)
-    out = f"{R}/ucsc/dar_peaks_flank{flank // 1000}k"; os.makedirs(out, exist_ok=True)
+    sc = os.environ.get("ACC_MAX", "30")
+    out = f"{R}/ucsc/dar_peaks_flank{flank // 1000}k" + ("_pairscale" if sc == "pair" else f"_acc{sc}"); os.makedirs(out, exist_ok=True)
     bws = {n: pyBigWig.open(f"{W}/{n}-insertion-bin10-smooth20.bw") for n, _, _ in ACC}
     files = []
     for i, r in enumerate(P.itertuples(index=False), 1):
         a, b = max(0, r.peak_start - flank), r.peak_end + flank
         lim = {}
-        for n, _, pair in ACC:                       # pair scale: max over the view (bins at display resolution)
+        if os.environ.get("ACC_MAX", "30") != "pair":
+            lim = {"RA": float(os.environ.get("ACC_MAX", "30")), "G4": float(os.environ.get("ACC_MAX", "30"))}
+        else:
+          for n, _, pair in ACC:                       # pair scale: max over the view (bins at display resolution)
             m = np.nanmax(np.array(bws[n].stats(r.chrom, a, b, type="max", nBins=PIX), float))
             lim[pair] = max(lim.get(pair, 0), m)
-        lim = {k: float(np.ceil(1.05 * v)) if v > 0 else 1.0 for k, v in lim.items()}
+          lim = {k: float(np.ceil(1.05 * v)) if v > 0 else 1.0 for k, v in lim.items()}
         cls = {"both": "shared"}.get(r.cls, r.cls)
         f = f"{out}/{i:02d}_{cls}_{r.chrom}_{r.peak_start + 1}-{r.peak_end}.pdf"
         render(key, r.chrom, a, b, r.peak_start, r.peak_end, lim, f); files.append(f)
