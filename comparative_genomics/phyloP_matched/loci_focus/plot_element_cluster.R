@@ -10,7 +10,8 @@
 ## thr splits rows by the rating-calibrated threshold classes (element_threshold_classes.py; implies
 ## noacc), ordered within each by Ward on the two features, z-scored on all lobes so colours match
 ## across depth filters; outputs fig_element_cluster_thr_noacc[_depth<T>].
-## noacc clusters on (and shows) the two phyloP means only, naming groups from their centroids
+## noacc clusters on the two phyloP means only (z-scored) and shows their actual values, each on its
+## own diverging colour scale (whole tree +/-4, oscine +/-1), naming groups from their centroids
 ## (deep / oscine when above average on that track, else weak); outputs carry _noacc.
 ## depth=T keeps only lobes with no low-depth patch: every 50-bp window of the lobe aligned in >= T of
 ## oscine and of non-oscine genomes (osc_depth_min50, nonosc_depth_min50; element_profiles.py);
@@ -67,11 +68,31 @@ lbl <- sprintf("%s:%s-%s%s  %s", S$chrom, format(S$ext_start + 1, big.mark = ","
 gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c8161a", "#5f5f5f", "#9a9a9a")[seq_len(k)], nm)
 if (thr) nm <- THR
 if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^deep", nm), "#c8161a",
-                            ifelse(grepl("^oscine", nm), "#1baf7a", "#9a9a9a"))), nm)
+                            ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f"))), nm)
 ra <- rowAnnotation(group = S$group, class = S$cls,
                     col = list(group = gcol, class = c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(2, "mm"),
                     annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
+if (noacc) {
+  ## the actual means, each track on its own diverging scale; rows still
+  ## ordered by Ward on the z-scored pair (clustering_distance_rows looks the z-scores up by row name)
+  Xr <- as.matrix(S[, names(feat), with = FALSE]); rownames(Xr) <- rownames(X) <- S$element
+  zdist <- function(m) dist(X[rownames(m), , drop = FALSE])
+  LIM <- c(4, 1)
+  one <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xr[, j, drop = FALSE], name = nm,
+    col = colorRamp2(c(-LIM[j], 0, LIM[j]), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)), cluster_columns = FALSE,
+    column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(6, "mm"),
+    heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = c(-LIM[j], 0, LIM[j]))), extra))
+  ht <- one(1, "whole-tree mean phyloP", list(
+          cluster_rows = if (thr) TRUE else hc, clustering_distance_rows = zdist, clustering_method_rows = "ward.D2",
+          cluster_row_slices = FALSE, row_split = if (thr) factor(S$group, levels = THR) else NULL,
+          row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(1, "mm"), row_dend_width = unit(18, "mm"),
+          show_row_names = FALSE,
+          column_title = if (thr) NULL else paste0(sprintf("Ward, z-scored (k = %d)", k), if (is.na(dmin)) "" else sprintf(", depth >= %g", dmin)),
+          column_title_gp = gpar(fontsize = 6))) +
+        one(2, "oscine mean phyloP", list(right_annotation = ra, row_labels = lbl,
+          row_names_gp = gpar(fontsize = 5, fontfamily = "mono")))
+} else {
 ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
               cluster_rows = if (thr) TRUE else hc, clustering_method_rows = "ward.D2", cluster_row_slices = FALSE,
               row_split = if (thr) factor(S$group, levels = THR) else NULL, row_title_gp = gpar(fontsize = 6), row_title_rot = 0,
@@ -80,10 +101,12 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DI
               column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(ncol(X) * 6, "mm"),
               column_title = if (thr) NULL else paste0(sprintf("Ward, z-scored (k = %d)", k), if (is.na(dmin)) "" else sprintf(", depth >= %g", dmin)), column_title_gp = gpar(fontsize = 6),
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
+}
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
+W <- if (noacc) 6.0 else 5.2
 for (dev in c("pdf", "png")) {
   f <- file.path(res, if (thr) sprintf("fig_element_cluster%s.%s", tag, dev) else sprintf("fig_element_cluster_k%d%s.%s", k, tag, dev))
-  if (dev == "pdf") cairo_pdf(f, width = 5.2, height = h, family = FIG_FONT) else png(f, width = 5.2, height = h, units = "in", res = 600, family = FIG_FONT)
+  if (dev == "pdf") cairo_pdf(f, width = W, height = h, family = FIG_FONT) else png(f, width = W, height = h, units = "in", res = 600, family = FIG_FONT)
   if (thr) {                                         # figure-level title: the two columns are too narrow for it
     draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)

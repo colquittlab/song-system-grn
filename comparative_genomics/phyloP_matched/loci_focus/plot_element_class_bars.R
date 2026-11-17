@@ -2,9 +2,10 @@
 ##
 ## Reads results/mafb_domain/element_threshold_classes.tsv (element_threshold_classes.py): each lobe's
 ## threshold class from its accessibility-weighted whole-tree and oscine mean phyloP over its full
-## extent (deep+oscine, deep, oscine, weak), and its DAR class (G4, RA, shared = "both"). Panels: all
+## extent (deep+oscine, deep, oscine, weak), and its DAR class (RA, G4, shared = "both"). Panels: all
 ## lobes, and lobes with every 50-bp window aligned in >= 0.8 / >= 0.9 of oscine and non-oscine
-## genomes. Bars are grouped by DAR class; counts are printed above each bar; y axis shared.
+## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
+## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
 ##   Rscript plot_element_class_bars.R
 ## Writes results/mafb_domain/fig_element_class_bars.{pdf,png}.
@@ -15,7 +16,8 @@ source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../conf
 
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
-CLS <- c(G4 = "GABA-4", RA = "Glut-RA", both = "shared")
+CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
+PCOL <- c("deep+oscine" = "#7a3ca0", deep = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
 d[, dar := factor(CLS[cls], levels = CLS)]
 d[, phy := factor(thr_class, levels = c("deep+oscine", "deep", "oscine", "weak"))]
 sets <- list("all lobes" = d, "depth ≥ 0.8" = d[osc_depth_min50 >= 0.8 & nonosc_depth_min50 >= 0.8],
@@ -27,17 +29,16 @@ n[, phy := factor(phy, levels = levels(d$phy))]; n[, dar := factor(dar, levels =
 print(dcast(n, set + phy ~ dar, value.var = "N"))
 
 pd <- position_dodge(width = 0.8)
-p <- ggplot(n, aes(phy, N, fill = dar)) +
+p <- ggplot(n, aes(dar, N, fill = phy)) +
   geom_col(position = pd, width = 0.72, colour = FIG_SURFACE, linewidth = 0.25) +
   geom_text(aes(label = N), position = pd, vjust = -0.4, size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY) +
-  scale_fill_manual(values = setNames(FIG_PAL[c(1, 2, 3)], CLS), name = "DAR class") +
+  scale_fill_manual(values = PCOL, name = "phyloP class") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
   facet_wrap(~set, nrow = 1) +
-  labs(x = "phyloP class (thresholds on whole-tree and oscine mean phyloP)", y = "elements (lobes)") +
+  labs(x = "DAR class", y = "elements (lobes)") +
   theme_fig() +
   theme(strip.text = element_text(size = FIG_PT_AXIS_TITLE, colour = FIG_INK_SECONDARY),
         panel.grid.major.x = element_blank(), panel.spacing = unit(4, "mm"),
-        axis.text.x = element_text(angle = 30, hjust = 1),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
 fig_save(p, file.path(res, "fig_element_class_bars"), width = 5.6, height = 2.1)
