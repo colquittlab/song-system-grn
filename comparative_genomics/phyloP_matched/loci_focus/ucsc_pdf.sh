@@ -1,7 +1,7 @@
 #!/bin/bash
 # Render a UCSC Genome Browser view of the Colquitt lab hub (lonStrDom2, GCF_005870125.1) to PDF.
 #
-#   UCSC_API_KEY_FILE=~/.ucsc_api_key ucsc_pdf.sh <region> <out.pdf> [width_px] [track=vis ...]
+#   ucsc_pdf.sh <region> <out.pdf> [width_px] [track=vis ...]     (key: $UCSC_API_KEY_FILE or ~/.ucsc_api_key)
 #
 # region   e.g. chr20:12945900-12947200
 # track=vis  trackDb names with full|pack|dense|squish|hide; with any of these, all other tracks are
@@ -10,7 +10,7 @@
 # private file, never in this repository. A fresh session is used per call, so settings do not carry over.
 set -euo pipefail
 REGION=$1; OUT=$2; PIX=${3:-1200}; shift 2; [ $# -gt 0 ] && [[ $1 =~ ^[0-9]+$ ]] && shift
-KEY=$(cat "${UCSC_API_KEY_FILE:?set UCSC_API_KEY_FILE to a file holding the UCSC API key}")
+KEY=$(tr -d "[:space:]" < "${UCSC_API_KEY_FILE:-$HOME/.ucsc_api_key}")
 HUB="https://colquitt-track-hub.pbsci.ucsc.edu/lonStrDom2/hub.txt"
 Q="hubUrl=$HUB&genome=GCF_005870125.1&position=$REGION&pix=$PIX&hgt.psOutput=on&apiKey=$KEY"
 if [ $# -gt 0 ]; then Q="$Q&hideTracks=1"; for tv in "$@"; do Q="$Q&${tv}"; done; fi
