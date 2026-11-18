@@ -7,7 +7,9 @@
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
-##   Rscript plot_element_class_bars.R [oscany] [pct | stack | horiz]
+##   Rscript plot_element_class_bars.R [oscany] [pct | stack | horiz | mini]
+## mini: the stacked bars for depth >= 0.8 only, in a 1.25 x 1.25 in panel (5 pt text), with the legend
+## written to its own file (_stack_depth0.8_mini[_legend]).
 ## horiz draws the stacked bars horizontally, panels one above another; outputs carry _hstack.
 ## pct scales each bar to the % of its DAR class's lobes (per panel), keeping the count above the bar;
 ## outputs carry _pct. stack draws one 100% stacked bar per DAR class (counts inside segments of >= 6%,
@@ -28,6 +30,8 @@ pct <- "pct" %in% commandArgs(trailingOnly = TRUE)    # bar height = % of the DA
 stack <- "stack" %in% commandArgs(trailingOnly = TRUE) # one stacked 100% bar per DAR class
 horiz <- "horiz" %in% commandArgs(trailingOnly = TRUE) # horizontal stacked bars, panels stacked vertically
 if (horiz) stack <- TRUE
+mini <- "mini" %in% commandArgs(trailingOnly = TRUE)   # depth >= 0.8 only, 1.25 x 1.25 in; legend saved separately
+if (mini) { stack <- TRUE; horiz <- FALSE }
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
@@ -44,6 +48,7 @@ if (oscany) {
 }
 sets <- list("all lobes" = d, "depth ≥ 0.8" = d[osc_depth_min50 >= 0.8 & nonosc_depth_min50 >= 0.8],
              "depth ≥ 0.9" = d[osc_depth_min50 >= 0.9 & nonosc_depth_min50 >= 0.9])
+if (mini) sets <- sets["depth ≥ 0.8"]
 n <- rbindlist(lapply(names(sets), function(s) sets[[s]][, .N, by = .(phy, dar)][, set := s]))
 n <- n[CJ(phy = levels(d$phy), dar = levels(d$dar), set = names(sets)), on = .(phy, dar, set)][is.na(N), N := 0L]
 n[, set := factor(set, levels = names(sets), labels = sprintf("%s (n = %d)", names(sets), sapply(sets, nrow)))]
@@ -104,6 +109,21 @@ if (horiz) {                                         # RA at the top; the stack 
     guides(fill = guide_legend(reverse = TRUE)) +
     theme(panel.grid.major.x = element_line(colour = "grey88", linewidth = 0.25), panel.grid.major.y = element_blank(),
           legend.position = "bottom")
+}
+if (mini) {                                          # small panel: no facet strip, 5 pt text, legend in its own file
+  TXT <- 5
+  p <- p + facet_null() + labs(x = NULL, y = "% of elements", title = NULL) +
+    theme(legend.position = "none", axis.text = element_text(size = TXT), axis.title.y = element_text(size = TXT),
+          axis.text.x = element_text(size = TXT, colour = FIG_INK_SECONDARY), plot.margin = margin(2, 2, 1, 1, "pt"))
+  p$layers[[2]]$aes_params$size <- 4 / .pt; p$layers[[3]]$aes_params$size <- 4 / .pt
+  p <- p + scale_x_discrete(labels = c("Glut-RA" = "RA", "GABA-4" = "G4", shared = "shared"))
+  stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", "_stack_depth0.8_mini")
+  fig_save(p, file.path(res, stem), width = 1.25, height = 1.25)
+  leg <- cowplot::get_legend(p + theme(legend.position = "right", legend.title = element_text(size = TXT),
+                                       legend.text = element_text(size = TXT), legend.key.size = unit(2.2, "mm")))
+  fig_save(cowplot::ggdraw(leg), file.path(res, paste0(stem, "_legend")), width = 0.9, height = 0.8)
+  message("wrote ", file.path(res, stem), ".pdf/.png and _legend")
+  quit(save = "no")
 }
 stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", if (horiz) "_hstack" else if (stack) "_stack" else if (pct) "_pct" else "")
 fig_save(p, file.path(res, stem), width = if (horiz) 3.6 else 5.6, height = if (horiz) 3.4 else 2.1)
