@@ -83,15 +83,16 @@ def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
     return "\n".join(out), len(rows)
 
 
-def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth=None):
+def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth=None, tlim=None):
     height = height or HEIGHT
     # per-pixel mean, then smoothed: the default here is mean+whiskers, on which smoothingWindow has almost no effect
-    sm = f"windowingFunction=mean smoothingWindow={smooth} " if smooth else ""
+    sm = ("windowingFunction=mean " if (smooth or tlim) else "") + (f"smoothingWindow={smooth} " if smooth else "")
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
-                 + ("autoScale=on " if auto else f"autoScale=off viewLimits=0:{lim[pair]:g} ") + sm
-                 + f'alwaysZero=on maxHeightPixels=128:{height}:11 visibility=full')
+                 + (f"autoScale=off viewLimits={tlim[name][0]:.3g}:{tlim[name][1]:.3g} alwaysZero=off " if tlim
+                    else "autoScale=on " if auto else f"autoScale=off viewLimits=0:{lim[pair]:g} ") + sm
+                 + ("" if tlim else "alwaysZero=on ") + f'maxHeightPixels=128:{height}:11 visibility=full')
     for name, url, col, alt, vl in (PHY if phy else []):
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
                  f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:{HEIGHT}:11 visibility=full')
@@ -99,7 +100,7 @@ def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth
 
 
 def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre="",
-           pix=None, smooth=None, text=None):
+           pix=None, smooth=None, text=None, tlim=None):
     """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
@@ -109,7 +110,7 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
-            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra, pre, smooth)})
+            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra, pre, smooth, tlim)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
             if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra) + bool(pre): raise RuntimeError(f"custom tracks not loaded ({ids})")
             q = {**base, "hideTracks": 1, **{t: ("pack" if t.startswith("ct_genes_") else "full") for t in ids}, **(show or {}),
@@ -130,7 +131,8 @@ PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an i
 
 
 def tidy(t, pad=3.0):
-    """drop the browser's pale-red border at the left of the data area and the end markers of interact arcs; set the
+    """drop the browser's pale-red border at the left of the data area, the end markers of interact arcs and the magenta
+    clipping marks; set the
     left-column track labels in black, right-aligned flush (pad units) against the data area"""
     import re
     m = re.search(r'<path\b[^>]*fill:#ffb4b4[^>]*>', t)
@@ -161,6 +163,8 @@ def tidy(t, pad=3.0):
             d = re.search(r'\sd="([^"]*)"', el); yb = ybox(d.group(1)) if d else None
             return "" if yb and yb[0] >= b0 - 1 and yb[1] <= b0 + 60 else el
         t = re.sub(r'<path\b[^>]*/>', drop, t)
+    # the browser's magenta marks for values clipped by the view limits (below a raised floor)
+    t = re.sub(r'<path\b[^>]*fill:#ff00ff[^>]*/>', "", t)
     def fix(mm):                                      # texts in the left label column (translate x < 20)
         el = mm.group(0); tr = re.search(r'transform="matrix\(([0-9.]+),0,0,([0-9.]+),([-0-9.]+),([-0-9.]+)\)"', el)
         if not tr or float(tr.group(3)) >= 20: return el
@@ -191,25 +195,40 @@ def to_figure(pdf, stem, width_in):
     return width_in, width_in * h / w
 
 
-def overview(key, out):
+def track_limits(chrom, a, b, pix, smooth, floor_q=75):
+    """per-track view limits mimicking autoscale with a raised floor: top = the highest per-pixel mean (smoothed as
+    drawn), bottom = that track's floor_q-th percentile pixel, which blanks the background noise"""
+    out = {}
+    for name, *_ in ACC:
+        v = np.nan_to_num(np.array(pyBigWig.open(f"{W}/{name}-insertion-bin10-smooth20.bw").stats(chrom, a, b, type="mean", nBins=pix), float))
+        if smooth: v = np.convolve(v, np.ones(smooth) / smooth, "same")
+        out[name] = (float(np.percentile(v, floor_q)), float(v.max()))
+    return out
+
+
+def overview(key, out, smooth=2):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
-    accessibility tracks (autoscaled, per-pixel mean smoothed over 2 pixels), then the hub's gene models. Track labels are
-    set black and right-aligned against the tracks, and the browser's red left border is removed (tidy). The browser PDF (always 7.5 in wide) is
-    kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
+    accessibility tracks (per-pixel mean, smoothed over `smooth` pixels or not at all; each track scaled from its
+    75th-percentile pixel to its maximum, so the background noise is blanked), then the hub's gene models. Track labels
+    are set black and right-aligned against the tracks, and the browser's red left border and the arcs' end markers are
+    removed (tidy). The browser PDF (always 7.5 in wide) is kept as <out>_browser.pdf; the figure is OVERVIEW_IN wide."""
     a, b = 12551035, OVERVIEW_END                    # domain start (DHX35) to just before the TOP1 promoter peak
     pre, n = p2g_track("chr20", a, b)
+    tlim = track_limits("chr20", a, b, OVERVIEW_PIX, smooth)
     raw = out.replace(".pdf", "_browser.pdf")
     render(key, "chr20", a, b, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
-           extra=gene_track("chr20", a, b), pre=pre, pix=OVERVIEW_PIX, smooth=2, text=OVERVIEW_TEXT)
+           extra=gene_track("chr20", a, b), pre=pre, pix=OVERVIEW_PIX, smooth=smooth, text=OVERVIEW_TEXT, tlim=tlim)
     w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "6.8")))
-    print(f"  RA + C1H-1 links to MAFB drawn: {n}; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in) and {raw}")
+    print(f"  {'smoothed ' + str(smooth) + ' px' if smooth else 'unsmoothed'}: limits " + ", ".join(f"{k} {lo:.2f}-{hi:.1f}" for k, (lo, hi) in tlim.items())
+          + f"; {n} links; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in)")
 
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "overview":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
-        overview(key, f"{R}/ucsc/mafb_domain_overview.pdf"); return
+        overview(key, f"{R}/ucsc/mafb_domain_overview.pdf", smooth=2)
+        overview(key, f"{R}/ucsc/mafb_domain_overview_nosmooth.pdf", smooth=None); return
     win = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     first = int(sys.argv[2]) if len(sys.argv) > 2 else None
     key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
