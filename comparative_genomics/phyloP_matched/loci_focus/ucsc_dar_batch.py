@@ -2,7 +2,8 @@
 """UCSC Genome Browser PDFs of each MAFB-domain DAR peak, from the lab hub's own bigWigs.
 
 For every SnapATAC2 peak in results/mafb_domain/element_summaries.tsv (RA, G4 and shared elements;
-one view per peak, lobes not split), the browser draws the peak +/- FLANK with only these tracks, in
+one view per peak, lobes not split), the browser draws a window of constant width (default 10 kb)
+centred on the peak's midpoint, with only these tracks, in
 this order, as custom tracks pointing at the hub's bigWig files (so order, colours and scales are set
 here rather than by the hub's trackDb):
   Glut-RA, Glut-Arco-1, GABA-4-1, GABA-1-1 accessibility (insertion, 10-bp bins, 20-bp smoothing)
@@ -13,9 +14,9 @@ pair's maximum over the view. phyloP limits follow the hub (oscine -3:3, whole t
 descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub default); the peak is highlighted in grey. The UCSC API key is read from
 ~/.ucsc_api_key (never stored here).
 
-    ACC_MAX=30 python ucsc_dar_batch.py [flank_bp=10000] [first N peaks]
-Writes results/ucsc/dar_peaks_flank<F>/<nn>_<class>_chr20_<start>-<end>.pdf and dar_peaks_flank<F>.pdf
-(all pages, in genome order).
+    ACC_MAX=30 python ucsc_dar_batch.py [window_bp=10000] [first N peaks]
+Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
+dar_peaks_win<W>k_acc<max>.pdf (all pages, in genome order).
 """
 import os, re, subprocess, sys, time, urllib.parse, urllib.request, http.cookiejar
 import numpy as np, pandas as pd, pyBigWig
@@ -65,18 +66,18 @@ def render(key, chrom, a, b, hs, he, lim, out):
 
 
 def main():
-    flank = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
+    win = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     first = int(sys.argv[2]) if len(sys.argv) > 2 else None
     key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
     S = pd.read_csv(f"{R}/mafb_domain/element_summaries.tsv", sep="\t")
     P = S.drop_duplicates(["chrom", "peak_start", "peak_end"]).sort_values("peak_start")[["cls", "chrom", "peak_start", "peak_end"]]
     if first: P = P.head(first)
     sc = os.environ.get("ACC_MAX", "30")
-    out = f"{R}/ucsc/dar_peaks_flank{flank // 1000}k" + ("_pairscale" if sc == "pair" else f"_acc{sc}"); os.makedirs(out, exist_ok=True)
+    out = f"{R}/ucsc/dar_peaks_win{win / 1000:g}k" + ("_pairscale" if sc == "pair" else f"_acc{sc}"); os.makedirs(out, exist_ok=True)
     bws = {n: pyBigWig.open(f"{W}/{n}-insertion-bin10-smooth20.bw") for n, _, _ in ACC}
     files = []
     for i, r in enumerate(P.itertuples(index=False), 1):
-        a, b = max(0, r.peak_start - flank), r.peak_end + flank
+        mid = (r.peak_start + r.peak_end) // 2; a = max(0, mid - win // 2); b = a + win   # constant width
         lim = {}
         if os.environ.get("ACC_MAX", "30") != "pair":
             lim = {"RA": float(os.environ.get("ACC_MAX", "30")), "G4": float(os.environ.get("ACC_MAX", "30"))}
