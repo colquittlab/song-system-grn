@@ -79,8 +79,8 @@ if (oscany) for (s in names(sets)) {                 # share with any oscine con
 
 pd <- position_dodge(width = 0.8)
 tot <- n[, .(N = sum(N)), by = .(set, dar)]
-## pairwise tests of the class distribution (RA vs G4, G4 vs shared, RA vs shared): Fisher's exact test (simulated
-## p, 1e6), Holm-adjusted across the three pairs within each panel; drawn as brackets on the stacked plots
+## pairwise tests of the class distribution (RA vs G4, G4 vs shared, RA vs shared): Fisher's exact test (exact,
+## not simulated), Holm-adjusted across the three pairs within each panel; drawn on the stacked plots
 if (stack) {
   set.seed(1)
   PR <- list(CLS[c("RA", "G4")], CLS[c("G4", "both")], CLS[c("RA", "both")])
@@ -88,13 +88,13 @@ if (stack) {
   br <- rbindlist(lapply(names(sets), function(s) {
     x <- sets[[s]]
     ps <- sapply(PR, function(pr) { t <- table(droplevels(x[dar %in% pr, .(phy, dar = factor(dar, pr))])); t <- t[rowSums(t) > 0, , drop = FALSE]
-                                    fisher.test(t, simulate.p.value = TRUE, B = 1e6)$p.value })
+                                    fisher.test(t, workspace = 2e8)$p.value })   # exact (network algorithm), not simulated
     data.table(set = s, x1 = sapply(PR, function(pr) match(pr[1], xpos)), x2 = sapply(PR, function(pr) match(pr[2], xpos)),
                lev = 1:3, p = p.adjust(ps, "holm"))
   }))
   br[, set := factor(set, levels = names(sets), labels = levels(n$set))]
   br[, y := (if (mini) 116 else 113) + (lev - 1) * (if (mini) 10 else 8)]
-  br[, lab := ifelse(p < 0.001, "p < 0.001", sprintf("p = %s", formatC(signif(p, 2), format = "fg", digits = 2)))]
+  br[, lab := sprintf("p = %s", formatC(signif(p, 2), format = "fg", digits = 2))]   # exact values, no inequalities
   print(br[, .(set, pair = sapply(PR, paste, collapse = " vs ")[lev], p_holm = signif(p, 3))])
 }
 p <- if (stack) {
