@@ -40,8 +40,9 @@ OVERVIEW_PIX = int(os.environ.get("OVERVIEW_PIX", "1600"))  # image width for th
 OVERVIEW_TEXT = os.environ.get("OVERVIEW_TEXT", "18")         # so 2-px smoothing spans what it does on screen; larger browser
                                                               # text keeps labels readable once scaled to OVERVIEW_IN
 OVERVIEW_HEIGHT = int(os.environ.get("OVERVIEW_HEIGHT", "44")) # accessibility track height (px) at that width
-OVERVIEW_END = 13545500                                       # the overview stops ~2 kb short of the TOP1 TSS (13,547,533):
-                                                              # its promoter peak (RA 93, PVALB-2 174) would set every autoscale                                          # track height (px): 1.5 x the hub default of 30
+OVERVIEW_END = 13545500                                       # track limits come from the domain up to ~2 kb short of the TOP1
+                                                              # TSS (13,547,533): its promoter peak (RA 93, PVALB-2 174) is clipped
+OVERVIEW_VIEW_END = 13549500                                  # the view reaches just past the TOP1 TSS, so its gene model shows                                          # track height (px): 1.5 x the hub default of 30
 
 
 GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim.bb"
@@ -195,7 +196,7 @@ def to_figure(pdf, stem, width_in):
     return width_in, width_in * h / w
 
 
-def track_limits(chrom, a, b, pix, smooth, floor_q=None):
+def track_limits(chrom, a, b, pix, smooth, floor_q=None, lim_end=None):
     """per-track view limits mimicking autoscale with a raised floor: top = the highest per-pixel mean (smoothed as
     drawn), bottom = that track's floor_q-th percentile pixel (OVERVIEW_FLOOR, default the median)"""
     floor_q = float(os.environ.get("OVERVIEW_FLOOR", "50")) if floor_q is None else floor_q
@@ -203,6 +204,7 @@ def track_limits(chrom, a, b, pix, smooth, floor_q=None):
     for name, *_ in ACC:
         v = np.nan_to_num(np.array(pyBigWig.open(f"{W}/{name}-insertion-bin10-smooth20.bw").stats(chrom, a, b, type="mean", nBins=pix), float))
         if smooth: v = np.convolve(v, np.ones(smooth) / smooth, "same")
+        if lim_end: v = v[: int(len(v) * (lim_end - a) / (b - a))]   # limits from the pixels before lim_end only
         out[name] = (float(np.percentile(v, floor_q)), float(v.max()))
     return out
 
@@ -213,9 +215,9 @@ def overview(key, out, smooth=2):
     OVERVIEW_FLOOR-th percentile pixel (default 50, the median) to its maximum, lifting the background noise), then the hub's gene models. Track labels
     are set black and right-aligned against the tracks, and the browser's red left border and the arcs' end markers are
     removed (tidy). The browser PDF (always 7.5 in wide) is kept as <out>_browser.pdf; the figure is OVERVIEW_IN wide."""
-    a, b = 12551035, OVERVIEW_END                    # domain start (DHX35) to just before the TOP1 promoter peak
-    pre, n = p2g_track("chr20", a, b)
-    tlim = track_limits("chr20", a, b, OVERVIEW_PIX, smooth)
+    a, b = 12551035, OVERVIEW_VIEW_END               # domain start (DHX35) to just past the TOP1 TSS
+    pre, n = p2g_track("chr20", a, OVERVIEW_END)
+    tlim = track_limits("chr20", a, b, OVERVIEW_PIX, smooth, lim_end=OVERVIEW_END)   # the TOP1 promoter peak is clipped
     raw = out.replace(".pdf", "_browser.pdf")
     render(key, "chr20", a, b, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
            extra=gene_track("chr20", a, b), pre=pre, pix=OVERVIEW_PIX, smooth=smooth, text=OVERVIEW_TEXT, tlim=tlim)
