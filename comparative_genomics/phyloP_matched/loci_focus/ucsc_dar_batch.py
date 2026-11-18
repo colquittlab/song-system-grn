@@ -83,7 +83,8 @@ def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
 
 def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth=None):
     height = height or HEIGHT
-    sm = f"smoothingWindow={smooth} " if smooth else ""      # per-pixel maximum (the default), then smoothing
+    # per-pixel mean, then smoothed: the default here is mean+whiskers, on which smoothingWindow has almost no effect
+    sm = f"windowingFunction=mean smoothingWindow={smooth} " if smooth else ""
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
@@ -190,7 +191,7 @@ def to_figure(pdf, stem, width_in):
 
 def overview(key, out):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
-    accessibility tracks (autoscaled, 30 px, per-pixel maximum smoothed over 2 pixels), then the hub's gene models. Track labels are
+    accessibility tracks (autoscaled, per-pixel mean smoothed over 2 pixels), then the hub's gene models. Track labels are
     set black and right-aligned against the tracks, and the browser's red left border is removed (tidy). The browser PDF (always 7.5 in wide) is
     kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
     pre, n = p2g_track("chr20", 12551035, 13547533)
