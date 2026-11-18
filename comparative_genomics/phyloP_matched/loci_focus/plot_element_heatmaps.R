@@ -24,9 +24,9 @@ suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
 source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../config/figure_theme.R")) else
   here::here("config/figure_theme.R"))
-## DAR classes as in the comparative_genomics plots (Glut-RA red, GABA-4 teal; shared = their comparator
+## DAR classes as in the comparative_genomics figures (Glut-RA red, GABA-4 blue #4393C3; shared = their comparator
 ## grey); phyloP on a purple (conserved) - white - brown (accelerated) scale, clear of both class colours
-CLS_COL <- c(RA = "#e31a1c", G4 = "#2C6E7F", both = "#9AA3AF")
+CLS_COL <- c(RA = "#e31a1c", G4 = "#4393C3", both = "#9AA3AF")
 PHY_DIV <- c("#b35806", "#f7f7f7", "#542788")
 
 args <- commandArgs(trailingOnly = TRUE)

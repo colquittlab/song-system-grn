@@ -24,9 +24,9 @@ suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
 source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../config/figure_theme.R")) else
   here::here("config/figure_theme.R"))
-## DAR classes as in the comparative_genomics plots (Glut-RA red, GABA-4 teal; shared = their comparator
+## DAR classes as in the comparative_genomics figures (Glut-RA red, GABA-4 blue #4393C3; shared = their comparator
 ## grey); phyloP on a purple (conserved) - white - brown (accelerated) scale, clear of both class colours
-CLS_COL <- c(RA = "#e31a1c", G4 = "#2C6E7F", both = "#9AA3AF")
+CLS_COL <- c(RA = "#e31a1c", G4 = "#4393C3", both = "#9AA3AF")
 PHY_DIV <- c("#b35806", "#f7f7f7", "#542788")
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -134,14 +134,15 @@ if (horiz) {
                           annotation_legend_param = list(class = list(title = "DAR class", nrow = 1, title_position = "topcenter",
                                                                       title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5))))
   mkh <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xt[j, , drop = FALSE], name = nm,
-    col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_rows = FALSE, row_labels = c("whole tree", "oscine")[j], row_names_side = "left",
+    col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_rows = FALSE, row_labels = c("avian", "oscine")[j], row_names_side = "left",
     row_names_gp = gpar(fontsize = 6), show_column_names = FALSE, height = unit(5, "mm"),
     heatmap_legend_param = lp(c(-LIM[j], 0, LIM[j]))), extra))
-  ht <- mkh(1, "whole tree\nmean phyloP", list(cluster_columns = TRUE, clustering_distance_columns = cdist,
+  ht <- mkh(1, "avian\nmean phyloP", list(cluster_columns = TRUE, clustering_distance_columns = cdist,
           clustering_method_columns = "ward.D2", cluster_column_slices = FALSE, column_split = factor(S$group, levels = THR),
-          column_title_gp = gpar(fontsize = 6), column_gap = unit(1, "mm"), column_dend_height = unit(8, "mm"))) %v%
+          column_title_gp = gpar(fontsize = 6), column_gap = unit(1, "mm"), column_dend_height = unit(4, "mm"))) %v%
         mkh(2, "oscine\nmean phyloP", list(bottom_annotation = ba))
-  h <- 2.3; W <- 5
+  ht_opt$TITLE_PADDING <- unit(1, "mm")               # group labels close to the dendrogram
+  h <- 2.1; W <- 5
 }
 for (dev in c("pdf", "png")) {
   f <- file.path(res, if (thr) sprintf("fig_element_cluster%s.%s", tag, dev) else sprintf("fig_element_cluster_k%d%s.%s", k, tag, dev))
@@ -151,7 +152,7 @@ for (dev in c("pdf", "png")) {
                     padding = unit(c(2, 2, 8, 2), "mm"))
     else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)
-    grid.text(sprintf("thresholds: whole-tree mean >= %+.2f, oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
+    grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f, oscine mean >= %+.2f%s" else "thresholds: whole-tree mean >= %+.2f, oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
                       if (is.na(dmin)) "" else sprintf("; depth >= %g", dmin)),
               x = unit(0.5, "npc"), y = unit(1, "npc") - unit(4, "mm"), gp = gpar(fontsize = 6))
   } else draw(ht, merge_legend = TRUE)
