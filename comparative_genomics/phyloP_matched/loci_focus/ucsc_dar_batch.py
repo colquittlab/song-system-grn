@@ -141,14 +141,18 @@ def tidy(t, pad=3.0):
 
 
 def to_figure(pdf, stem, width_in):
-    """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> scaled to width_in
+    """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> tidied -> cropped to the
+    drawing -> scaled to width_in
     inches -> PDF (Inkscape). Writes <stem>.svg and <stem>.pdf."""
     import re, tempfile
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as d:
         sh = lambda c: subprocess.run(["bash", "-lc", c], check=True, capture_output=True)
         sh(f"inkscape '{pdf}' --pdf-font-strategy=keep --export-type=svg --export-plain-svg --export-filename='{d}/raw.svg'")
         subprocess.run([PY_LXML, CLEAN, f"{d}/raw.svg", "-o", f"{d}/clean.svg"], check=True, capture_output=True)
-        t = tidy(open(f"{d}/clean.svg").read())
+        open(f"{d}/tidy.svg", "w").write(tidy(open(f"{d}/clean.svg").read()))
+        # crop to the drawn content (the label column is wider than the right-aligned labels need)
+        sh(f"inkscape '{d}/tidy.svg' --export-area-drawing --export-plain-svg --export-type=svg --export-filename='{d}/crop.svg'")
+        t = open(f"{d}/crop.svg").read()
         m = re.search(r'<svg[^>]*?\swidth="([0-9.]+)"[^>]*?\sheight="([0-9.]+)"', t, re.S)
         w, h = float(m.group(1)), float(m.group(2))
         t = t.replace(m.group(0), m.group(0).replace(f'width="{m.group(1)}"', f'width="{width_in}in"')
