@@ -79,7 +79,8 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
             page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
             if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra): raise RuntimeError(f"custom tracks not loaded ({ids})")
-            q = {**base, "hideTracks": 1, **{t: "full" for t in ids}, **(show or {}), "guidelines": "off", "centerLabels": "off",
+            q = {**base, "hideTracks": 1, **{t: ("pack" if t.startswith("ct_genes_") else "full") for t in ids}, **(show or {}),
+                 "guidelines": "off", "centerLabels": "off",
                  "hgt.psOutput": "on"}
             if highlight != "": q["highlight"] = highlight or f"{chrom}:{hs + 1}-{he}#e6e6e6"
             page = post(q)
