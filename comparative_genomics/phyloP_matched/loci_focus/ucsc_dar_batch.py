@@ -35,7 +35,8 @@ ACC = [("Glut-RA", "227,26,28", "RA", "RA"), ("Glut-Arco-1", "251,154,153", "RA"
 PHY = [("phyloP oscine", f"{BASE}/{GENOME}/comparative/subtree222_perbase_lsd2.bw", "63,107,69", "154,123,36", "-3:3"),
        ("phyloP all 363", f"{BASE}/{GENOME}/comparative/wholetree_perbase_lsd2.bw", "33,102,172", "178,24,43", "-4:6")]
 PIX = 1200
-HEIGHT = 45                                          # track height (px): 1.5 x the hub default of 30
+HEIGHT = 45
+OVERVIEW_PIX = int(os.environ.get("OVERVIEW_PIX", "800"))   # image width for the domain overview (~5 in page)                                          # track height (px): 1.5 x the hub default of 30
 
 
 GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim.bb"
@@ -90,12 +91,13 @@ def custom_text(lim, phy=True, height=None, auto=False, extra="", pre=""):
     return (pre + "\n" if pre else "") + "\n".join(t) + ("\n" + extra if extra else "")
 
 
-def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre=""):
+def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre="",
+           pix=None):
     """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
     cj = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-    base = {"hubUrl": HUB, "genome": GENOME, "position": f"{chrom}:{a + 1}-{b}", "pix": PIX, "apiKey": key}
+    base = {"hubUrl": HUB, "genome": GENOME, "position": f"{chrom}:{a + 1}-{b}", "pix": pix or PIX, "apiKey": key}
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
@@ -115,14 +117,38 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
             time.sleep(10 * (i + 1))
 
 
+CLEAN = "/private/home/bcolquit/group/song-system-grn/scripts/browser_pdf_to_svg.py"
+PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an interpreter with lxml for CLEAN
+
+
+def to_figure(pdf, stem, width_in):
+    """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> scaled to width_in
+    inches -> PDF (Inkscape). Writes <stem>.svg and <stem>.pdf."""
+    import re, tempfile
+    with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as d:
+        sh = lambda c: subprocess.run(["bash", "-lc", c], check=True, capture_output=True)
+        sh(f"inkscape '{pdf}' --pdf-font-strategy=keep --export-type=svg --export-plain-svg --export-filename='{d}/raw.svg'")
+        subprocess.run([PY_LXML, CLEAN, f"{d}/raw.svg", "-o", f"{d}/clean.svg"], check=True, capture_output=True)
+        t = open(f"{d}/clean.svg").read()
+        m = re.search(r'<svg[^>]*?\swidth="([0-9.]+)"[^>]*?\sheight="([0-9.]+)"', t, re.S)
+        w, h = float(m.group(1)), float(m.group(2))
+        t = t.replace(m.group(0), m.group(0).replace(f'width="{m.group(1)}"', f'width="{width_in}in"')
+                                             .replace(f'height="{m.group(2)}"', f'height="{width_in * h / w:.4f}in"'), 1)
+        open(f"{stem}.svg", "w").write(t)
+        sh(f"inkscape '{stem}.svg' --export-type=pdf --export-filename='{stem}.pdf'")
+    return width_in, width_in * h / w
+
+
 def overview(key, out):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
-    accessibility tracks (autoscaled, 30 px), then the hub's gene models"""
+    accessibility tracks (autoscaled, 30 px), then the hub's gene models. The browser PDF (always 7.5 in wide) is
+    kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
     pre, n = p2g_track("chr20", 12551035, 13547533)
-    render(key, "chr20", 12551035, 13547533, None, None, {}, out, phy=False, highlight="", height=30, auto=True,
-           extra=gene_track("chr20", 12551035, 13547533), pre=pre)
-    print(f"  RA + C1H-1 links to MAFB drawn: {n}")
-    print(f"  wrote {out}")
+    raw = out.replace(".pdf", "_browser.pdf")
+    render(key, "chr20", 12551035, 13547533, None, None, {}, raw, phy=False, highlight="", height=30, auto=True,
+           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX)
+    w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "5")))
+    print(f"  RA + C1H-1 links to MAFB drawn: {n}; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in) and {raw}")
 
 
 def main():
