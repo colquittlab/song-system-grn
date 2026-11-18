@@ -13,7 +13,7 @@
 ## horiz draws the stacked bars horizontally, panels one above another; outputs carry _hstack.
 ## pct scales each bar to the % of its DAR class's lobes (per panel), keeping the count above the bar;
 ## outputs carry _pct. stack draws one 100% stacked bar per DAR class (counts inside segments of >= 6%,
-## totals above); outputs carry _stack.
+## totals above); outputs carry _stack. Stacked plots carry brackets with the pairwise Holm-adjusted p.
 ## oscany combines deep+oscine and oscine into "any oscine" (any oscine-lineage constraint), next to
 ## "deep only" and "weak", and reports per DAR class the share with any oscine constraint (RA vs G4,
 ## Fisher's exact test); outputs carry _oscany. Without it, the class mix is tested RA vs G4 (and with
@@ -79,6 +79,24 @@ if (oscany) for (s in names(sets)) {                 # share with any oscine con
 
 pd <- position_dodge(width = 0.8)
 tot <- n[, .(N = sum(N)), by = .(set, dar)]
+## pairwise tests of the class distribution (RA vs G4, G4 vs shared, RA vs shared): Fisher's exact test (simulated
+## p, 1e6), Holm-adjusted across the three pairs within each panel; drawn as brackets on the stacked plots
+if (stack) {
+  set.seed(1)
+  PR <- list(CLS[c("RA", "G4")], CLS[c("G4", "both")], CLS[c("RA", "both")])
+  xpos <- if (horiz) rev(unname(CLS)) else unname(CLS)
+  br <- rbindlist(lapply(names(sets), function(s) {
+    x <- sets[[s]]
+    ps <- sapply(PR, function(pr) { t <- table(droplevels(x[dar %in% pr, .(phy, dar = factor(dar, pr))])); t <- t[rowSums(t) > 0, , drop = FALSE]
+                                    fisher.test(t, simulate.p.value = TRUE, B = 1e6)$p.value })
+    data.table(set = s, x1 = sapply(PR, function(pr) match(pr[1], xpos)), x2 = sapply(PR, function(pr) match(pr[2], xpos)),
+               lev = 1:3, p = p.adjust(ps, "holm"))
+  }))
+  br[, set := factor(set, levels = names(sets), labels = levels(n$set))]
+  br[, y := (if (mini) 116 else 113) + (lev - 1) * (if (mini) 10 else 8)]
+  br[, lab := ifelse(p < 0.001, "p < 0.001", sprintf("p = %s", formatC(signif(p, 2), format = "fg", digits = 2)))]
+  print(br[, .(set, pair = sapply(PR, paste, collapse = " vs ")[lev], p_holm = signif(p, 3))])
+}
 p <- if (stack) {
   ## counts inside segments (white; omitted below 6%), class totals above the bars
   ggplot(n, aes(dar, P, fill = phy)) +
@@ -96,7 +114,9 @@ p <- if (stack) {
 }
 p <- p +
   scale_fill_manual(values = PCOL, name = "phyloP class") +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.12)), breaks = if (stack) seq(0, 100, 25) else waiver()) +
+  (if (stack) scale_y_continuous(expand = expansion(mult = c(0, 0)), breaks = seq(0, 100, 25),
+                                 limits = c(0, if (horiz) 150 else max(br$y) + 7))
+   else scale_y_continuous(expand = expansion(mult = c(0, 0.12)))) +
   facet_wrap(~set, nrow = if (horiz) 3 else 1) +
   labs(x = "DAR class", y = if (pct) "% of the DAR class's elements (lobes)" else "elements (lobes)") +
   theme_fig() +
@@ -104,6 +124,20 @@ p <- p +
         panel.grid.major.x = element_blank(), panel.spacing = unit(4, "mm"),
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
+if (stack && !horiz) {                               # p-value brackets (ticks point back towards the bars)
+  bs <- if (mini) 4 / .pt else FIG_PT_AXIS_TEXT / .pt
+  seg <- rbind(br[, .(set, x = x1, xend = x2, y, yend = y)], br[, .(set, x = x1, xend = x1, y, yend = y - 2)],
+               br[, .(set, x = x2, xend = x2, y, yend = y - 2)])
+  p <- p + geom_segment(data = seg, aes(x = x, xend = xend, y = y, yend = yend), inherit.aes = FALSE,
+                        linewidth = 0.25, colour = FIG_INK_SECONDARY) +
+    geom_text(data = br, aes(x = (x1 + x2) / 2, y = y + 0.8, label = lab), inherit.aes = FALSE,
+              vjust = 0, hjust = 0.5, size = bs, colour = FIG_INK_SECONDARY)
+}
+if (horiz) {                                         # horizontal: the three pairwise p as a list right of the bars
+  pl <- br[, .(lab = paste(sprintf("%s: %s", c("RA vs G4", "G4 vs shared", "RA vs shared")[lev], sub("^p ", "p ", lab)), collapse = "\n")), by = set]
+  p <- p + geom_text(data = pl, aes(x = 2, y = 113, label = lab), inherit.aes = FALSE, hjust = 0, vjust = 0.5,
+                     lineheight = 0.95, size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY)
+}
 if (horiz) {                                         # RA at the top; the stack reads left to right in legend order
   p <- p + coord_flip() + scale_x_discrete(limits = unname(rev(CLS))) +
     guides(fill = guide_legend(reverse = TRUE)) +
