@@ -14,7 +14,7 @@
 ## noacc), ordered within each by Ward on the two features, z-scored on all lobes so colours match
 ## across depth filters; outputs fig_element_cluster_thr_noacc[_depth<T>].
 ## noacc clusters on the two phyloP means only (z-scored) and shows their actual values, each on its
-## own diverging colour scale (whole tree +/-4, oscine +/-1), naming groups from their centroids
+## own diverging colour scale (avian / whole tree +/-5, oscine +/-1), naming groups from their centroids
 ## (deep / oscine when above average on that track, else weak); outputs carry _noacc.
 ## depth=T keeps only lobes with no low-depth patch: every 50-bp window of the lobe aligned in >= T of
 ## oscine and of non-oscine genomes (osc_depth_min50, nonosc_depth_min50; element_profiles.py);
@@ -93,7 +93,7 @@ if (noacc) {
   ## ordered by Ward on the z-scored pair (clustering_distance_rows looks the z-scores up by row name)
   Xr <- as.matrix(S[, names(feat), with = FALSE]); rownames(Xr) <- rownames(X) <- S$element
   zdist <- function(m) dist(X[rownames(m), , drop = FALSE])
-  LIM <- c(4, 1)
+  LIM <- c(5, 1)                                     # avian +/-5, oscine +/-1
   one <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xr[, j, drop = FALSE], name = nm,
     col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_columns = FALSE,
     column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(6, "mm"),
