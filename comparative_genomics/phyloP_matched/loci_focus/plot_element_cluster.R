@@ -120,6 +120,7 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
 }
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
 W <- if (nolab) 3.2 else if (noacc) 6.0 else 5.2
+if (nolab) h <- min(h, 5)                             # no row labels: rows shrink to keep the figure <= 5 in tall
 if (horiz) {
   ## elements as columns split by threshold class (Ward within each on the z-scored pair), the two phyloP
   ## means as rows, DAR class beneath; legends along the bottom so the figure is 5 in wide
