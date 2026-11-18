@@ -8,8 +8,8 @@
 ##
 ##   Rscript plot_element_cluster.R [k=4] [depth=T] [noacc]
 ## horiz (implies thr, nolabels) lays the elements out as columns, 5 in wide; outputs carry _horiz.
-## nolabels drops the row labels and the group column and widens the class column (outputs carry
-## _nolabels).
+## nolabels drops the row labels and the group column, widens the class column, sets the class titles
+## vertically and narrows the dendrogram (8 mm) and phyloP cells (4 mm) (outputs carry _nolabels).
 ## thr splits rows by the rating-calibrated threshold classes (element_threshold_classes.py; implies
 ## noacc), ordered within each by Ward on the two features, z-scored on all lobes so colours match
 ## across depth filters; outputs fig_element_cluster_thr_noacc[_depth<T>].
@@ -96,12 +96,13 @@ if (noacc) {
   LIM <- c(5, 1)                                     # avian +/-5, oscine +/-1
   one <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xr[, j, drop = FALSE], name = nm,
     col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_columns = FALSE,
-    column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(6, "mm"),
+    column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(if (nolab) 4 else 6, "mm"),
     heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = c(-LIM[j], 0, LIM[j]))), extra))
   ht <- one(1, "whole-tree mean phyloP", list(
           cluster_rows = if (thr) TRUE else hc, clustering_distance_rows = zdist, clustering_method_rows = "ward.D2",
           cluster_row_slices = FALSE, row_split = if (thr) factor(S$group, levels = THR) else NULL,
-          row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(1, "mm"), row_dend_width = unit(18, "mm"),
+          row_title_gp = gpar(fontsize = 6), row_title_rot = if (nolab) 90 else 0, row_gap = unit(1, "mm"),
+          row_dend_width = unit(if (nolab) 8 else 18, "mm"),
           show_row_names = FALSE,
           column_title = if (thr) NULL else paste0(sprintf("Ward, z-scored (k = %d)", k), if (is.na(dmin)) "" else sprintf(", depth >= %g", dmin)),
           column_title_gp = gpar(fontsize = 6))) +
@@ -118,7 +119,7 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
               heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5)))
 }
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
-W <- if (nolab) 4.2 else if (noacc) 6.0 else 5.2
+W <- if (nolab) 3.2 else if (noacc) 6.0 else 5.2
 if (horiz) {
   ## elements as columns split by threshold class (Ward within each on the z-scored pair), the two phyloP
   ## means as rows, DAR class beneath; legends along the bottom so the figure is 5 in wide
@@ -152,7 +153,9 @@ for (dev in c("pdf", "png")) {
                     padding = unit(c(2, 2, 8, 2), "mm"))
     else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)
-    grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s" else "thresholds: whole-tree mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
+    grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s"
+                      else if (nolab) "whole-tree mean >= %+.2f (strong >= 3)\noscine mean >= %+.2f%s"
+                      else "thresholds: whole-tree mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
                       if (is.na(dmin)) "" else sprintf("; depth >= %g", dmin)),
               x = unit(0.5, "npc"), y = unit(1, "npc") - unit(4, "mm"), gp = gpar(fontsize = 6))
   } else draw(ht, merge_legend = TRUE)
