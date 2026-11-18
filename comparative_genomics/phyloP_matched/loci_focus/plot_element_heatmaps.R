@@ -24,6 +24,10 @@ suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
 source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../config/figure_theme.R")) else
   here::here("config/figure_theme.R"))
+## DAR classes as in the comparative_genomics plots (Glut-RA red, GABA-4 teal; shared = their comparator
+## grey); phyloP on a purple (conserved) - white - brown (accelerated) scale, clear of both class colours
+CLS_COL <- c(RA = "#e31a1c", G4 = "#2C6E7F", both = "#9AA3AF")
+PHY_DIV <- c("#b35806", "#f7f7f7", "#542788")
 
 args <- commandArgs(trailingOnly = TRUE)
 k <- if (length(args) >= 1) as.integer(args[1]) else 4L
@@ -65,7 +69,7 @@ if (!mb) fwrite(S[, .(element, cls, cluster, rule, mb, chrom, summit, peak_start
        file.path(res, sprintf("element_clusters_k%d.tsv", k)), sep = "\t")
 
 ## annotations
-cls_col <- c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])
+cls_col <- CLS_COL
 ra <- rowAnnotation(class = S$cls, `Log2FC` = S$log2fc, `multi-part` = ifelse(S$n_lobes > 1, "yes", "no"),
                     col = list(class = cls_col, `Log2FC` = colorRamp2(c(0, 2, 4), c("#f0efec", "#9a9a9a", "#3a3a3a")),
                                `multi-part` = c(yes = "#5f5f5f", no = "#e6e5e1")),
@@ -84,7 +88,7 @@ if (byclass) {
 }
 ht_opt$TITLE_PADDING <- unit(1, "mm")
 
-h1 <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
+h1 <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
               cluster_rows = FALSE, row_order = rord, row_split = split, cluster_columns = FALSE,
               show_row_names = FALSE, column_names_gp = gpar(fontsize = 5), row_title_gp = gpar(fontsize = 6), row_title_rot = 0, row_gap = unit(if (byclass) 0.8 else 1, "mm"),
               left_annotation = ra, column_title = if (mb) "full extent, accessibility-weighted (clustering features)" else if (rule) "constraint: summit ±100 bp | full extent (rule features)" else "constraint at the accessibility summit (±100 bp)",
@@ -110,7 +114,7 @@ mk <- function(m, nm, lim, title, cols, left = NULL) Heatmap(pmax(pmin(m, lim[2]
   heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5),
                               at = if (length(cols) == 3) c(lim[1], 0, lim[2]) else c(0, lim[2]),
                               labels = round(if (length(cols) == 3) c(lim[1], 0, lim[2]) else c(0, lim[2]), 1)))
-div <- c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)
+div <- PHY_DIV
 alim <- as.numeric(quantile(abs(P$access), 0.98))
 h2 <- mk(P$whole, "whole phyloP", c(-6, 6), "whole tree", div, left = ra) +
       mk(P$oscine, "oscine phyloP", c(-2, 2), "oscine lineage (Anc222)", div) +

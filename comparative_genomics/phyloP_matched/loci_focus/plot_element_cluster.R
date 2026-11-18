@@ -23,6 +23,10 @@ suppressMessages({library(ComplexHeatmap); library(circlize); library(data.table
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
 source(if (length(.self)) normalizePath(file.path(dirname(.self), "../../../config/figure_theme.R")) else
   here::here("config/figure_theme.R"))
+## DAR classes as in the comparative_genomics plots (Glut-RA red, GABA-4 teal; shared = their comparator
+## grey); phyloP on a purple (conserved) - white - brown (accelerated) scale, clear of both class colours
+CLS_COL <- c(RA = "#e31a1c", G4 = "#2C6E7F", both = "#9AA3AF")
+PHY_DIV <- c("#b35806", "#f7f7f7", "#542788")
 
 args <- commandArgs(trailingOnly = TRUE)
 k <- if (length(args) && grepl("^[0-9]+$", args[1])) as.integer(args[1]) else 4L
@@ -73,7 +77,7 @@ gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c816
 if (thr) nm <- THR
 if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^deep", nm), "#c8161a",
                             ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f"))), nm)
-CCOL <- c(RA = FIG_PAL[[2]], G4 = FIG_PAL[[1]], both = FIG_PAL[[3]])
+CCOL <- CLS_COL
 ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),
                     annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5))) else
@@ -88,7 +92,7 @@ if (noacc) {
   zdist <- function(m) dist(X[rownames(m), , drop = FALSE])
   LIM <- c(4, 1)
   one <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xr[, j, drop = FALSE], name = nm,
-    col = colorRamp2(c(-LIM[j], 0, LIM[j]), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)), cluster_columns = FALSE,
+    col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_columns = FALSE,
     column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(6, "mm"),
     heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = c(-LIM[j], 0, LIM[j]))), extra))
   ht <- one(1, "whole-tree mean phyloP", list(
@@ -101,7 +105,7 @@ if (noacc) {
         one(2, "oscine mean phyloP", list(right_annotation = ra, row_labels = lbl, show_row_names = !nolab,
           row_names_gp = gpar(fontsize = 5, fontfamily = "mono")))
 } else {
-ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), c(FIG_DIV_LOW, FIG_DIV_MID, FIG_DIV_HIGH)),
+ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
               cluster_rows = if (thr) TRUE else hc, clustering_method_rows = "ward.D2", cluster_row_slices = FALSE,
               row_split = if (thr) factor(S$group, levels = THR) else NULL, row_title_gp = gpar(fontsize = 6), row_title_rot = 0,
               row_gap = unit(1, "mm"), row_dend_width = unit(18, "mm"), cluster_columns = FALSE,
