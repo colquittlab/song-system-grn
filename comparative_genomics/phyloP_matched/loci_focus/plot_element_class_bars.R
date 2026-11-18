@@ -2,7 +2,7 @@
 ##
 ## Reads results/mafb_domain/element_threshold_classes.tsv (element_threshold_classes.py): each lobe's
 ## threshold class from its accessibility-weighted whole-tree and oscine mean phyloP over its full
-## extent (deep+oscine, deep, oscine, weak), and its DAR class (RA, G4, shared = "both"). Panels: all
+## extent (deep+oscine, strong avian, moderate avian, oscine, weak), and its DAR class (RA, G4, shared = "both"). Panels: all
 ## lobes, and lobes with every 50-bp window aligned in >= 0.8 / >= 0.9 of oscine and non-oscine
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
@@ -31,11 +31,11 @@ if (horiz) stack <- TRUE
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
-PCOL <- c("deep+oscine" = "#7a3ca0", deep = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
+PCOL <- c("deep+oscine" = "#7a3ca0", "strong avian" = "#67000d", "moderate avian" = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
 d[, dar := factor(CLS[cls], levels = CLS)]
-d[, phy := factor(thr_class, levels = c("deep+oscine", "deep", "oscine", "weak"))]
+d[, phy := factor(thr_class, levels = names(PCOL))]
 if (oscany) {
-  d[, phy := factor(fcase(thr_class %in% c("deep+oscine", "oscine"), "any oscine", thr_class == "deep", "deep only", default = "weak"),
+  d[, phy := factor(fcase(thr_class %in% c("deep+oscine", "oscine"), "any oscine", thr_class %in% c("strong avian", "moderate avian"), "deep only", default = "weak"),
                     levels = c("any oscine", "deep only", "weak"))]
   PCOL <- c("any oscine" = "#1baf7a", "deep only" = "#c8161a", weak = "#5f5f5f")
 }

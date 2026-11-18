@@ -5,7 +5,9 @@ Features are those of plot_element_cluster.R noacc: each lobe's whole-tree and o
 phyloP over its full extent, accessibility-weighted (whole_ext_mean, osc_ext_mean). Thresholds are
 set on the visual ratings as in element_rule_classes.py (rated moderate/strong vs neutral/weak;
 Youden's J; best-scoring overlapping lobe per rated region) and are absolute, so a depth filter only
-removes lobes and never moves the cut. Classes: deep+oscine, deep, oscine, weak. Each is cross-
+removes lobes and never moves the cut. Classes: deep+oscine, deep (split at an avian mean of 3.0 into
+strong avian and moderate avian -- the top Ward split of the deep lobes, which falls in an empty gap
+between 2.63 and 3.21), oscine, weak. Each is cross-
 tabulated against the Ward k=3 groups (element_cluster_k3_noacc[_depth<T>].tsv) without and with the
 depth filters (every 50-bp window of the lobe aligned in >= T of oscine and non-oscine genomes).
 
@@ -19,7 +21,8 @@ from scipy import stats
 F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus"
 R = f"{F}/results/mafb_domain"
 SC = {"whole": "whole_ext_mean", "oscine": "osc_ext_mean"}
-ORDER = ["deep+oscine", "deep", "oscine", "weak"]
+ORDER = ["deep+oscine", "strong avian", "moderate avian", "oscine", "weak"]
+STRONG = 3.0                       # avian (whole-tree) mean splitting deep-only lobes: the Ward split, in a gap 2.63-3.21
 UP = {"moderate", "strong"}
 
 
@@ -44,7 +47,8 @@ def main():
         up = M[f"{t}_r"].isin(UP).values; j, thr = youden(M[t].values, up); T[t] = thr; call = M[t].values >= thr
         print(f"  {t:6s} mean phyloP threshold {thr:+.2f}: agreement {(call == up).mean():.0%} (sens {call[up].mean():.0%}, spec {(~call[~up]).mean():.0%}), J {j:.2f}")
     d, o = S[SC["whole"]] >= T["whole"], S[SC["oscine"]] >= T["oscine"]
-    S["thr_class"] = np.select([d & o, d, o], ORDER[:3], ORDER[3])
+    s3 = S[SC["whole"]] >= STRONG
+    S["thr_class"] = np.select([d & o, d & s3, d, o], ORDER[:4], ORDER[4])
     S[["element", "cls", "chrom", "ext_start", "ext_end", "whole_ext_mean", "osc_ext_mean", "osc_depth_min50", "nonosc_depth_min50", "thr_class"]].assign(
         thr_whole=T["whole"], thr_oscine=T["oscine"]).to_csv(f"{R}/element_threshold_classes.tsv", sep="\t", index=False, float_format="%.3f")
     for tag, dmin in (("", None), ("_depth0.8", 0.8), ("_depth0.9", 0.9)):
@@ -56,7 +60,8 @@ def main():
             w = x.merge(pd.read_csv(f, sep="\t")[["element", "group"]], on="element")
             print("  threshold (rows) vs Ward k=3 (cols):")
             print(pd.crosstab(pd.Categorical(w.thr_class, ORDER), w.group, rownames=["threshold"]).to_string())
-            agree = ((w.thr_class == w.group) | ((w.thr_class == "deep+oscine") & w.group.isin(["deep", "oscine"]))).mean()
+            tc = w.thr_class.replace({"strong avian": "deep", "moderate avian": "deep"})
+            agree = ((tc == w.group) | ((tc == "deep+oscine") & w.group.isin(["deep", "oscine"]))).mean()
             print(f"  same call (deep+oscine counted as matching deep or oscine): {agree:.0%}")
         t2 = x[x.cls.isin(["RA", "G4"])]
         print(f"  RA vs G4 across threshold classes: chi-square p = {stats.chi2_contingency(pd.crosstab(t2.thr_class, t2.cls))[1]:.2g}")

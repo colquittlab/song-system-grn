@@ -67,7 +67,7 @@ if (noacc) {                                         # name from centroids: abov
   nm <- ifelse(cz[, 1] > 0 & cz[, 2] > 0, "deep+oscine", ifelse(cz[, 1] > 0, "deep", ifelse(cz[, 2] > 0, "oscine", "weak")))
   nm <- make.unique(nm, sep = " "); S[, group := nm[cl]]
 }
-THR <- c("deep+oscine", "deep", "oscine", "weak")
+THR <- c("deep+oscine", "strong avian", "moderate avian", "oscine", "weak")
 if (thr) S[, group := thr_class]
 if (!thr) print(data.table(group = nm, n = as.vector(table(cl)), round(cz, 2)))
 if (!thr) fwrite(S[, .(element, cls, group, chrom, ext_start, ext_end, n_lobes, lobe, whole_ext_mean, osc_ext_mean,
@@ -78,8 +78,8 @@ lbl <- sprintf("%s:%s-%s%s  %s", S$chrom, format(S$ext_start + 1, big.mark = ","
                ifelse(S$n_lobes > 1, sprintf(" (lobe %d/%d)", S$lobe, S$n_lobes), ""), S$cls)
 gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c8161a", "#5f5f5f", "#9a9a9a")[seq_len(k)], nm)
 if (thr) nm <- THR
-if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^deep", nm), "#c8161a",
-                            ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f"))), nm)
+if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^strong", nm), "#67000d", ifelse(grepl("^(deep|moderate)", nm), "#c8161a",
+                            ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f")))), nm)
 CCOL <- CLS_COL
 ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),
@@ -152,7 +152,7 @@ for (dev in c("pdf", "png")) {
                     padding = unit(c(2, 2, 8, 2), "mm"))
     else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)
-    grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f, oscine mean >= %+.2f%s" else "thresholds: whole-tree mean >= %+.2f, oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
+    grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s" else "thresholds: whole-tree mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
                       if (is.na(dmin)) "" else sprintf("; depth >= %g", dmin)),
               x = unit(0.5, "npc"), y = unit(1, "npc") - unit(4, "mm"), gp = gpar(fontsize = 6))
   } else draw(ht, merge_legend = TRUE)
