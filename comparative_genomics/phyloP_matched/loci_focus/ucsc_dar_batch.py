@@ -54,7 +54,30 @@ def gene_track(chrom, a, b):
     return "\n".join(out)
 
 
-def custom_text(lim, phy=True, height=None, auto=False, extra=""):
+NATIVE = {"chr20": "NC_042585.1"}
+P2G = f"{BASE}/{GENOME}/scATAC/motor-pathway/peaks2genes/hybrid_maxdist1Mb/peak2geneLinks_ra_corCutOff-{{cut}}.bb"
+
+
+def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
+    """inline interact track of the hub's 1-Mb RA + C1H-1 peak-to-gene links (r >= cut) to `gene`, peak in [a, b)"""
+    bb = pyBigWig.open(P2G.format(cut=cut)); rows = []
+    for s, e, rest in bb.entries(chrom, a, b):
+        f = rest.split("\t")                      # name score value exp color src* tgt*
+        g, peak = f[0].split("<>")
+        ps = int(peak.split("_")[1].split("-")[0])
+        if g == gene and a <= ps < b:            # interact custom tracks need the native sequence name, not the chr20 alias
+            t = min(1.0, max(0.0, (float(f[2]) - float(cut)) / (1 - float(cut))))   # r: cut -> light grey, 1 -> near black
+            lo, hi = (210, 210, 210), (25, 25, 25)
+            f[4] = "#%02x%02x%02x" % tuple(round(l + t * (h - l)) for l, h in zip(lo, hi))
+            f[0] = f[8] = f[13] = "."                 # no labels on the arcs
+            rows.append([NATIVE.get(chrom, chrom), s, e] + [NATIVE.get(x, x) for x in f])
+    out = [f'track type=interact name="RA + C1H-1 P2G r >= {cut}" description="RA + C1H-1 peak-to-gene links to {gene}, '
+           f'r >= {cut}, max distance 1 Mb; grey, light (r = {cut}) to black (r = 1)" visibility=full maxHeightPixels=200:60:20']
+    out += ["\t".join(map(str, r)) for r in rows]
+    return "\n".join(out), len(rows)
+
+
+def custom_text(lim, phy=True, height=None, auto=False, extra="", pre=""):
     height = height or HEIGHT
     t = []
     for name, col, pair, lab in ACC:
@@ -64,10 +87,10 @@ def custom_text(lim, phy=True, height=None, auto=False, extra=""):
     for name, url, col, alt, vl in (PHY if phy else []):
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
                  f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:{HEIGHT}:11 visibility=full')
-    return "\n".join(t) + ("\n" + extra if extra else "")
+    return (pre + "\n" if pre else "") + "\n".join(t) + ("\n" + extra if extra else "")
 
 
-def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra=""):
+def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre=""):
     """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
@@ -76,9 +99,9 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
-            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra)})
+            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra, pre)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
-            if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra): raise RuntimeError(f"custom tracks not loaded ({ids})")
+            if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra) + bool(pre): raise RuntimeError(f"custom tracks not loaded ({ids})")
             q = {**base, "hideTracks": 1, **{t: ("pack" if t.startswith("ct_genes_") else "full") for t in ids}, **(show or {}),
                  "guidelines": "off", "centerLabels": "off",
                  "hgt.psOutput": "on"}
@@ -93,9 +116,12 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
 
 
 def overview(key, out):
-    """the whole DHX35-TOP1 domain: accessibility tracks (autoscaled, 30 px) and the hub's gene models"""
+    """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
+    accessibility tracks (autoscaled, 30 px), then the hub's gene models"""
+    pre, n = p2g_track("chr20", 12551035, 13547533)
     render(key, "chr20", 12551035, 13547533, None, None, {}, out, phy=False, highlight="", height=30, auto=True,
-           extra=gene_track("chr20", 12551035, 13547533))
+           extra=gene_track("chr20", 12551035, 13547533), pre=pre)
+    print(f"  RA + C1H-1 links to MAFB drawn: {n}")
     print(f"  wrote {out}")
 
 
