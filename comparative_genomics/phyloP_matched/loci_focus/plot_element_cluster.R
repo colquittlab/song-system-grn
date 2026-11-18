@@ -7,6 +7,7 @@
 ## Rows are labelled with the lobe's scored extent (1-based) and class (RA, G4, both).
 ##
 ##   Rscript plot_element_cluster.R [k=4] [depth=T] [noacc]
+## horiz (implies thr, nolabels) lays the elements out as columns, 5 in wide; outputs carry _horiz.
 ## nolabels drops the row labels and the group column and widens the class column (outputs carry
 ## _nolabels).
 ## thr splits rows by the rating-calibrated threshold classes (element_threshold_classes.py; implies
@@ -34,9 +35,11 @@ dmin <- sub("^depth=", "", grep("^depth=", args, value = TRUE)); dmin <- if (len
 noacc <- "noacc" %in% args                         # cluster on the two phyloP means only
 thr <- "thr" %in% args                               # split rows by threshold classes (element_threshold_classes.py)
 nolab <- "nolabels" %in% args                        # no row labels or group column; wider class column
+horiz <- "horiz" %in% args                           # elements as columns, 5 in wide (thr, noacc)
+if (horiz) { thr <- TRUE; nolab <- TRUE }
 if (thr) noacc <- TRUE
 tag <- paste0(if (thr) "_thr" else "", if (noacc) "_noacc" else "", if (is.na(dmin)) "" else sprintf("_depth%g", dmin),
-              if (nolab) "_nolabels" else "")
+              if (nolab) "_nolabels" else "", if (horiz) "_horiz" else "")
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_rule_classes.tsv"))
 S0 <- copy(S)                                        # full set, for fixed z-scaling in thr mode
@@ -116,11 +119,37 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
 }
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
 W <- if (nolab) 4.2 else if (noacc) 6.0 else 5.2
+if (horiz) {
+  ## elements as columns split by threshold class (Ward within each on the z-scored pair), the two phyloP
+  ## means as rows, DAR class beneath; legends along the bottom so the figure is 5 in wide
+  Xt <- t(Xr)
+  cdist <- function(m) {                             # ComplexHeatmap passes columns as rows here
+    ids <- if (!is.null(rownames(m)) && all(rownames(m) %in% rownames(X))) rownames(m) else colnames(m)
+    dist(X[ids, , drop = FALSE])
+  }
+  lp <- function(at) list(direction = "horizontal", title_position = "topcenter", legend_width = unit(16, "mm"),
+                          title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = at)
+  ba <- HeatmapAnnotation(class = S$cls, col = list(class = CCOL), simple_anno_size = unit(3, "mm"),
+                          annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "left",
+                          annotation_legend_param = list(class = list(title = "DAR class", nrow = 1, title_position = "topcenter",
+                                                                      title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5))))
+  mkh <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xt[j, , drop = FALSE], name = nm,
+    col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_rows = FALSE, row_labels = c("whole tree", "oscine")[j], row_names_side = "left",
+    row_names_gp = gpar(fontsize = 6), show_column_names = FALSE, height = unit(5, "mm"),
+    heatmap_legend_param = lp(c(-LIM[j], 0, LIM[j]))), extra))
+  ht <- mkh(1, "whole tree\nmean phyloP", list(cluster_columns = TRUE, clustering_distance_columns = cdist,
+          clustering_method_columns = "ward.D2", cluster_column_slices = FALSE, column_split = factor(S$group, levels = THR),
+          column_title_gp = gpar(fontsize = 6), column_gap = unit(1, "mm"), column_dend_height = unit(8, "mm"))) %v%
+        mkh(2, "oscine\nmean phyloP", list(bottom_annotation = ba))
+  h <- 2.3; W <- 5
+}
 for (dev in c("pdf", "png")) {
   f <- file.path(res, if (thr) sprintf("fig_element_cluster%s.%s", tag, dev) else sprintf("fig_element_cluster_k%d%s.%s", k, tag, dev))
   if (dev == "pdf") cairo_pdf(f, width = W, height = h, family = FIG_FONT) else png(f, width = W, height = h, units = "in", res = 600, family = FIG_FONT)
   if (thr) {                                         # figure-level title: the two columns are too narrow for it
-    draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
+    if (horiz) draw(ht, merge_legend = TRUE, heatmap_legend_side = "bottom", annotation_legend_side = "bottom", legend_gap = unit(8, "mm"),
+                    padding = unit(c(2, 2, 8, 2), "mm"))
+    else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)
     grid.text(sprintf("thresholds: whole-tree mean >= %+.2f, oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
                       if (is.na(dmin)) "" else sprintf("; depth >= %g", dmin)),
