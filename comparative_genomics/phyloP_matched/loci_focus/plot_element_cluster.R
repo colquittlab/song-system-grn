@@ -78,8 +78,8 @@ lbl <- sprintf("%s:%s-%s%s  %s", S$chrom, format(S$ext_start + 1, big.mark = ","
                ifelse(S$n_lobes > 1, sprintf(" (lobe %d/%d)", S$lobe, S$n_lobes), ""), S$cls)
 gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c8161a", "#5f5f5f", "#9a9a9a")[seq_len(k)], nm)
 if (thr) nm <- THR
-if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#7a3ca0", ifelse(grepl("^strong", nm), "#67000d", ifelse(grepl("^(deep|moderate)", nm), "#c8161a",
-                            ifelse(grepl("^oscine", nm), "#1baf7a", "#5f5f5f")))), nm)
+if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#d4a017", ifelse(grepl("^strong", nm), "#3f007d", ifelse(grepl("^(deep|moderate)", nm), "#8c6bb1",
+                            ifelse(grepl("^oscine", nm), "#1baf7a", "#bdbdbd")))), nm)   # as plot_element_class_bars.R
 CCOL <- CLS_COL
 ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),

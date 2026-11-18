@@ -31,13 +31,16 @@ if (horiz) stack <- TRUE
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
 CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
-PCOL <- c("deep+oscine" = "#7a3ca0", "strong avian" = "#67000d", "moderate avian" = "#c8161a", oscine = "#1baf7a", weak = "#5f5f5f")
+## phyloP classes kept clear of the DAR-class colours (Glut-RA red, GABA-4 blue): avian constraint in the heatmap's
+## purples (dark = strong), oscine green, both ochre, weak light grey
+PCOL <- c("deep+oscine" = "#d4a017", "strong avian" = "#3f007d", "moderate avian" = "#8c6bb1", oscine = "#1baf7a", weak = "#bdbdbd")
+DARK_FILL <- c("strong avian", "moderate avian", "deep only")   # white counts on these, dark ink on the rest
 d[, dar := factor(CLS[cls], levels = CLS)]
 d[, phy := factor(thr_class, levels = names(PCOL))]
 if (oscany) {
   d[, phy := factor(fcase(thr_class %in% c("deep+oscine", "oscine"), "any oscine", thr_class %in% c("strong avian", "moderate avian"), "deep only", default = "weak"),
                     levels = c("any oscine", "deep only", "weak"))]
-  PCOL <- c("any oscine" = "#1baf7a", "deep only" = "#c8161a", weak = "#5f5f5f")
+  PCOL <- c("any oscine" = "#1baf7a", "deep only" = "#5e3c99", weak = "#bdbdbd")
 }
 sets <- list("all lobes" = d, "depth ≥ 0.8" = d[osc_depth_min50 >= 0.8 & nonosc_depth_min50 >= 0.8],
              "depth ≥ 0.9" = d[osc_depth_min50 >= 0.9 & nonosc_depth_min50 >= 0.9])
@@ -75,8 +78,9 @@ p <- if (stack) {
   ## counts inside segments (white; omitted below 6%), class totals above the bars
   ggplot(n, aes(dar, P, fill = phy)) +
     geom_col(width = 0.7, colour = FIG_SURFACE, linewidth = 0.4) +
-    geom_text(aes(label = ifelse(P >= 6, N, "")), position = position_stack(vjust = 0.5),
-              size = FIG_PT_AXIS_TEXT / .pt, colour = "white") +
+    geom_text(aes(label = ifelse(P >= 6, N, ""), colour = phy %in% DARK_FILL, group = phy), position = position_stack(vjust = 0.5),
+              size = FIG_PT_AXIS_TEXT / .pt, show.legend = FALSE) +
+    scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "#171B22"), guide = "none") +
     geom_text(data = tot, aes(dar, 100, label = sprintf("n = %d", N)), inherit.aes = FALSE,
               vjust = if (horiz) 0.5 else -0.5, hjust = if (horiz) -0.15 else 0.5,
               size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY)
