@@ -78,12 +78,13 @@ def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
     return "\n".join(out), len(rows)
 
 
-def custom_text(lim, phy=True, height=None, auto=False, extra="", pre=""):
+def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth=None):
     height = height or HEIGHT
+    sm = f"windowingFunction=mean smoothingWindow={smooth} " if smooth else ""
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
-                 + ("autoScale=on " if auto else f"autoScale=off viewLimits=0:{lim[pair]:g} ")
+                 + ("autoScale=on " if auto else f"autoScale=off viewLimits=0:{lim[pair]:g} ") + sm
                  + f'alwaysZero=on maxHeightPixels=128:{height}:11 visibility=full')
     for name, url, col, alt, vl in (PHY if phy else []):
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
@@ -92,7 +93,7 @@ def custom_text(lim, phy=True, height=None, auto=False, extra="", pre=""):
 
 
 def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre="",
-           pix=None):
+           pix=None, smooth=None):
     """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
@@ -101,7 +102,7 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
-            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra, pre)})
+            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra, pre, smooth)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
             if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra) + bool(pre): raise RuntimeError(f"custom tracks not loaded ({ids})")
             q = {**base, "hideTracks": 1, **{t: ("pack" if t.startswith("ct_genes_") else "full") for t in ids}, **(show or {}),
@@ -121,6 +122,24 @@ CLEAN = "/private/home/bcolquit/group/song-system-grn/scripts/browser_pdf_to_svg
 PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an interpreter with lxml for CLEAN
 
 
+def tidy(t, pad=3.0):
+    """drop the browser's pale-red border at the left of the data area; set the left-column track labels in black,
+    right-aligned flush (pad units) against the data area"""
+    import re
+    m = re.search(r'<path\b[^>]*fill:#ffb4b4[^>]*>', t)
+    x0 = 139.5
+    if m:                                             # the border: a full-height 6.75-unit bar; data starts at its right edge
+        d = re.search(r'\sd="m ([0-9.]+),[0-9.]+ h ([0-9.]+)', m.group(0)); sc = re.search(r'matrix\(([0-9.]+)', m.group(0))
+        if d and sc: x0 = (float(d.group(1)) + float(d.group(2))) * float(sc.group(1))
+        t = t.replace(m.group(0), "", 1)
+    def fix(mm):                                      # texts in the left label column (translate x < 20)
+        el = mm.group(0); tr = re.search(r'transform="matrix\(([0-9.]+),0,0,([0-9.]+),([-0-9.]+),([-0-9.]+)\)"', el)
+        if not tr or float(tr.group(3)) >= 20: return el
+        el = el.replace(tr.group(0), f'transform="matrix({tr.group(1)},0,0,{tr.group(2)},{x0 - pad:.3f},{tr.group(4)})"')
+        return re.sub(r'fill:#[0-9a-fA-F]{6}', 'fill:#000000', el).replace('writing-mode:lr-tb;', 'writing-mode:lr-tb;text-anchor:end;')
+    return re.sub(r'<text\b.*?</text>', fix, t, flags=re.S)
+
+
 def to_figure(pdf, stem, width_in):
     """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> scaled to width_in
     inches -> PDF (Inkscape). Writes <stem>.svg and <stem>.pdf."""
@@ -129,7 +148,7 @@ def to_figure(pdf, stem, width_in):
         sh = lambda c: subprocess.run(["bash", "-lc", c], check=True, capture_output=True)
         sh(f"inkscape '{pdf}' --pdf-font-strategy=keep --export-type=svg --export-plain-svg --export-filename='{d}/raw.svg'")
         subprocess.run([PY_LXML, CLEAN, f"{d}/raw.svg", "-o", f"{d}/clean.svg"], check=True, capture_output=True)
-        t = open(f"{d}/clean.svg").read()
+        t = tidy(open(f"{d}/clean.svg").read())
         m = re.search(r'<svg[^>]*?\swidth="([0-9.]+)"[^>]*?\sheight="([0-9.]+)"', t, re.S)
         w, h = float(m.group(1)), float(m.group(2))
         t = t.replace(m.group(0), m.group(0).replace(f'width="{m.group(1)}"', f'width="{width_in}in"')
@@ -141,12 +160,13 @@ def to_figure(pdf, stem, width_in):
 
 def overview(key, out):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
-    accessibility tracks (autoscaled, 30 px), then the hub's gene models. The browser PDF (always 7.5 in wide) is
+    accessibility tracks (autoscaled, 30 px, 2-pixel mean smoothing), then the hub's gene models. Track labels are
+    set black and right-aligned against the tracks, and the browser's red left border is removed (tidy). The browser PDF (always 7.5 in wide) is
     kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
     pre, n = p2g_track("chr20", 12551035, 13547533)
     raw = out.replace(".pdf", "_browser.pdf")
     render(key, "chr20", 12551035, 13547533, None, None, {}, raw, phy=False, highlight="", height=30, auto=True,
-           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX)
+           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX, smooth=2)
     w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "5")))
     print(f"  RA + C1H-1 links to MAFB drawn: {n}; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in) and {raw}")
 
