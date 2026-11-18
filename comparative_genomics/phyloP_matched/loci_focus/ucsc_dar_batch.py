@@ -16,6 +16,8 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
 ~/.ucsc_api_key (never stored here).
 
     ACC_MAX=30 python ucsc_dar_batch.py [window_bp=10000] [first N peaks]
+    python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533), accessibility only,
+                                          # curated DAR peaks shaded -> results/ucsc/mafb_domain_overview_acc<max>.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
 dar_peaks_win<W>k_acc<max>.pdf (all pages, in genome order).
 """
@@ -36,18 +38,18 @@ PIX = 1200
 HEIGHT = 45                                          # track height (px): 1.5 x the hub default of 30
 
 
-def custom_text(lim):
+def custom_text(lim, phy=True):
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
                  f'autoScale=off viewLimits=0:{lim[pair]:g} alwaysZero=on maxHeightPixels=128:{HEIGHT}:11 visibility=full')
-    for name, url, col, alt, vl in PHY:
+    for name, url, col, alt, vl in (PHY if phy else []):
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
                  f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:{HEIGHT}:11 visibility=full')
     return "\n".join(t)
 
 
-def render(key, chrom, a, b, hs, he, lim, out):
+def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None):
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
     cj = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -55,11 +57,11 @@ def render(key, chrom, a, b, hs, he, lim, out):
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
-            page = post({**base, "hgt.customText": custom_text(lim)})
+            page = post({**base, "hgt.customText": custom_text(lim, phy)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
-            if len(ids) < len(ACC) + len(PHY): raise RuntimeError(f"custom tracks not loaded ({ids})")
+            if len(ids) < len(ACC) + (len(PHY) if phy else 0): raise RuntimeError(f"custom tracks not loaded ({ids})")
             page = post({**base, "hideTracks": 1, **{t: "full" for t in ids}, "guidelines": "off", "centerLabels": "off",
-                         "highlight": f"{chrom}:{hs + 1}-{he}#e6e6e6", "hgt.psOutput": "on"})
+                         "highlight": highlight or f"{chrom}:{hs + 1}-{he}#e6e6e6", "hgt.psOutput": "on"})
             p = re.search(r"\.\./trash/hgt/hgt_genome_[^'\"]*\.pdf", page)
             if not p: raise RuntimeError("no PDF link in response")
             open(out, "wb").write(cj.open(f"{UCSC}/{p.group(0)[3:]}", timeout=120).read()); return
@@ -68,7 +70,21 @@ def render(key, chrom, a, b, hs, he, lim, out):
             time.sleep(10 * (i + 1))
 
 
+def overview(key, out):
+    """the whole DHX35-TOP1 domain, accessibility tracks only, every curated DAR peak shaded grey"""
+    S = pd.read_csv(f"{R}/mafb_domain/element_summaries.tsv", sep="\t")
+    P = S.drop_duplicates(["chrom", "peak_start", "peak_end"])
+    hl = "|".join(f"{c}:{s + 1}-{e}#e6e6e6" for c, s, e in zip(P.chrom, P.peak_start, P.peak_end))
+    lim = {"RA": float(os.environ.get("ACC_MAX", "30")), "G4": float(os.environ.get("ACC_MAX", "30"))}
+    render(key, "chr20", 12551035, 13547533, None, None, lim, out, phy=False, highlight=hl)
+    print(f"  wrote {out} ({len(P)} DAR peaks shaded)")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "overview":
+        key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
+        os.makedirs(f"{R}/ucsc", exist_ok=True)
+        overview(key, f"{R}/ucsc/mafb_domain_overview_acc{os.environ.get('ACC_MAX', '30')}.pdf"); return
     win = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     first = int(sys.argv[2]) if len(sys.argv) > 2 else None
     key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
