@@ -195,9 +195,10 @@ def to_figure(pdf, stem, width_in):
     return width_in, width_in * h / w
 
 
-def track_limits(chrom, a, b, pix, smooth, floor_q=75):
+def track_limits(chrom, a, b, pix, smooth, floor_q=None):
     """per-track view limits mimicking autoscale with a raised floor: top = the highest per-pixel mean (smoothed as
-    drawn), bottom = that track's floor_q-th percentile pixel, which blanks the background noise"""
+    drawn), bottom = that track's floor_q-th percentile pixel (OVERVIEW_FLOOR, default the median)"""
+    floor_q = float(os.environ.get("OVERVIEW_FLOOR", "50")) if floor_q is None else floor_q
     out = {}
     for name, *_ in ACC:
         v = np.nan_to_num(np.array(pyBigWig.open(f"{W}/{name}-insertion-bin10-smooth20.bw").stats(chrom, a, b, type="mean", nBins=pix), float))
@@ -209,7 +210,7 @@ def track_limits(chrom, a, b, pix, smooth, floor_q=75):
 def overview(key, out, smooth=2):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
     accessibility tracks (per-pixel mean, smoothed over `smooth` pixels or not at all; each track scaled from its
-    75th-percentile pixel to its maximum, so the background noise is blanked), then the hub's gene models. Track labels
+    OVERVIEW_FLOOR-th percentile pixel (default 50, the median) to its maximum, lifting the background noise), then the hub's gene models. Track labels
     are set black and right-aligned against the tracks, and the browser's red left border and the arcs' end markers are
     removed (tidy). The browser PDF (always 7.5 in wide) is kept as <out>_browser.pdf; the figure is OVERVIEW_IN wide."""
     a, b = 12551035, OVERVIEW_END                    # domain start (DHX35) to just before the TOP1 promoter peak
