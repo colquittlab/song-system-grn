@@ -80,7 +80,7 @@ def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
 
 def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth=None):
     height = height or HEIGHT
-    sm = f"windowingFunction=mean smoothingWindow={smooth} " if smooth else ""
+    sm = f"smoothingWindow={smooth} " if smooth else ""      # per-pixel maximum (the default), then smoothing
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
@@ -123,8 +123,8 @@ PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an i
 
 
 def tidy(t, pad=3.0):
-    """drop the browser's pale-red border at the left of the data area; set the left-column track labels in black,
-    right-aligned flush (pad units) against the data area"""
+    """drop the browser's pale-red border at the left of the data area and the end markers of interact arcs; set the
+    left-column track labels in black, right-aligned flush (pad units) against the data area"""
     import re
     m = re.search(r'<path\b[^>]*fill:#ffb4b4[^>]*>', t)
     x0 = 139.5
@@ -132,6 +132,28 @@ def tidy(t, pad=3.0):
         d = re.search(r'\sd="m ([0-9.]+),[0-9.]+ h ([0-9.]+)', m.group(0)); sc = re.search(r'matrix\(([0-9.]+)', m.group(0))
         if d and sc: x0 = (float(d.group(1)) + float(d.group(2))) * float(sc.group(1))
         t = t.replace(m.group(0), "", 1)
+    # interact end markers: small filled boxes in a thin band above the arcs' baseline (raw, y-up coordinates)
+    def ybox(d):
+        x = y = 0.0; ys = []
+        for c, a in re.findall(r'([MmLlHhVvZz])([^MmLlHhVvZzCcSsQqTtAa]*)', d):
+            v = [float(q) for q in re.findall(r'[-+]?\d*\.?\d+(?:e[-+]?\d+)?', a)]
+            if c in "Mm" or c in "Ll":
+                for i in range(0, len(v) - 1, 2):
+                    x, y = (v[i], v[i + 1]) if c.isupper() else (x + v[i], y + v[i + 1]); ys.append(y)
+            elif c in "Hh": x = v[-1] if c == "H" else x + sum(v)
+            elif c in "Vv":
+                for q in v: y = q if c == "V" else y + q; ys.append(y)
+        return (min(ys), max(ys)) if ys else None
+    base = [float(re.search(r'\sd="m [0-9.]+,([0-9.]+) c', el).group(1)) for el in re.findall(r'<path\b[^>]*/>', t)
+            if re.search(r'\sd="m [0-9.]+,[0-9.]+ c', el) and re.search(r'stroke:#[0-9a-f]{6}', el)]   # arc starts
+    if base:
+        b0 = min(base)
+        def drop(mm):
+            el = mm.group(0)
+            if "stroke:none" not in el or re.search(r'\sd="[^"]*[CcSsQqAa]', el): return el
+            d = re.search(r'\sd="([^"]*)"', el); yb = ybox(d.group(1)) if d else None
+            return "" if yb and yb[0] >= b0 - 1 and yb[1] <= b0 + 60 else el
+        t = re.sub(r'<path\b[^>]*/>', drop, t)
     def fix(mm):                                      # texts in the left label column (translate x < 20)
         el = mm.group(0); tr = re.search(r'transform="matrix\(([0-9.]+),0,0,([0-9.]+),([-0-9.]+),([-0-9.]+)\)"', el)
         if not tr or float(tr.group(3)) >= 20: return el
@@ -164,7 +186,7 @@ def to_figure(pdf, stem, width_in):
 
 def overview(key, out):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
-    accessibility tracks (autoscaled, 30 px, 2-pixel mean smoothing), then the hub's gene models. Track labels are
+    accessibility tracks (autoscaled, 30 px, per-pixel maximum smoothed over 2 pixels), then the hub's gene models. Track labels are
     set black and right-aligned against the tracks, and the browser's red left border is removed (tidy). The browser PDF (always 7.5 in wide) is
     kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
     pre, n = p2g_track("chr20", 12551035, 13547533)
