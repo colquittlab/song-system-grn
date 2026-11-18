@@ -36,7 +36,10 @@ PHY = [("phyloP oscine", f"{BASE}/{GENOME}/comparative/subtree222_perbase_lsd2.b
        ("phyloP all 363", f"{BASE}/{GENOME}/comparative/wholetree_perbase_lsd2.bw", "33,102,172", "178,24,43", "-4:6")]
 PIX = 1200
 HEIGHT = 45
-OVERVIEW_PIX = int(os.environ.get("OVERVIEW_PIX", "800"))   # image width for the domain overview (~5 in page)                                          # track height (px): 1.5 x the hub default of 30
+OVERVIEW_PIX = int(os.environ.get("OVERVIEW_PIX", "1600"))  # image width for the domain overview: a full browser width,
+OVERVIEW_TEXT = os.environ.get("OVERVIEW_TEXT", "18")         # so 2-px smoothing spans what it does on screen; larger browser
+                                                              # text keeps labels readable once scaled to OVERVIEW_IN
+OVERVIEW_HEIGHT = int(os.environ.get("OVERVIEW_HEIGHT", "44")) # accessibility track height (px) at that width                                          # track height (px): 1.5 x the hub default of 30
 
 
 GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim.bb"
@@ -93,12 +96,13 @@ def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth
 
 
 def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre="",
-           pix=None, smooth=None):
+           pix=None, smooth=None, text=None):
     """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
     cj = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-    base = {"hubUrl": HUB, "genome": GENOME, "position": f"{chrom}:{a + 1}-{b}", "pix": pix or PIX, "apiKey": key}
+    base = {"hubUrl": HUB, "genome": GENOME, "position": f"{chrom}:{a + 1}-{b}", "pix": pix or PIX, "apiKey": key,
+            **({"textSize": text} if text else {})}
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
@@ -191,9 +195,9 @@ def overview(key, out):
     kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
     pre, n = p2g_track("chr20", 12551035, 13547533)
     raw = out.replace(".pdf", "_browser.pdf")
-    render(key, "chr20", 12551035, 13547533, None, None, {}, raw, phy=False, highlight="", height=30, auto=True,
-           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX, smooth=2)
-    w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "5")))
+    render(key, "chr20", 12551035, 13547533, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
+           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX, smooth=2, text=OVERVIEW_TEXT)
+    w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "6.8")))
     print(f"  RA + C1H-1 links to MAFB drawn: {n}; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in) and {raw}")
 
 
