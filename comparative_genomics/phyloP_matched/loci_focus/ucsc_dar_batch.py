@@ -39,7 +39,9 @@ HEIGHT = 45
 OVERVIEW_PIX = int(os.environ.get("OVERVIEW_PIX", "1600"))  # image width for the domain overview: a full browser width,
 OVERVIEW_TEXT = os.environ.get("OVERVIEW_TEXT", "18")         # so 2-px smoothing spans what it does on screen; larger browser
                                                               # text keeps labels readable once scaled to OVERVIEW_IN
-OVERVIEW_HEIGHT = int(os.environ.get("OVERVIEW_HEIGHT", "44")) # accessibility track height (px) at that width                                          # track height (px): 1.5 x the hub default of 30
+OVERVIEW_HEIGHT = int(os.environ.get("OVERVIEW_HEIGHT", "44")) # accessibility track height (px) at that width
+OVERVIEW_END = 13545500                                       # the overview stops ~2 kb short of the TOP1 TSS (13,547,533):
+                                                              # its promoter peak (RA 93, PVALB-2 174) would set every autoscale                                          # track height (px): 1.5 x the hub default of 30
 
 
 GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim.bb"
@@ -194,10 +196,11 @@ def overview(key, out):
     accessibility tracks (autoscaled, per-pixel mean smoothed over 2 pixels), then the hub's gene models. Track labels are
     set black and right-aligned against the tracks, and the browser's red left border is removed (tidy). The browser PDF (always 7.5 in wide) is
     kept as <out>_browser.pdf; the figure is scaled to OVERVIEW_IN inches wide (default 5; text ~6 pt at 800 px)."""
-    pre, n = p2g_track("chr20", 12551035, 13547533)
+    a, b = 12551035, OVERVIEW_END                    # domain start (DHX35) to just before the TOP1 promoter peak
+    pre, n = p2g_track("chr20", a, b)
     raw = out.replace(".pdf", "_browser.pdf")
-    render(key, "chr20", 12551035, 13547533, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
-           extra=gene_track("chr20", 12551035, 13547533), pre=pre, pix=OVERVIEW_PIX, smooth=2, text=OVERVIEW_TEXT)
+    render(key, "chr20", a, b, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
+           extra=gene_track("chr20", a, b), pre=pre, pix=OVERVIEW_PIX, smooth=2, text=OVERVIEW_TEXT)
     w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "6.8")))
     print(f"  RA + C1H-1 links to MAFB drawn: {n}; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in) and {raw}")
 
