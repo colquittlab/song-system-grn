@@ -72,7 +72,7 @@ def p2g_track(chrom, a, b, gene="MAFB", cut="0.45"):
             f[0] = f[8] = f[13] = "."                 # no labels on the arcs
             rows.append([NATIVE.get(chrom, chrom), s, e] + [NATIVE.get(x, x) for x in f])
     out = [f'track type=interact name="RA + C1H-1 P2G r >= {cut}" description="RA + C1H-1 peak-to-gene links to {gene}, '
-           f'r >= {cut}, max distance 1 Mb; grey, light (r = {cut}) to black (r = 1)" visibility=full maxHeightPixels=200:60:20']
+           f'r >= {cut}, max distance 1 Mb; grey, light (r = {cut}) to black (r = 1)" visibility=full maxHeightPixels=200:60:20 interactUp=true']
     out += ["\t".join(map(str, r)) for r in rows]
     return "\n".join(out), len(rows)
 
