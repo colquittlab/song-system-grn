@@ -16,8 +16,8 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
 ~/.ucsc_api_key (never stored here).
 
     ACC_MAX=30 python ucsc_dar_batch.py [window_bp=10000] [first N peaks]
-    python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533), accessibility only,
-                                          # curated DAR peaks shaded -> results/ucsc/mafb_domain_overview_acc<max>.pdf
+    python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533): accessibility (autoscaled,
+                                          # 30 px) and gene models, no highlights -> results/ucsc/mafb_domain_overview.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
 dar_peaks_win<W>k_acc<max>.pdf (all pages, in genome order).
 """
@@ -38,18 +38,37 @@ PIX = 1200
 HEIGHT = 45                                          # track height (px): 1.5 x the hub default of 30
 
 
-def custom_text(lim, phy=True):
+GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPKMthresh0.5_FPKMmaxfrac0.1_minhits5_slim.bb"
+
+
+def gene_track(chrom, a, b):
+    """inline BED12 of the hub's gene models over [a, b): the longest transcript per gene, named by symbol (name2)"""
+    bb = pyBigWig.open(GENES); rows = {}
+    for s, e, rest in bb.entries("NC_042585.1" if chrom == "chr20" else chrom, a, b):
+        f = rest.split("\t"); sym = f[9] or f[0]
+        if sym not in rows or e - s > rows[sym][1] - rows[sym][0]: rows[sym] = (s, e, f)
+    out = ['track name="genes" description="NCBI gene models (3\' UTR extended), longest transcript per gene" '
+           'visibility=pack color=60,60,60']
+    for sym, (s, e, f) in sorted(rows.items(), key=lambda kv: kv[1][0]):
+        out.append("\t".join(map(str, [chrom, s, e, sym, 0, f[2], f[3], f[4], 0, f[6], f[7], f[8]])))
+    return "\n".join(out)
+
+
+def custom_text(lim, phy=True, height=None, auto=False, extra=""):
+    height = height or HEIGHT
     t = []
     for name, col, pair, lab in ACC:
         t.append(f'track type=bigWig name="{lab}" bigDataUrl={W}/{name}-insertion-bin10-smooth20.bw color={col} '
-                 f'autoScale=off viewLimits=0:{lim[pair]:g} alwaysZero=on maxHeightPixels=128:{HEIGHT}:11 visibility=full')
+                 + ("autoScale=on " if auto else f"autoScale=off viewLimits=0:{lim[pair]:g} ")
+                 + f'alwaysZero=on maxHeightPixels=128:{height}:11 visibility=full')
     for name, url, col, alt, vl in (PHY if phy else []):
         t.append(f'track type=bigWig name="{name}" bigDataUrl={url} color={col} altColor={alt} autoScale=off '
                  f'viewLimits={vl} alwaysZero=on windowingFunction=mean maxHeightPixels=128:{HEIGHT}:11 visibility=full')
-    return "\n".join(t)
+    return "\n".join(t) + ("\n" + extra if extra else "")
 
 
-def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None):
+def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra=""):
+    """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
     cj = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -57,11 +76,13 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None):
     post = lambda q: cj.open(f"{UCSC}/cgi-bin/hgTracks", urllib.parse.urlencode(q).encode(), timeout=300).read().decode("utf-8", "replace")
     for i in range(3):
         try:
-            page = post({**base, "hgt.customText": custom_text(lim, phy)})
+            page = post({**base, "hgt.customText": custom_text(lim, phy, height, auto, extra)})
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
-            if len(ids) < len(ACC) + (len(PHY) if phy else 0): raise RuntimeError(f"custom tracks not loaded ({ids})")
-            page = post({**base, "hideTracks": 1, **{t: "full" for t in ids}, "guidelines": "off", "centerLabels": "off",
-                         "highlight": highlight or f"{chrom}:{hs + 1}-{he}#e6e6e6", "hgt.psOutput": "on"})
+            if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra): raise RuntimeError(f"custom tracks not loaded ({ids})")
+            q = {**base, "hideTracks": 1, **{t: "full" for t in ids}, **(show or {}), "guidelines": "off", "centerLabels": "off",
+                 "hgt.psOutput": "on"}
+            if highlight != "": q["highlight"] = highlight or f"{chrom}:{hs + 1}-{he}#e6e6e6"
+            page = post(q)
             p = re.search(r"\.\./trash/hgt/hgt_genome_[^'\"]*\.pdf", page)
             if not p: raise RuntimeError("no PDF link in response")
             open(out, "wb").write(cj.open(f"{UCSC}/{p.group(0)[3:]}", timeout=120).read()); return
@@ -71,20 +92,17 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None):
 
 
 def overview(key, out):
-    """the whole DHX35-TOP1 domain, accessibility tracks only, every curated DAR peak shaded grey"""
-    S = pd.read_csv(f"{R}/mafb_domain/element_summaries.tsv", sep="\t")
-    P = S.drop_duplicates(["chrom", "peak_start", "peak_end"])
-    hl = "|".join(f"{c}:{s + 1}-{e}#e6e6e6" for c, s, e in zip(P.chrom, P.peak_start, P.peak_end))
-    lim = {"RA": float(os.environ.get("ACC_MAX", "30")), "G4": float(os.environ.get("ACC_MAX", "30"))}
-    render(key, "chr20", 12551035, 13547533, None, None, lim, out, phy=False, highlight=hl)
-    print(f"  wrote {out} ({len(P)} DAR peaks shaded)")
+    """the whole DHX35-TOP1 domain: accessibility tracks (autoscaled, 30 px) and the hub's gene models"""
+    render(key, "chr20", 12551035, 13547533, None, None, {}, out, phy=False, highlight="", height=30, auto=True,
+           extra=gene_track("chr20", 12551035, 13547533))
+    print(f"  wrote {out}")
 
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "overview":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
-        overview(key, f"{R}/ucsc/mafb_domain_overview_acc{os.environ.get('ACC_MAX', '30')}.pdf"); return
+        overview(key, f"{R}/ucsc/mafb_domain_overview.pdf"); return
     win = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     first = int(sys.argv[2]) if len(sys.argv) > 2 else None
     key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
