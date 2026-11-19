@@ -46,6 +46,11 @@ CLS = ["RA", "G4", "both"]
 NAME = {"RA": "RA", "G4": "G4", "both": "shared"}
 GAIN_MIN = 0.5
 N = 20000
+# MAFB eRegulon each SCENIC+ regulator belongs to (build_scenic_motifs.REG); the AR reference matrices are
+# reported with RA but kept out of the eRegulon tests, so every TF enters once at one matrix
+EREG = {"AR": "RA", "KLF12": "RA", "NFIA": "RA", "LIN28B": "RA", "STAT1": "RA", "FOSL2": "RA",
+        "MAF": "G4", "SOX6": "G4", "TCF12": "G4", "ARX": "G4", "SATB1": "G4", "MEIS2": "G4"}
+TIERS = ["stem", "near-stem", "within", "inherited", "none"]
 
 
 def scan(seq, k):
@@ -188,6 +193,53 @@ def report(d, label, summ):
         print(f"    {m + (' m' if m in FLAG else ''):<9}" + "".join(f"{v:>15}" for v in cells))
 
 
+def ereg(d, label):
+    """RA-eRegulon vs G4-eRegulon sites: what is gained, overall and in each DAR class.
+
+    Main effect (RA vs G4 eRegulon TFs): exact permutation of the eRegulon labels over the 12 TFs (924 splits),
+    the TF being the unit, since matrices differ in length and information and so in baseline gain.
+    Interaction (does each eRegulon gain more in its own DAR class?): permutation of DAR class over lobes of
+    the statistic (RA-reg - G4-reg gain in RA lobes) - (same in G4 lobes)."""
+    d = d[d.floor_ok & d.motif.isin(EREG)].copy()
+    d["ereg"] = d.motif.map(EREG); d["stem"] = d.tier.isin(["stem", "near-stem"])
+    print(f"\n  ===== eRegulons, {label}: {len(d)} sites in {d.element.nunique()} lobes =====")
+    print(f"    {'eRegulon':<9}{'DARs':<8}{'TFs':>4}{'lobes':>6}{'sites':>7}{'mean gain':>11}{'95% CI':>18}"
+          + "".join(f"{t:>11}" for t in TIERS))
+    for e in ("RA", "G4"):
+        for c in CLS + ["all"]:
+            x = d[d.ereg == e] if c == "all" else d[(d.ereg == e) & (d.cls == c)]
+            lo, hi = boot(x, "gain")
+            tc = x.tier.value_counts()
+            print(f"    {e:<9}{NAME.get(c, c):<8}{x.motif.nunique():>4}{x.element.nunique():>6}{len(x):>7}"
+                  f"{x.gain.mean():>+11.3f}{f'[{lo:+.3f},{hi:+.3f}]':>18}"
+                  + "".join(f"{f'{tc.get(t, 0)} ({100 * tc.get(t, 0) / len(x):.0f}%)':>11}" for t in TIERS))
+    # main effect, TF as the unit
+    tf = d.groupby("motif").agg(gain=("gain", "mean"), stem=("stem", "mean"))
+    tf["ereg"] = tf.index.map(EREG)
+    for col, nm in (("gain", "mean gain"), ("stem", "stem+near share")):
+        obs = tf[tf.ereg == "RA"][col].mean() - tf[tf.ereg == "G4"][col].mean()
+        v = tf[col].values; null = [v[list(c)].mean() - np.delete(v, list(c)).mean()
+                                    for c in itertools.combinations(range(len(v)), (tf.ereg == "RA").sum())]
+        p = np.mean(np.abs(null) >= abs(obs) - 1e-12)
+        print(f"    RA vs G4 eRegulon TFs ({nm}, per-TF means): diff {obs:+.3f}, exact TF-label permutation p = {p:.3g}")
+    # site-level, Fisher on stem+near (sites not independent; descriptive)
+    a, b = d[d.ereg == "RA"].stem, d[d.ereg == "G4"].stem
+    print(f"    stem+near sites: RA eRegulons {a.sum()}/{len(a)}, G4 eRegulons {b.sum()}/{len(b)};"
+          f" Fisher p = {stats.fisher_exact([[a.sum(), (~a).sum()], [b.sum(), (~b).sum()]])[1]:.3g} (sites as independent)")
+    # interaction
+    def inter(x, A, B):
+        def diff(S):
+            y = x[x.element.isin(S)]; r, g = y[y.ereg == "RA"].gain, y[y.ereg == "G4"].gain
+            return r.mean() - g.mean() if len(r) and len(g) else np.nan
+        return diff(A) - diff(B)
+    obs, p = perm(d, inter, "RA", "G4")
+    print(f"    own-class interaction, gain: (RA-reg - G4-reg) in RA lobes minus in G4 lobes = {obs:+.3f},"
+          f" lobe permutation p = {p:.3g}")
+    d2 = d.assign(gain=d.stem.astype(float))
+    obs, p = perm(d2, inter, "RA", "G4")
+    print(f"    own-class interaction, stem+near share: {obs:+.3f}, lobe permutation p = {p:.3g}")
+
+
 def main():
     d = build() if "--reuse" not in sys.argv else pd.read_csv(f"{R}/element_motif_gain.tsv", sep="\t")
     print(f"  {len(d)} sites; {d.floor_ok.sum()} clear the coverage floor; "
@@ -195,6 +247,7 @@ def main():
     summ = []
     report(d, "all lobes", summ)
     report(d[d.depth_ok], "depth >= 0.8", summ)
+    ereg(d, "all lobes"); ereg(d[d.depth_ok], "depth >= 0.8")
     pd.DataFrame(summ).to_csv(f"{R}/element_motif_gain_summary.tsv", sep="\t", index=False, float_format="%.4g")
 
 
