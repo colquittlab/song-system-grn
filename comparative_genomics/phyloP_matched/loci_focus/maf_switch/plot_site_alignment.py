@@ -46,6 +46,10 @@ substitution that created the site can be read directly.
 
 usage:
   plot_site_alignment.py <site name> <matrix> [--aln 74|363] [--phylogram] [--paper WIDTH_MM [--row-mm R]] [--flank N] [--out STEM]
+  plot_site_alignment.py <label> <matrix> --coords chr:start-end [--cls RA] [--maf M] [--outdir D] ...
+    a site not in the MAFB site BEDs (e.g. the curated-lobe scan, lobe_site_gain.py): 1-based coordinates, strand
+    from the reference's better-scoring orientation, alignment --maf (avian363 default data/lobes_gap.maf),
+    written to --outdir instead of results/per_site/
     matrix: full | jaspar | any tf_scenic.meme name (AR, FOSL2, MAF, ...)
   e.g. plot_site_alignment.py RA_Glut-HVC-2.394967_1 jaspar
 """
@@ -69,6 +73,7 @@ import sys as _s; _s.path.insert(0, "/private/warm-archive/colquittlab/assembly/
 
 F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus"
 HM = "/private/home/bcolquit/group/motifs/homer/ra_pos_vs_neg/homerResults_manual"
+FA = "/private/groups/colquittlab/assembly/lonStrDom2/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
 PC = 0.001; PAD = 30; COV = 0.8
 INK, INK2, INK3, RULE = "#171B22", "#3A4350", "#6E7887", "#DDE1E7"
 PRES, ABS, GAINC, LOSSC = "#C8161A", "#B7BEC8", "#C7521B", "#2C6E7F"
@@ -262,15 +267,29 @@ def main():
     ap.add_argument("--tree-scale", type=float, default=None,
                     help="tree panel width relative to the default (default 1; 0.5 with --paper)")
     ap.add_argument("--row-mm", type=float, default=2.3, help="row height in mm for --paper")
+    ap.add_argument("--coords", default=None, help="chr:start-end (1-based) of a site not in the site BEDs")
+    ap.add_argument("--cls", default="", help="DAR class shown in the title, with --coords")
+    ap.add_argument("--maf", default=None, help="alignment with --coords (avian363 default data/lobes_gap.maf)")
+    ap.add_argument("--outdir", default=None, help="write here instead of results/per_site/<collection>/<span>")
     ap.add_argument("--as-listed", action="store_true",
                     help="show the subsample's listed species instead of each clade's most typical member")
     a = ap.parse_args()
 
     cfg = ALN[a.aln]
-    st, maf = find_site(a.site, a.matrix, cfg)
     p, mlab = load_matrix(a.matrix)
     lo = np.log2((p + PC) / (1 + 4 * PC) / .25)
     rc = lo[::-1, ::-1]
+    if a.coords:
+        import pysam
+        c, r_ = a.coords.replace(",", "").split(":"); s0, e0 = (int(x) for x in r_.split("-"))
+        ref = pysam.FastaFile(FA).fetch(c, s0 - 1, e0).upper()
+        if len(ref) != len(lo): sys.exit(f"{a.coords} is {len(ref)} bp; {mlab} is {len(lo)}")
+        idx = np.arange(len(lo)); x = CODE[np.frombuffer(ref.encode(), np.uint8)]
+        strand = "+" if lo[idx, x].sum() >= rc[idx, x].sum() else "-"
+        st = dict(chrom=c, s=s0 - 1, e=e0, strand=strand, cls=a.cls, elem="")
+        maf = a.maf or ("data/lobes_gap.maf" if a.aln == "363" else sys.exit("--coords needs --maf for --aln 74"))
+    else:
+        st, maf = find_site(a.site, a.matrix, cfg)
     TH = thresh(lo)
 
     tree = parse_newick(open(cfg["tree"]).read())
@@ -749,11 +768,12 @@ def main():
 
     stem = a.out or f"{cfg['prefix']}{'p' if a.phylogram else ''}_{a.matrix}_{a.site}" + ("_paper" if a.paper else "")
     coll = cfg["collection"] + ("_phylogram" if a.phylogram else "")
+    od = a.outdir or per_site(coll, stem)
     for ext in (("pdf", "png", "svg") if a.paper else ("pdf", "png")):
-        fig.savefig(f"{per_site(coll, stem)}/{stem}.{ext}", dpi=600 if a.paper else 300)
+        fig.savefig(f"{od}/{stem}.{ext}", dpi=600 if a.paper else 300)
     if a.paper:
         print(f"  paper size {W * fx * 25.4:.1f} x {H * fy * 25.4:.1f} mm")
-    print(f"  wrote {per_site(coll, stem)}/{stem}.pdf / .png   {ncol} columns x {len(rows_g)} rows"
+    print(f"  wrote {od}/{stem}.pdf / .png   {ncol} columns x {len(rows_g)} rows"
           f"   events: {len(events)} ({sum(1 for _, k in events if k == '+')} gains)"
           f"   hidden: {dict(hidden)}")
 
