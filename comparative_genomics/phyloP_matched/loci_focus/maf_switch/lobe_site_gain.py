@@ -133,12 +133,8 @@ def build():
                            n_osc=len(o), n_out=len(u), p_osc=sum(d[g] for g in o), p_out=sum(d[g] for g in u),
                            depth_ok=bool(r.osc_depth_min50 >= DEPTH and r.nonosc_depth_min50 >= DEPTH))
                 c = classify(d)
-                # tiers363.classify ranks an oscine gain above the stem state, so a site present at the oscine
-                # MRCA with a later regain inside oscines comes out near-stem or within; tier_fixed calls it inherited
-                st = d.get(STEM)
                 rec.update(tier=c["tier"], principal=c["principal"], gains=c["gains"], losses=c["losses"],
-                           stem_state=st,
-                           tier_fixed=("inherited" if st and c["tier"] in ("near-stem", "within") else c["tier"]))
+                           stem_state=d.get(STEM))
                 rows.append(rec)
         print(f"    {r.element}: {sum(1 for x in rows if x['element'] == r.element)} sites", flush=True)
     d = pd.DataFrame(rows)
@@ -154,7 +150,7 @@ def build():
 
 def report(d, label, summ):
     d = d[d.floor_ok].copy(); d["ar"] = d.motif.isin(AR)
-    d["stem"] = d.tier_fixed.isin(["stem", "near-stem"])
+    d["stem"] = d.tier.isin(["stem", "near-stem"])
     q = d.fisher_p.values; o = np.argsort(q); bh = np.empty(len(q))
     bh[o] = np.minimum(np.minimum.accumulate((q[o] * len(q) / np.arange(1, len(q) + 1))[::-1])[::-1], 1)
     d["cand"] = (d.gain >= GAIN_MIN) & (bh < 0.05)
@@ -206,7 +202,7 @@ def ereg(d, label):
     Interaction (does each eRegulon gain more in its own DAR class?): permutation of DAR class over lobes of
     the statistic (RA-reg - G4-reg gain in RA lobes) - (same in G4 lobes)."""
     d = d[d.floor_ok & d.motif.isin(EREG)].copy()
-    d["ereg"] = d.motif.map(EREG); d["stem"] = d.tier_fixed.isin(["stem", "near-stem"])
+    d["ereg"] = d.motif.map(EREG); d["stem"] = d.tier.isin(["stem", "near-stem"])
     print(f"\n  ===== eRegulons, {label}: {len(d)} sites in {d.element.nunique()} lobes =====")
     print(f"    {'eRegulon':<9}{'DARs':<8}{'TFs':>4}{'lobes':>6}{'sites':>7}{'mean gain':>11}{'95% CI':>18}"
           + "".join(f"{t:>11}" for t in TIERS))
@@ -214,7 +210,7 @@ def ereg(d, label):
         for c in CLS + ["all"]:
             x = d[d.ereg == e] if c == "all" else d[(d.ereg == e) & (d.cls == c)]
             lo, hi = boot(x, "gain")
-            tc = x.tier_fixed.value_counts()
+            tc = x.tier.value_counts()
             print(f"    {e:<9}{NAME.get(c, c):<8}{x.motif.nunique():>4}{x.element.nunique():>6}{len(x):>7}"
                   f"{x.gain.mean():>+11.3f}{f'[{lo:+.3f},{hi:+.3f}]':>18}"
                   + "".join(f"{f'{tc.get(t, 0)} ({100 * tc.get(t, 0) / len(x):.0f}%)':>11}" for t in TIERS))

@@ -22,7 +22,10 @@ Placement is therefore reported, not just pass/fail:
   none          no gain in or above oscines
 
 Per site the PRINCIPAL oscine gain -- the one with most oscines below it -- sets
-the tier. Independent gains outside oscines are counted as homoplasy, not used to
+the tier, unless the site is present at the oscine MRCA: then it is stem (gained on
+the stem branch) or inherited, and gains inside oscines are regains after a loss.
+(Before 2026-11-19 a regain inside oscines outranked a present MRCA, labelling such
+sites near-stem or within.) Independent gains outside oscines are counted as homoplasy, not used to
 discard the site; extra gains inside oscines (re-gains) are counted too.
 
 Presence is the corrected call (presence.py: one reference-projected sequence per
@@ -90,9 +93,15 @@ def classify(pres):
                  and pres[p] != pres[c] and not pres[c])
     loc = {g: where(g) for g in gains}
     osc_g = [g for g in gains if loc[g] in ("stem", "near-stem", "within")]
-    if osc_g:
+    if STEM in gains:
+        pg = STEM; tier = "stem"
+    elif pres.get(STEM):
+        # present at the oscine MRCA without a stem gain: the site predates oscines, and any gain inside oscines
+        # is a regain after a loss (counted in other_osc_gains), not the origin of the site
+        pg = None; tier = "inherited"
+    elif osc_g:
         pg = max(osc_g, key=lambda g: len(TIPS[g] & OSC)); tier = loc[pg]
-    elif any(loc[g] == "above" for g in gains) or pres.get(STEM):
+    elif any(loc[g] == "above" for g in gains):
         pg = None; tier = "inherited"
     else:
         pg = None; tier = "none"
@@ -100,7 +109,7 @@ def classify(pres):
                 osc_cov=(len(TIPS[pg] & OSC) / len(OSC) if pg else None),
                 gains=len(gains), losses=losses,
                 nonosc_gains=sum(1 for g in gains if loc[g] == "non-oscine"),
-                other_osc_gains=max(0, len(osc_g) - 1),
+                other_osc_gains=len(osc_g) - (pg is not None),
                 gain_nodes=[[g, loc[g]] for g in gains])
 
 

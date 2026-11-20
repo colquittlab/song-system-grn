@@ -19,6 +19,8 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
     python ucsc_dar_batch.py locus SIX2 [flank_bp=10000]   # one gene +/- flank, peak-batch tracks + gene models
     python ucsc_dar_batch.py region NAME chr:start-end [chr:start-end ...]   # one element (grey) + marked sites (darker),
                                           # 10-kb and 2-kb windows, peak-batch tracks
+    python ucsc_dar_batch.py ar_sites [win_bp=2000]   # every significant oscine AR-site gain in the curated lobes,
+                                          # one view each with y-axis limits -> results/ucsc/ar_sites_win2k_acc30/
     python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533): accessibility (autoscaled,
                                           # 30 px) and gene models, no highlights -> results/ucsc/mafb_domain_overview.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
@@ -144,8 +146,10 @@ def custom_text(lim, phy=True, height=None, auto=False, extra="", pre="", smooth
 
 
 def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=None, auto=False, show=None, extra="", pre="",
-           pix=None, smooth=None, text=None, tlim=None):
-    """show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
+           pix=None, smooth=None, text=None, tlim=None, axis=False):
+    """axis: centre labels on, which is the only way the browser draws each track's y-axis limits (the centre text
+    itself is removed later by tidy(axis=True)).
+    show: hub tracks to keep visible as {track: visibility}; highlight "" = none"""
     """two requests in one session: load the custom tracks (their ids are assigned by the server), then
     hide every track and show only those ids -- hideTracks would otherwise hide the custom tracks too"""
     cj = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -158,7 +162,7 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
             ids = list(dict.fromkeys(re.findall(r"ct_[A-Za-z0-9]+_[0-9]+", page)))
             if len(ids) < len(ACC) + (len(PHY) if phy else 0) + bool(extra) + bool(pre): raise RuntimeError(f"custom tracks not loaded ({ids})")
             q = {**base, "hideTracks": 1, **{t: ("pack" if t.startswith("ct_genes_") else "full") for t in ids}, **(show or {}),
-                 "guidelines": "off", "centerLabels": "off",
+                 "guidelines": "off", **({} if axis else {"centerLabels": "off"}),
                  "hgt.psOutput": "on"}
             if highlight != "": q["highlight"] = highlight or f"{chrom}:{hs + 1}-{he}#e6e6e6"
             page = post(q)
@@ -174,7 +178,7 @@ CLEAN = "/private/home/bcolquit/group/song-system-grn/scripts/browser_pdf_to_svg
 PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an interpreter with lxml for CLEAN
 
 
-def tidy(t, pad=3.0):
+def tidy(t, pad=3.0, axis=False, numw=9.0):
     """drop the browser's pale-red border at the left of the data area, the end markers of interact arcs and the magenta
     clipping marks; set the
     left-column track labels in black, right-aligned flush (pad units) against the data area"""
@@ -209,6 +213,8 @@ def tidy(t, pad=3.0):
         t = re.sub(r'<path\b[^>]*/>', drop, t)
     # the browser's magenta marks for values clipped by the view limits (below a raised floor)
     t = re.sub(r'<path\b[^>]*fill:#ff00ff[^>]*/>', "", t)
+    if axis:
+        return axis_labels(t, x0, pad, numw)
     def fix(mm):                                      # texts in the left label column (translate x < 20)
         el = mm.group(0); tr = re.search(r'transform="matrix\(([0-9.]+),0,0,([0-9.]+),([-0-9.]+),([-0-9.]+)\)"', el)
         if not tr or float(tr.group(3)) >= 20: return el
@@ -217,7 +223,46 @@ def tidy(t, pad=3.0):
     return re.sub(r'<text\b.*?</text>', fix, t, flags=re.S)
 
 
-def to_figure(pdf, stem, width_in):
+def axis_labels(t, x0, pad, numw):
+    """labels when the browser drew y-axis limits (centre labels on): drop the centre labels (track names over the data
+    area); set each track's limits right-aligned flush against the data area, without the browser's "_" ticks, and its
+    name right-aligned just left of them, centred between them; everything black"""
+    import re
+    els = re.findall(r'<text\b.*?</text>', t, re.S)
+    tsp = lambda el: re.findall(r'<tspan\b([^>]*)>(.*?)</tspan>', el, re.S)
+    TR = r'transform="matrix\(([-0-9.]+),0,0,([-0-9.]+),([-0-9.]+),([-0-9.]+)\)"'
+    names = set()
+    for el in els:                                    # the left label column: a name, then limits ending in "_"
+        tr = re.search(TR, el)
+        if tr and float(tr.group(3)) < 20:
+            names |= {c.strip() for _, c in tsp(el) if not c.strip().endswith("_")}
+    def one(attr, text, x, y, anchor):
+        st = re.search(r'style="([^"]*)"', attr).group(1)
+        st = re.sub(r'fill:#[0-9a-fA-F]{6}', 'fill:#000000', st).replace('writing-mode:lr-tb;', f'writing-mode:lr-tb;text-anchor:{anchor};')
+        return f'<tspan style="{st}" x="{x:.3f}" y="{y:.3f}">{text}</tspan>'
+    def fix(mm):
+        el = mm.group(0); tr = re.search(TR, el)
+        if not tr: return el
+        sx, sy, tx, ty = (float(v) for v in tr.groups())
+        parts = tsp(el)
+        if tx >= x0:                                  # data area: the centre labels go
+            return "" if "".join(c for _, c in parts).strip() in names else el
+        lim = [(a, c) for a, c in parts if c.strip().endswith("_")]
+        nm = [(a, c) for a, c in parts if not c.strip().endswith("_")]
+        if tx >= 20 and nm: return el                 # Scale / chromosome / ruler text
+        out = []
+        for a, c in lim:
+            y = float(re.search(r'\sy="([-0-9.]+)"', a).group(1))
+            # the browser's "_" marks the edge: the top limit hangs below it (cap height ~0.72 em), the bottom sits on it
+            out.append(one(a, c.strip().rstrip("_").strip(), 0, y + (4.3 if y < 0 else 0.0), "end"))
+        for a, c in nm:                               # name centred on the track (top limit -8.28, bottom +11.97)
+            out.append(one(a, c.strip(), -numw, (-8.28 + 11.97) / 2 + 2.0, "end"))
+        return (f'<text xml:space="preserve" transform="matrix({sx},0,0,{sy},{x0 - pad:.3f},{ty})">'
+                + "".join(out) + "</text>")
+    return re.sub(r'<text\b.*?</text>', fix, t, flags=re.S)
+
+
+def to_figure(pdf, stem, width_in, axis=False):
     """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> tidied -> cropped to the
     drawing -> scaled to width_in
     inches -> PDF (Inkscape). Writes <stem>.svg and <stem>.pdf."""
@@ -226,7 +271,7 @@ def to_figure(pdf, stem, width_in):
         sh = lambda c: subprocess.run(["bash", "-lc", c], check=True, capture_output=True)
         sh(f"inkscape '{pdf}' --pdf-font-strategy=keep --export-type=svg --export-plain-svg --export-filename='{d}/raw.svg'")
         subprocess.run([PY_LXML, CLEAN, f"{d}/raw.svg", "-o", f"{d}/clean.svg"], check=True, capture_output=True)
-        open(f"{d}/tidy.svg", "w").write(tidy(open(f"{d}/clean.svg").read()))
+        open(f"{d}/tidy.svg", "w").write(tidy(open(f"{d}/clean.svg").read(), axis=axis))
         # crop to the drawn content (the label column is wider than the right-aligned labels need)
         sh(f"inkscape '{d}/tidy.svg' --export-area-drawing --export-plain-svg --export-type=svg --export-filename='{d}/crop.svg'")
         t = open(f"{d}/crop.svg").read()
@@ -283,7 +328,55 @@ def region(key, name, chrom, s, e, marks=(), wins=(10000, 2000)):
         print(f"  {name}: view {chrom}:{a + 1:,}-{b:,}; wrote {stem}_browser.pdf and {stem}.svg/.pdf ({w:g} x {h:.2f} in)")
 
 
+def ar_sites(key, win=2000, q_max=0.05):
+    """every AR site (ARE-full, JASPAR AR, SCENIC+ AR) in the curated MAFB-domain lobes whose oscine presence exceeds
+    the outgroup's (one-sided Fisher, BH q < q_max over every site clearing the coverage floor, all matrices;
+    results/mafb_domain/element_motif_gain.tsv). Overlapping hits of different AR matrices are one locus and one view:
+    win bp centred on it, its lobe in grey, the site in darker grey, y-axis limits shown (axis=True). Writes
+    results/ucsc/ar_sites_win<k>k_acc<max>/<nn>_<class>_chr20_<start>-<end>_<matrices>{_browser.pdf,.svg,.pdf}, the
+    merged PDF of the figures and index.tsv (one row per matrix hit)."""
+    d = pd.read_csv(f"{R}/mafb_domain/element_motif_gain.tsv", sep="\t")
+    d = d[d.floor_ok].copy()
+    p = d.fisher_p.values; o = np.argsort(p); q = np.empty(len(p))
+    q[o] = np.minimum(np.minimum.accumulate((p[o] * len(p) / np.arange(1, len(p) + 1))[::-1])[::-1], 1)
+    d["q"] = q
+    a = d[d.motif.isin(["full", "jaspar", "AR"]) & (d.q < q_max)].sort_values(["start", "end"])
+    loci = []                                         # overlapping hits merged
+    for r in a.itertuples(index=False):
+        if loci and r.start < loci[-1]["end"] and r.element == loci[-1]["element"]:
+            L = loci[-1]; L["end"] = max(L["end"], r.end); L["rows"].append(r)
+        else:
+            loci.append(dict(element=r.element, cls=r.cls, chrom=r.chrom, start=r.start, end=r.end, rows=[r]))
+    el = pd.read_csv(f"{R}/mafb_domain/element_threshold_classes.tsv", sep="\t").set_index("element")
+    sc = float(os.environ.get("ACC_MAX", "30"))
+    out = f"{R}/ucsc/ar_sites_win{win / 1000:g}k_acc{sc:g}"; os.makedirs(out, exist_ok=True)
+    MN = {"full": "AREfull", "jaspar": "JASPAR", "AR": "SCENIC-AR"}
+    idx, figs = [], []
+    for i, L in enumerate(loci, 1):
+        e = el.loc[L["element"]]; cls = {"both": "shared"}.get(L["cls"], L["cls"])
+        mats = "+".join(MN[m] for m in dict.fromkeys(r.motif for r in L["rows"]))
+        stem = f"{out}/{i:02d}_{cls}_{L['chrom']}_{L['start'] + 1}-{L['end']}_{mats}"
+        mid = (L["start"] + L["end"]) // 2; a0 = max(0, mid - win // 2); b0 = a0 + win
+        hl = f"{L['chrom']}:{int(e.ext_start) + 1}-{int(e.ext_end)}#e6e6e6|{L['chrom']}:{L['start'] + 1}-{L['end']}#bdbdbd"
+        render(key, L["chrom"], a0, b0, None, None, {"RA": sc, "G4": sc}, f"{stem}_browser.pdf", highlight=hl, axis=True)
+        to_figure(f"{stem}_browser.pdf", stem, float(os.environ.get("REGION_IN", "6.8")), axis=True); figs.append(f"{stem}.pdf")
+        for r in L["rows"]:
+            idx.append(dict(n=i, file=os.path.basename(stem) + ".pdf", element=L["element"], dar_class=cls,
+                            phylop_class=e.thr_class, depth_ok=r.depth_ok, matrix=r.motif, site=f"{r.chrom}:{r.start + 1}-{r.end}",
+                            osc=f"{r.p_osc}/{r.n_osc}", out=f"{r.p_out}/{r.n_out}", gain=round(r.gain, 3),
+                            fisher_p=r.fisher_p, q=r.q, tier=r.tier, principal=r.principal))
+        print(f"  {i:2d}/{len(loci)} {cls:6s} {L['chrom']}:{L['start'] + 1:,}-{L['end']:,} {mats:24s} "
+              + ", ".join(f"{r.motif} {r.gain:+.2f} q={r.q:.1e} {r.tier}" for r in L["rows"]), flush=True)
+        time.sleep(2)
+    pd.DataFrame(idx).to_csv(f"{out}/index.tsv", sep="\t", index=False, float_format="%.3g")
+    subprocess.run(["pdfunite", *figs, f"{out}.pdf"], check=True)
+    print(f"  {len(a)} AR hits at q < {q_max} in {len(loci)} loci; wrote {out}/ (index.tsv) and {out}.pdf")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "ar_sites":
+        key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
+        ar_sites(key, int(sys.argv[2]) if len(sys.argv) > 2 else 2000); return
     if len(sys.argv) > 1 and sys.argv[1] == "region":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
