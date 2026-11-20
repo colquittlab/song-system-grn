@@ -17,6 +17,8 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
 
     ACC_MAX=30 python ucsc_dar_batch.py [window_bp=10000] [first N peaks]
     python ucsc_dar_batch.py locus SIX2 [flank_bp=10000]   # one gene +/- flank, peak-batch tracks + gene models
+    python ucsc_dar_batch.py region NAME chr:start-end [chr:start-end ...]   # one element (grey) + marked sites (darker),
+                                          # 10-kb and 2-kb windows, peak-batch tracks
     python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533): accessibility (autoscaled,
                                           # 30 px) and gene models, no highlights -> results/ucsc/mafb_domain_overview.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
@@ -267,7 +269,27 @@ def overview(key, out, smooth=2):
           + f"; {n} links; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in)")
 
 
+def region(key, name, chrom, s, e, marks=(), wins=(10000, 2000)):
+    """one element [s, e) in the DAR-peak style (fixed 0-ACC_MAX accessibility, phyloP, HEIGHT px), windows of constant
+    width centred on it; the element highlighted in grey, each (start, end) in marks in a darker grey. Writes
+    results/ucsc/<name>_win<k>k_acc<max>_browser.pdf and the tidied .svg/.pdf (REGION_IN wide, default 6.8 in)."""
+    sc = float(os.environ.get("ACC_MAX", "30"))
+    hl = "|".join([f"{chrom}:{s + 1}-{e}#e6e6e6"] + [f"{chrom}:{a + 1}-{b}#bdbdbd" for a, b in marks])
+    for win in wins:
+        mid = (s + e) // 2; a = max(0, mid - win // 2); b = a + win
+        stem = f"{R}/ucsc/{name}_win{win / 1000:g}k_acc{sc:g}"
+        render(key, chrom, a, b, s, e, {"RA": sc, "G4": sc}, f"{stem}_browser.pdf", highlight=hl)
+        w, h = to_figure(f"{stem}_browser.pdf", stem, float(os.environ.get("REGION_IN", "6.8")))
+        print(f"  {name}: view {chrom}:{a + 1:,}-{b:,}; wrote {stem}_browser.pdf and {stem}.svg/.pdf ({w:g} x {h:.2f} in)")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "region":
+        key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
+        os.makedirs(f"{R}/ucsc", exist_ok=True)
+        c, rng = sys.argv[3].split(":"); s, e = (int(x.replace(",", "")) for x in rng.split("-"))
+        marks = [tuple(int(x.replace(",", "")) for x in m.split(":")[1].split("-")) for m in sys.argv[4:]]
+        region(key, sys.argv[2], c, s - 1, e, [(a - 1, b) for a, b in marks]); return
     if len(sys.argv) > 1 and sys.argv[1] == "locus":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
