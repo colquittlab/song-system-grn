@@ -16,6 +16,7 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
 ~/.ucsc_api_key (never stored here).
 
     ACC_MAX=30 python ucsc_dar_batch.py [window_bp=10000] [first N peaks]
+    python ucsc_dar_batch.py locus SIX2 [flank_bp=10000]   # one gene +/- flank, peak-batch tracks + gene models
     python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533): accessibility (autoscaled,
                                           # 30 px) and gene models, no highlights -> results/ucsc/mafb_domain_overview.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
@@ -51,7 +52,7 @@ GENES = f"{BASE}/{GENOME}/genes/GCF_005870125.1_lonStrDom2_genomic_stringtie_FPK
 def gene_track(chrom, a, b):
     """inline BED12 of the hub's gene models over [a, b): the longest transcript per gene, named by symbol (name2)"""
     bb = pyBigWig.open(GENES); rows = {}
-    for s, e, rest in bb.entries("NC_042585.1" if chrom == "chr20" else chrom, a, b):
+    for s, e, rest in bb.entries(native(chrom), a, b) or []:
         f = rest.split("\t"); sym = f[9] or f[0]
         if sym not in rows or e - s > rows[sym][1] - rows[sym][0]: rows[sym] = (s, e, f)
     out = ['track name="genes" description="NCBI gene models (3\' UTR extended), longest transcript per gene" '
@@ -62,6 +63,46 @@ def gene_track(chrom, a, b):
 
 
 NATIVE = {"chr20": "NC_042585.1"}
+
+
+def native(chrom):
+    """chrN -> the RefSeq name the gene bigBed uses, matched by sequence length (cached in NATIVE)"""
+    if chrom not in NATIVE:
+        L = pyBigWig.open(PHY[1][1]).chroms()[chrom]
+        NATIVE[chrom] = next(c for c, l in pyBigWig.open(GENES).chroms().items() if l == L)
+    return NATIVE[chrom]
+
+
+def find_gene(sym):
+    """-> (chrN, start, end, strand) of the longest gene model named sym"""
+    bb = pyBigWig.open(GENES); rev = {}; best = None
+    bw = pyBigWig.open(PHY[1][1]).chroms(); byl = {l: c for c, l in bw.items()}
+    for c, L in bb.chroms().items():
+        for s, e, rest in bb.entries(c, 0, L) or []:
+            f = rest.split("\t")
+            if (f[9] or f[0]) == sym and (best is None or e - s > best[2] - best[1]):
+                best = (byl[L], s, e, f[2]); NATIVE[byl[L]] = c
+    if best is None: raise SystemExit(f"no gene model named {sym}")
+    return best
+
+
+def locus(key, sym, flank=10000):
+    """one gene with `flank` bp either side, in the DAR-peak style (four accessibility tracks on a shared fixed axis,
+    oscine and whole-tree phyloP, HEIGHT px) plus the hub's gene models, no highlight. Renders at ACC_MAX (default 30,
+    as the peak batch) and, when the view's accessibility exceeds it, again at the view's maximum rounded up to 10.
+    Writes results/ucsc/<sym>_flank<k>k_acc<max>_browser.pdf (the browser's PDF) and .svg/.pdf (editable text, labels
+    black and right-aligned, cropped; LOCUS_IN wide, default 6.8 in)."""
+    chrom, s, e, strand = find_gene(sym); a, b = max(0, s - flank), e + flank
+    top = max(pyBigWig.open(f"{W}/{n}-insertion-bin10-smooth20.bw").stats(chrom, a, b, type="max", exact=True)[0] or 0 for n, *_ in ACC)
+    print(f"  {sym}: {chrom}:{s + 1:,}-{e:,} ({strand}); view {chrom}:{a + 1:,}-{b:,}; accessibility max {top:.1f}")
+    scales = [float(os.environ.get("ACC_MAX", "30"))]
+    if top > scales[0]: scales.append(float(np.ceil(top / 10) * 10))
+    for sc in scales:
+        stem = f"{R}/ucsc/{sym}_flank{flank / 1000:g}k_acc{sc:g}"
+        render(key, chrom, a, b, None, None, {"RA": sc, "G4": sc}, f"{stem}_browser.pdf", highlight="",
+               extra=gene_track(chrom, a, b))
+        w, h = to_figure(f"{stem}_browser.pdf", stem, float(os.environ.get("LOCUS_IN", "6.8")))
+        print(f"    0-{sc:g}: wrote {stem}_browser.pdf and {stem}.svg/.pdf ({w:g} x {h:.2f} in)")
 P2G = f"{BASE}/{GENOME}/scATAC/motor-pathway/peaks2genes/hybrid_maxdist1Mb/peak2geneLinks_ra_corCutOff-{{cut}}.bb"
 
 
@@ -227,6 +268,10 @@ def overview(key, out, smooth=2):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "locus":
+        key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
+        os.makedirs(f"{R}/ucsc", exist_ok=True)
+        locus(key, sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 10000); return
     if len(sys.argv) > 1 and sys.argv[1] == "overview":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
