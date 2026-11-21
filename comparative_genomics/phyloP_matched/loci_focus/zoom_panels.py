@@ -5,7 +5,7 @@ listed below it in a regular grid (by position, filled column by column; not dra
 oscine and whole-tree phyloP.
 
 Tracks are the lab hub's bigWigs, as in ucsc_dar_batch.py: accessibility (insertion, 10-bp bins, 20-bp smoothing) for
-RA, C1H-1, PVALB-2, LGE-1 on a shared fixed axis (0-ACC_MAX, default 30) and per-base phyloP (oscine subtree, -3..3;
+RA, C1H-1, PVALB-1, LGE-1 on a shared fixed axis (0-ACC_MAX, default 30) and per-base phyloP (oscine subtree, -3..3;
 all 363, -4..6), each drawn as the mean per display bin.
 Motifs: every regulator hit in the element from the curated-lobe scan (results/mafb_domain/element_motif_gain.tsv: the
 12 SCENIC+ regulators, ARE-full, JASPAR AR) plus ARE-half (element_ar_sites.tsv, FIMO p < 1e-4); overlapping hits with
@@ -28,7 +28,7 @@ R = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/l
 BASE = "https://colquitt-track-hub.pbsci.ucsc.edu/lonStrDom2/GCF_005870125.1"
 W = f"{BASE}/scATAC/motor-pathway/wigs/insertion_bin10-smooth20"
 ACC = [("Glut-RA", "#e31a1c", "RA"), ("Glut-Arco-1", "#fb9a99", "C1H-1"),
-       ("GABA-4-1", "#4393c3", "PVALB-2"), ("GABA-1-1", "#92c5de", "LGE-1")]
+       ("GABA-3", "#4393c3", "PVALB-1"), ("GABA-1-1", "#92c5de", "LGE-1")]
 PHY = [(f"{BASE}/comparative/subtree222_perbase_lsd2.bw", "#3f6b45", "#9a7b24", (-3, 3), "phyloP\noscine"),
        (f"{BASE}/comparative/wholetree_perbase_lsd2.bw", "#2166ac", "#b2182b", (-4, 6), "phyloP\navian")]
 ACC_MAX = float(os.environ.get("ACC_MAX", "30"))
@@ -37,7 +37,7 @@ CHROM = "chr20"
 ZOOMS = [("1", ["RA:chr20:12714605-12715179"]),          # RA, oscine class; RA log2FC 3.5
          ("2", ["both:chr20:12732176-12733103"]),
          ("3", ["both:chr20:12945940-12947066#1", "both:chr20:12945940-12947066#2", "both:chr20:12945940-12947066#3"]),
-         ("4", ["G4:chr20:13280687-13281096"])]          # PVALB-2, strong avian (+5.32), G4 log2FC 4.3
+         ("4", ["G4:chr20:13280622-13281104"])]          # PVALB-1, strong avian (+5.17)
 BOX = {12946573}                                        # motif hits (0-based start) boxed: the site shown in the alignment panel
 FLANK = int(os.environ.get("FLANK", "400"))
 LAB = {"full": "AREf", "half": "AREh", "jaspar": "AR", "AR": "AR"}
@@ -179,7 +179,7 @@ def main():
              "hits listed once\nred: AR motifs (AREf ARE-full, AREh ARE-half, AR JASPAR / SCENIC+);  bold: site gained "
              "in oscines (oscine minus outgroup presence ≥ 0.5)", fontsize=FS - .5, color=INK3, va="bottom", linespacing=1.2)
     os.makedirs(f"{R}/ucsc", exist_ok=True)
-    stem = f"{R}/ucsc/zoom_panels"
+    stem = f"{R}/ucsc/zoom_panels_pvalb1"                # PVALB-2 version: results/ucsc_pvalb2/zoom_panels
     for ext_ in ("pdf", "svg", "png"):
         fig.savefig(f"{stem}.{ext_}", dpi=400)
     print(f"  wrote {stem}.pdf / .svg / .png  ({WIDTH_IN:g} x {H:.2f} in)")

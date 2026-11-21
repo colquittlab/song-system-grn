@@ -50,7 +50,7 @@ if (!is.na(dmin)) {                                  # confidently aligned lobes
                   paste(names(table(S$cls)), table(S$cls), collapse = ", ")))
 }
 S[, `:=`(lacc_ra = log1p(acc_ra_ext), lacc_g4 = log1p(acc_g4_ext))]
-feat <- c(whole_ext_mean = "whole-tree mean phyloP", osc_ext_mean = "oscine mean phyloP",
+feat <- c(whole_ext_mean = "avian mean phyloP", osc_ext_mean = "oscine mean phyloP",
           lacc_ra = "RA accessibility", lacc_g4 = "G4 accessibility")
 if (noacc) feat <- feat[1:2]
 X <- scale(as.matrix(S[, names(feat), with = FALSE])); colnames(X) <- feat
@@ -80,6 +80,11 @@ gcol <- setNames(c("#2a78d6", "#eb6834", "#1baf7a", "#7a3ca0", "#eda100", "#c816
 if (thr) nm <- THR
 if (noacc) gcol <- setNames(ifelse(grepl("^deep\\+", nm), "#d4a017", ifelse(grepl("^strong", nm), "#3f007d", ifelse(grepl("^(deep|moderate)", nm), "#8c6bb1",
                             ifelse(grepl("^oscine", nm), "#1baf7a", "#bdbdbd")))), nm)   # as plot_element_class_bars.R
+## display labels from here on (Fig. 6): DAR classes RA / PVALB-1 / shared, and the class "avian+oscine"
+DISP <- c(RA = "RA", G4 = "PVALB-1", both = "shared")
+S[, cls := factor(DISP[cls], levels = DISP)]
+CLS_COL <- setNames(CLS_COL[names(DISP)], DISP)
+if (thr) { S[group == "deep+oscine", group := "avian+oscine"]; THR[THR == "deep+oscine"] <- "avian+oscine" }
 CCOL <- CLS_COL
 ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),
@@ -98,7 +103,7 @@ if (noacc) {
     col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_columns = FALSE,
     column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(if (nolab) 4 else 6, "mm"),
     heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = c(-LIM[j], 0, LIM[j]))), extra))
-  ht <- one(1, "whole-tree mean phyloP", list(
+  ht <- one(1, "avian mean phyloP", list(
           cluster_rows = if (thr) TRUE else hc, clustering_distance_rows = zdist, clustering_method_rows = "ward.D2",
           cluster_row_slices = FALSE, row_split = if (thr) factor(S$group, levels = THR) else NULL,
           row_title_gp = gpar(fontsize = 6), row_title_rot = if (nolab) 90 else 0, row_gap = unit(1, "mm"),
@@ -155,8 +160,8 @@ for (dev in c("pdf", "png")) {
     else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
     upViewport(0)
     grid.text(sprintf(if (horiz) "thresholds: avian mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s"
-                      else if (nolab) "whole-tree mean >= %+.2f (strong >= 3)\noscine mean >= %+.2f%s"
-                      else "thresholds: whole-tree mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
+                      else if (nolab) "avian mean >= %+.2f (strong >= 3)\noscine mean >= %+.2f%s"
+                      else "thresholds: avian mean >= %+.2f (strong >= 3), oscine mean >= %+.2f%s", S$tcut_whole[1], S$tcut_oscine[1],
                       if (is.na(dmin)) "" else sprintf("; depth >= %g", dmin)),
               x = unit(0.5, "npc"), y = unit(1, "npc") - unit(4, "mm"), gp = gpar(fontsize = 6))
   } else draw(ht, merge_legend = TRUE)

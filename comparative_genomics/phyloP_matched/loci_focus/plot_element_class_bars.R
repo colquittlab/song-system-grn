@@ -34,7 +34,7 @@ mini <- "mini" %in% commandArgs(trailingOnly = TRUE)   # depth >= 0.8 only, 1.25
 if (mini) { stack <- TRUE; horiz <- FALSE }
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
-CLS <- c(RA = "Glut-RA", G4 = "GABA-4", both = "shared")
+CLS <- c(RA = "Glut-RA", G4 = "PVALB-1", both = "shared")   # G4: the GABAergic comparator, GABA-MGE-PVALB-1 (was GABA-4-1 = PVALB-2)
 ## phyloP classes kept clear of the DAR-class colours (Glut-RA red, GABA-4 blue): avian constraint in the heatmap's
 ## purples (dark = strong), oscine green, both ochre, weak light grey
 PCOL <- c("deep+oscine" = "#d4a017", "strong avian" = "#3f007d", "moderate avian" = "#8c6bb1", oscine = "#1baf7a", weak = "#bdbdbd")
@@ -113,7 +113,7 @@ p <- if (stack) {
     geom_text(aes(label = N), position = pd, vjust = -0.4, size = FIG_PT_AXIS_TEXT / .pt, colour = FIG_INK_SECONDARY)
 }
 p <- p +
-  scale_fill_manual(values = PCOL, name = "phyloP class") +
+  scale_fill_manual(labels = function(x) sub("^deep\\+oscine$", "avian+oscine", x), values = PCOL, name = "phyloP class") +
   (if (stack) scale_y_continuous(expand = expansion(mult = c(0, 0)), breaks = seq(0, 100, 25),
                                  limits = c(0, if (horiz) 150 else max(br$y) + 7))
    else scale_y_continuous(expand = expansion(mult = c(0, 0.12)))) +
@@ -150,7 +150,7 @@ if (mini) {                                          # small panel: no facet str
     theme(legend.position = "none", axis.text = element_text(size = TXT), axis.title.y = element_text(size = TXT),
           axis.text.x = element_text(size = TXT, colour = FIG_INK_SECONDARY), plot.margin = margin(2, 2, 1, 1, "pt"))
   p$layers[[2]]$aes_params$size <- 4 / .pt; p$layers[[3]]$aes_params$size <- 4 / .pt
-  p <- p + scale_x_discrete(labels = c("Glut-RA" = "RA", "GABA-4" = "G4", shared = "shared"))
+  p <- p + scale_x_discrete(labels = c("Glut-RA" = "RA", "PVALB-1" = "PVALB-1", shared = "shared"))
   stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", "_stack_depth0.8_mini")
   fig_save(p, file.path(res, stem), width = 1.25, height = 1.25)
   leg <- cowplot::get_legend(p + theme(legend.position = "right", legend.title = element_text(size = TXT),

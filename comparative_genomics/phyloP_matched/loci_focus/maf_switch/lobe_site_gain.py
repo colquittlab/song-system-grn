@@ -36,7 +36,7 @@ from tiers363 import call, classify, OSC, OUT, STEM
 
 R = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 FA = "/private/groups/colquittlab/assembly/lonStrDom2/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
-MAF = "data/lobes_gap.maf"
+MAF = os.environ.get("LOBE_MAF", "data/lobes_gap.maf")   # PVALB-1 lobes: data/lobes_gap_pvalb1.maf
 FLOOR_OSC, FLOOR_OUT = 40, 60
 DEPTH = 0.8
 AR = {"full", "jaspar", "AR"}

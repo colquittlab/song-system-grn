@@ -17,6 +17,9 @@ Curation by eye, in files next to this script:
   manual_lobes.bed      lobes drawn on the browser; replace the automatic split, each centred on
                         its interval (the 1-bp pileup can be a plateau where the track shows lobes)
   class_override.bed    class set by eye
+  *_pvalb1.bed          the same, judged against PVALB-1: excluded_peaks_pvalb1.bed, class_override_pvalb1.bed (read
+                        first, so they win; class_override_pvalb1 also reaches overlapping RA/G4 peak pairs, which
+                        are otherwise "both") -- used only with the PVALB-1 comparator
   lobe_count.bed        number of lobes by eye, split at the strongest summits >= 150 bp apart
   excluded_lobes.bed    single lobes dropped (>= half of the lobe's extent inside an interval); the
                         peak's other lobes keep their numbering
@@ -55,7 +58,14 @@ from span import elem_coords, in_domain, wide_elements, result
 T = "/private/warm-archive/colquittlab/assembly/tracks_lark"
 PB = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/perbase/tracks"
 PHY = {"whole": f"{PB}/wholetree_perbase_lsd2.bw", "oscine": f"{PB}/subtree222_perbase_lsd2.bw"}
-CLS = {"RA": ("RA_over_Arco", "Glut-RA", "Glut-Arco-1", "ra"), "G4": ("PVALB1_over_LGE1", "GABA-3", "GABA-1-1", "pvalb1_lge1")}
+import os
+# GABAergic comparator: PVALB1 (default, as in Fig. 4) or PVALB2 (the analysis before 2026-11-21, reproducible with
+# GABA_COMP=PVALB2; it writes to the same results/<span>/ files, so copy results/mafb_domain_pvalb2 back instead).
+GABA_COMP = os.environ.get("GABA_COMP", "PVALB1")
+G4 = {"PVALB1": ("PVALB1_over_LGE1", "GABA-3", "GABA-1-1", "pvalb1_lge1"),
+      "PVALB2": ("GABA4_over_GABA1", "GABA-4-1", "GABA-1-1", "pvalb2_lge1")}[GABA_COMP]
+CLS = {"RA": ("RA_over_Arco", "Glut-RA", "Glut-Arco-1", "ra"), "G4": G4}
+CUR = "_pvalb1" if GABA_COMP == "PVALB1" else None   # comparator-specific curation, read before the shared files
 CORE, PROF = 100, 500
 
 
@@ -112,11 +122,13 @@ def main():
     fb = {x: pyBigWig.open(f"{T}/fragment/{x}-fragment-bin1-smoothNone.bw") for x in {v for k in CLS for v in CLS[k][1:3]}}
     # candidate peaks per class: SnapATAC2 peaks of the up cluster overlapping an own-contrast DAR,
     # less peaks judged on inspection not to be true peaks (excluded_peaks.bed, next to this script)
-    xb = [l.split("\t")[:4] for l in open(Path(__file__).with_name("excluded_peaks.bed")) if not l.startswith("#")]
+    xb = [l.split("\t")[:4] for f in ["excluded_peaks.bed"] + ([f"excluded_peaks{CUR}.bed"] if CUR else [])
+          for l in open(Path(__file__).with_name(f)) if not l.startswith("#") and l.strip()]
     bad = lambda k, c, s, e: any(c == x and s < int(b) and int(a) < e and q in (k, "any") for x, a, b, q in xb)
     rd = lambda f: [l.rstrip("\n").split("\t") for l in open(Path(__file__).with_name(f)) if not l.startswith("#") and l.strip()]
     ml = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("manual_lobes.bed")]
-    co = [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("class_override.bed")]
+    co_cur = [(x, int(a), int(b), q) for x, a, b, q, *_ in (rd(f"class_override{CUR}.bed") if CUR else [])]
+    co = co_cur + [(x, int(a), int(b), q) for x, a, b, q, *_ in rd("class_override.bed")]
     lc = [(x, int(a), int(b), int(q)) for x, a, b, q, *_ in rd("lobe_count.bed")]
     xl = [(x, int(a), int(b)) for x, a, b, *_ in rd("excluded_lobes.bed")]
     cand = {}
@@ -146,6 +158,11 @@ def main():
             else: elems.append(("both", c, s, e, {k: ov, o: oo}, (s, e), (s, e)) if len(oo) else (k, c, s, e, {k: ov}))
     for i, j in sorted(pair):
         a, b = cand["RA"][i], cand["G4"][j]
+        # only the comparator-specific overrides reach pairs, so the PVALB-2 element set rebuilds as it was
+        q = [z for x, s_, e_, z in co_cur if x == a[0] and s_ < max(a[2], b[2]) and min(a[1], b[1]) < e_]
+        if q and q[0] in ("RA", "G4"):                 # class set by eye: the overlapping peaks are one class only
+            c_ = a if q[0] == "RA" else b
+            elems.append((q[0], c_[0], c_[1], c_[2], {q[0]: c_[3]})); continue
         elems.append(("both", a[0], min(a[1], b[1]), max(a[2], b[2]), {"RA": a[3], "G4": b[3]}, (a[1], a[2]), (b[1], b[2])))
     rows, prof = [], {"whole": [], "oscine": [], "access": []}
     for el in elems:

@@ -37,7 +37,7 @@ W = f"{BASE}/{GENOME}/scATAC/motor-pathway/wigs/insertion_bin10-smooth20"
 # (cluster file, colour, scale pair, label): RA red / C1H-1 light red as on the hub; PVALB-2 (GABA-4-1) blue
 # #4393C3 as in the phyloP figures, LGE-1 (GABA-1-1) the lighter #92C5DE
 ACC = [("Glut-RA", "227,26,28", "RA", "RA"), ("Glut-Arco-1", "251,154,153", "RA", "C1H-1"),
-       ("GABA-4-1", "67,147,195", "G4", "PVALB-2"), ("GABA-1-1", "146,197,222", "G4", "LGE-1")]
+       ("GABA-3", "67,147,195", "G4", "PVALB-1"), ("GABA-1-1", "146,197,222", "G4", "LGE-1")]   # GABAergic comparator PVALB-1 (was GABA-4-1, PVALB-2)
 PHY = [("phyloP oscine", f"{BASE}/{GENOME}/comparative/subtree222_perbase_lsd2.bw", "63,107,69", "154,123,36", "-3:3"),
        ("phyloP all 363", f"{BASE}/{GENOME}/comparative/wholetree_perbase_lsd2.bw", "33,102,172", "178,24,43", "-4:6")]
 PIX = 1200
@@ -512,7 +512,7 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "overview" and sys.argv[2:3] == ["zooms"]:
         import zoom_panels                            # the zoom-in windows of zoom_panels.py, marked and numbered
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
-        overview(key, f"{R}/ucsc/mafb_domain_overview_zooms.pdf", smooth=2, marks=zoom_panels.windows(), ruler=False); return
+        overview(key, f"{R}/ucsc/mafb_domain_overview_zooms_pvalb1.pdf", smooth=2, marks=zoom_panels.windows(), ruler=False); return
     if len(sys.argv) > 1 and sys.argv[1] == "overview":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
