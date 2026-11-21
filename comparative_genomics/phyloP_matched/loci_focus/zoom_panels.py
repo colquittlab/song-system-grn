@@ -10,7 +10,7 @@ all 363, -4..6), each drawn as the mean per display bin.
 Motifs: every regulator hit in the element from the curated-lobe scan (results/mafb_domain/element_motif_gain.tsv: the
 12 SCENIC+ regulators, ARE-full, JASPAR AR) plus ARE-half (element_ar_sites.tsv, FIMO p < 1e-4); overlapping hits with
 the same label are listed once. AR motifs (AREf, AREh, AR) are red; a hit with an oscine gain (oscine minus outgroup
-presence >= 0.5, coverage floor met) is bold.
+presence >= 0.5, coverage floor met) is bold; hits in BOX are boxed.
 
     python zoom_panels.py                       # ZOOMS below -> results/ucsc/zoom_panels.{pdf,svg,png}
 Overlapping hits of the AR matrices (ARE-full, ARE-half, JASPAR / SCENIC+ AR) are listed once.
@@ -30,14 +30,15 @@ W = f"{BASE}/scATAC/motor-pathway/wigs/insertion_bin10-smooth20"
 ACC = [("Glut-RA", "#e31a1c", "RA"), ("Glut-Arco-1", "#fb9a99", "C1H-1"),
        ("GABA-4-1", "#4393c3", "PVALB-2"), ("GABA-1-1", "#92c5de", "LGE-1")]
 PHY = [(f"{BASE}/comparative/subtree222_perbase_lsd2.bw", "#3f6b45", "#9a7b24", (-3, 3), "phyloP\noscine"),
-       (f"{BASE}/comparative/wholetree_perbase_lsd2.bw", "#2166ac", "#b2182b", (-4, 6), "phyloP\n363 birds")]
+       (f"{BASE}/comparative/wholetree_perbase_lsd2.bw", "#2166ac", "#b2182b", (-4, 6), "phyloP\navian")]
 ACC_MAX = float(os.environ.get("ACC_MAX", "30"))
 CHROM = "chr20"
 # (label, [elements highlighted]); the window is the elements' span +/- FLANK
-ZOOMS = [("1", ["both:chr20:12732176-12733103"]),
-         ("2", ["G4:chr20:13280687-13281096"]),          # strong avian (+5.32), G4 log2FC 4.3
+ZOOMS = [("1", ["RA:chr20:12714605-12715179"]),          # RA, oscine class; RA log2FC 3.5
+         ("2", ["both:chr20:12732176-12733103"]),
          ("3", ["both:chr20:12945940-12947066#1", "both:chr20:12945940-12947066#2", "both:chr20:12945940-12947066#3"]),
-         ("4", ["RA:chr20:12984789-12985435"])]
+         ("4", ["G4:chr20:13280687-13281096"])]          # PVALB-2, strong avian (+5.32), G4 log2FC 4.3
+BOX = {12946573}                                        # motif hits (0-based start) boxed: the site shown in the alignment panel
 FLANK = int(os.environ.get("FLANK", "400"))
 LAB = {"full": "AREf", "half": "AREh", "jaspar": "AR", "AR": "AR"}
 ARSET = {"AREf", "AREh", "AR"}
@@ -153,7 +154,8 @@ def main():
                         c, r = divmod(k, nr)
                         ax.text(left + (c + .5) * COL_IN / px_per_bp, 1 - lead - (r + .5) * ROW_PT / 72 / h_grid, name,
                                 ha="center", va="center", fontsize=FS, color=RED if red else INK,
-                                fontweight="bold" if bold else "normal", zorder=3)
+                                fontweight="bold" if bold else "normal", zorder=3,
+                                bbox=dict(boxstyle="square,pad=0.18", fc="none", ec=INK, lw=.5) if pos in BOX else None)
         # header: zoom label and a scale bar
         ax0 = axes[0][2]
         sb = 1000 if b - a >= 3000 else 500 if b - a >= 1600 else 250
