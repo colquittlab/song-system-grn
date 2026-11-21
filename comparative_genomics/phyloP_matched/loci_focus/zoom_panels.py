@@ -13,6 +13,7 @@ the same label are listed once. AR motifs (AREf, AREh, AR) are red; a hit with a
 presence >= 0.5, coverage floor met) is bold.
 
     python zoom_panels.py                       # ZOOMS below -> results/ucsc/zoom_panels.{pdf,svg,png}
+Overlapping hits of the AR matrices (ARE-full, ARE-half, JASPAR / SCENIC+ AR) are listed once.
 """
 import math, os, re
 import numpy as np, pandas as pd, pyBigWig
@@ -34,16 +35,16 @@ ACC_MAX = float(os.environ.get("ACC_MAX", "30"))
 CHROM = "chr20"
 # (label, [elements highlighted]); the window is the elements' span +/- FLANK
 ZOOMS = [("1", ["both:chr20:12732176-12733103"]),
-         ("2", ["RA:chr20:12877260-12878244#1", "RA:chr20:12877260-12878244#2"]),
+         ("2", ["G4:chr20:13280687-13281096"]),          # strong avian (+5.32), G4 log2FC 4.3
          ("3", ["both:chr20:12945940-12947066#1", "both:chr20:12945940-12947066#2", "both:chr20:12945940-12947066#3"]),
          ("4", ["RA:chr20:12984789-12985435"])]
-FLANK = int(os.environ.get("FLANK", "1500"))
+FLANK = int(os.environ.get("FLANK", "400"))
 LAB = {"full": "AREf", "half": "AREh", "jaspar": "AR", "AR": "AR"}
 ARSET = {"AREf", "AREh", "AR"}
 RED, INK, INK3, BAND = "#d7191c", "#171b22", "#6b7380", "#e6e6e6"
-WIDTH_IN = float(os.environ.get("WIDTH_IN", "7.0"))
+WIDTH_IN = float(os.environ.get("WIDTH_IN", "5.0"))
 H_ACC, H_PHY, GAP = .15, .28, .03                # inches
-FS, ROW_PT, COL_IN, MAXROWS, LEAD_PT = 5.0, 6.0, .34, 6, 3.0    # motif grid: font pt, row pitch pt, column width in, max rows per column
+FS, ROW_PT, COL_IN, MAXROWS, LEAD_PT = 5.0, 6.0, .27, 6, 3.0    # motif grid: font pt, row pitch pt, column width in, max rows per column
 NBIN = 500
 
 
@@ -59,10 +60,14 @@ def motifs(elements):
         rows += [("AREh", r.start, r.end, False) for r in h[h.element == el].itertuples()]
         rows.sort(key=lambda x: (x[1], x[0]))
         keep = []
-        for lab, s, e, b in rows:
-            dup = next((k for k in keep if k[0] == lab and s < k[2] and e > k[1]), None)
+        for lab, s, e, b in rows:                     # overlapping hits of one label, or of any AR matrices, listed once
+            fam = lambda l: "AR" if l in ARSET else l
+            dup = next((k for k in keep if fam(k[0]) == fam(lab) and s < k[2] and e > k[1]), None)
             if dup:
-                keep[keep.index(dup)] = (lab, dup[1], max(dup[2], e), dup[3] or b)
+                # the label kept: the gained hit's, else ARE-full > AR > ARE-half
+                pick = (dup[0] if dup[3] and not b else lab if b and not dup[3]
+                        else min(dup[0], lab, key=["AREf", "AR", "AREh"].index) if fam(lab) == "AR" else lab)
+                keep[keep.index(dup)] = (pick, min(dup[1], s), max(dup[2], e), dup[3] or b)
             else:
                 keep.append((lab, s, e, b))
         out[el] = [(lab, s, lab in ARSET, b) for lab, s, e, b in keep]
@@ -86,7 +91,7 @@ def main():
     h_grid = (nrows * ROW_PT + LEAD_PT + 4) / 72
     tracks = [("acc", i) for i in range(len(ACC))] + [("grid", 0)] + [("phy", i) for i in range(len(PHY))]
     hts = [H_ACC] * len(ACC) + [h_grid] + [H_PHY] * len(PHY)
-    top_in, bot_in, left_in, right_in, gap_x = .3, .16, .62, .05, .14
+    top_in, bot_in, left_in, right_in, gap_x = .3, .22, .52, .03, .1
     H = top_in + sum(hts) + GAP * (len(hts) - 1) + bot_in
     fig = plt.figure(figsize=(WIDTH_IN, H))
     pw = (WIDTH_IN - left_in - right_in - gap_x * (len(ZOOMS) - 1)) / len(ZOOMS)
@@ -141,7 +146,7 @@ def main():
                                 fontweight="bold" if bold else "normal", zorder=3)
         # header: zoom label and a scale bar
         ax0 = axes[0][2]
-        sb = 1000 if b - a >= 2500 else 500
+        sb = 1000 if b - a >= 3000 else 500 if b - a >= 1600 else 250
         ax0.plot([a + (b - a) * .02, a + (b - a) * .02 + sb], [ACC_MAX * 1.55] * 2, color=INK, lw=.6, clip_on=False)
         ax0.text(a + (b - a) * .02 + sb / 2, ACC_MAX * 1.62, f"{sb // 1000} kb" if sb >= 1000 else f"{sb} bp",
                  ha="center", va="bottom", fontsize=FS, color=INK, clip_on=False)
@@ -158,9 +163,9 @@ def main():
                 for v_, va in ((hi, "top"), (lo, "bottom")):
                     ax.text(-.015, (v_ - lo) / (hi - lo), f"{v_:g}", transform=ax.transAxes, ha="right", va=va,
                             fontsize=FS - .8, color=INK3)
-    fig.text(left_in / WIDTH_IN, .04 / H, "motif hits in each element, listed by position (not to scale);  "
-             "red: AR motifs (AREf ARE-full, AREh ARE-half, AR JASPAR / SCENIC+);  bold: site gained in oscines "
-             "(oscine minus outgroup presence ≥ 0.5)", fontsize=FS - .3, color=INK3, va="bottom")
+    fig.text(left_in / WIDTH_IN, .03 / H, "motif hits in each element, listed by position (not to scale); overlapping AR "
+             "hits listed once\nred: AR motifs (AREf ARE-full, AREh ARE-half, AR JASPAR / SCENIC+);  bold: site gained "
+             "in oscines (oscine minus outgroup presence ≥ 0.5)", fontsize=FS - .5, color=INK3, va="bottom", linespacing=1.2)
     os.makedirs(f"{R}/ucsc", exist_ok=True)
     stem = f"{R}/ucsc/zoom_panels"
     for ext_ in ("pdf", "svg", "png"):
