@@ -83,6 +83,16 @@ def binned(url, a, b, n):
     return np.array([np.nan if x is None else x for x in v], float)
 
 
+def windows():
+    """-> [(label, start, end)] of the zoom-in windows (0-based, half-open), as drawn by main()"""
+    T = pd.read_csv(f"{R}/mafb_domain/element_threshold_classes.tsv", sep="\t").set_index("element")
+    out = []
+    for lab, els in ZOOMS:
+        sp = [ext(e, T) for e in els]
+        out.append((lab, min(s for s, _ in sp) - FLANK, max(e for _, e in sp) + FLANK))
+    return out
+
+
 def main():
     T = pd.read_csv(f"{R}/mafb_domain/element_threshold_classes.tsv", sep="\t").set_index("element")
     M = motifs([e for _, els in ZOOMS for e in els])

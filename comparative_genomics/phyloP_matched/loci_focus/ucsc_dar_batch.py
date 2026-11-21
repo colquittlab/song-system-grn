@@ -21,6 +21,7 @@ descriptions above tracks are off; tracks are HEIGHT px tall (45, 1.5 x the hub 
                                           # 10-kb and 2-kb windows, peak-batch tracks
     python ucsc_dar_batch.py ar_sites [win_bp=2000]   # every significant oscine AR-site gain in the curated lobes,
                                           # one view each with y-axis limits -> results/ucsc/ar_sites_win2k_acc30/
+    python ucsc_dar_batch.py overview zooms   # as overview (smoothed), zoom_panels.py's windows as numbered grey bars
     python ucsc_dar_batch.py overview     # the whole domain (chr20:12,551,036-13,547,533): accessibility (autoscaled,
                                           # 30 px) and gene models, no highlights -> results/ucsc/mafb_domain_overview.pdf
 Writes results/ucsc/dar_peaks_win<W>k_acc<max>/<nn>_<class>_chr20_<start>-<end>.pdf and the merged
@@ -262,7 +263,63 @@ def axis_labels(t, x0, pad, numw):
     return re.sub(r'<text\b.*?</text>', fix, t, flags=re.S)
 
 
-def to_figure(pdf, stem, width_in, axis=False):
+def mark_zooms(t, labels, width_in):
+    """the zoom-in highlights (fill MARK): each redrawn as a plain grey bar at least MARK_MIN_IN wide in the final
+    figure, its label above it (labels in genome order)"""
+    import re
+    def boxes(d):                                     # bounds of each sub-path (straight segments: m/l/h/v/z, either case)
+        x = y = 0.0; out = []; xs = ys = None
+        for c, args in re.findall(r'([MmLlHhVvZz])([^MmLlHhVvZz]*)', d):
+            v = [float(q) for q in re.findall(r'[-+]?\d*\.?\d+(?:e[-+]?\d+)?', args)]
+            if c in "Mm":
+                if xs: out.append((min(xs), min(ys), max(xs), max(ys)))
+                xs, ys = [], []
+            if c in "MmLl":
+                for i in range(0, len(v) - 1, 2):
+                    x, y = (v[i], v[i + 1]) if c.isupper() else (x + v[i], y + v[i + 1]); xs.append(x); ys.append(y)
+            elif c in "Hh":
+                for q in v: x = q if c == "H" else x + q; xs.append(x); ys.append(y)
+            elif c in "Vv":
+                for q in v: y = q if c == "V" else y + q; xs.append(x); ys.append(y)
+        if xs: out.append((min(xs), min(ys), max(xs), max(ys)))
+        return out
+    m = re.search(r'<svg[^>]*?\swidth="([0-9.]+)', t, re.S); W = float(m.group(1))
+    per_in = W / width_in                             # user units per final inch (before the crop, about right)
+    els, found = [], []                               # the cleaner may have merged the highlights into one path
+    for mm in re.finditer(r'<path\b[^>]*fill:' + MARK + r'[^>]*/>', t):
+        el = mm.group(0); d = re.search(r'\sd="([^"]*)"', el).group(1); found.append(el)
+        tr = re.search(r'matrix\(([-0-9.e]+),0,0,([-0-9.e]+),([-0-9.e]+),([-0-9.e]+)\)', el)
+        a_, d_, e_, f_ = (float(v) for v in tr.groups()) if tr else (1, 1, 0, 0)
+        for x0, y0, x1, y1 in boxes(d):
+            X = sorted([a_ * x0 + e_, a_ * x1 + e_]); Y = sorted([d_ * y0 + f_, d_ * y1 + f_])
+            els.append((X[0], X[1], Y[0], Y[1]))
+    els.sort()
+    if len(els) != len(labels): raise RuntimeError(f"{len(els)} zoom highlights found, {len(labels)} expected")
+    # start the bars below the ruler: the lowest baseline of its coordinate labels (12,700,000 ...)
+    rule = []
+    for tm in re.finditer(r'<text\b.*?</text>', t, re.S):
+        el = tm.group(0); txt = re.sub(r'<[^>]+>', '', el).strip()
+        tr = re.search(r'matrix\(([-0-9.e]+),0,0,([-0-9.e]+),([-0-9.e]+),([-0-9.e]+)\)', el)
+        if tr and re.fullmatch(r'\d{1,3}(,\d{3})+', txt):
+            ys = [float(v) for v in re.findall(r'<tspan[^>]*\sy="([-0-9.e]+)"', el)] or [0.0]
+            rule.append(float(tr.group(4)) + float(tr.group(2)) * max(ys))
+    top = max(rule) + .03 * per_in if rule else None
+    wmin = MARK_MIN_IN * per_in; add = []
+    for lab, (x0, x1, y0, y1) in zip(labels, els):
+        if top is not None: y0 = top + .1 * per_in   # number first, then the bar
+        c = (x0 + x1) / 2; hw = max(x1 - x0, wmin) / 2
+        bar = (f'<path style="fill:#c4c4c4;fill-opacity:1;stroke:none" '
+               f'd="M {c - hw:.3f},{y0:.3f} H {c + hw:.3f} V {y1:.3f} H {c - hw:.3f} Z"/>')
+        txt = (f'<text xml:space="preserve" style="font-size:{.085 * per_in:.3f}px;font-family:Helvetica;font-weight:bold;'
+               f'fill:#000000;text-anchor:middle" x="{c:.3f}" y="{y0 - .015 * per_in:.3f}">{lab}</text>')
+        add.append((bar, txt))
+    t = t.replace(found[0], "".join(b_ for b_, _ in add), 1)   # bars where the highlights were drawn: behind the tracks
+    for el in found[1:]: t = t.replace(el, "", 1)
+    i = t.rindex("</svg>")                            # numbers last: over the link arcs
+    return t[:i] + "".join(x for _, x in add) + t[i:]
+
+
+def to_figure(pdf, stem, width_in, axis=False, marks=None):
     """browser PDF -> SVG with editable text (Inkscape, fonts kept) -> merged paths (CLEAN) -> tidied -> cropped to the
     drawing -> scaled to width_in
     inches -> PDF (Inkscape). Writes <stem>.svg and <stem>.pdf."""
@@ -271,7 +328,9 @@ def to_figure(pdf, stem, width_in, axis=False):
         sh = lambda c: subprocess.run(["bash", "-lc", c], check=True, capture_output=True)
         sh(f"inkscape '{pdf}' --pdf-font-strategy=keep --export-type=svg --export-plain-svg --export-filename='{d}/raw.svg'")
         subprocess.run([PY_LXML, CLEAN, f"{d}/raw.svg", "-o", f"{d}/clean.svg"], check=True, capture_output=True)
-        open(f"{d}/tidy.svg", "w").write(tidy(open(f"{d}/clean.svg").read(), axis=axis))
+        tt = tidy(open(f"{d}/clean.svg").read(), axis=axis)
+        if marks: tt = mark_zooms(tt, marks, width_in)
+        open(f"{d}/tidy.svg", "w").write(tt)
         # crop to the drawn content (the label column is wider than the right-aligned labels need)
         sh(f"inkscape '{d}/tidy.svg' --export-area-drawing --export-plain-svg --export-type=svg --export-filename='{d}/crop.svg'")
         t = open(f"{d}/crop.svg").read()
@@ -297,7 +356,11 @@ def track_limits(chrom, a, b, pix, smooth, floor_q=None, lim_end=None):
     return out
 
 
-def overview(key, out, smooth=2):
+MARK = "#d0d0d1"                                  # highlight colour that marks a zoom-in window (found again by mark_zooms)
+MARK_MIN_IN = float(os.environ.get("MARK_MIN_IN", "0.035"))   # narrowest drawn bar, inches in the final figure
+
+
+def overview(key, out, smooth=2, marks=None):
     """the whole DHX35-TOP1 domain: RA + C1H-1 peak-to-gene links to MAFB (1-Mb run, r >= 0.45) above the
     accessibility tracks (per-pixel mean, smoothed over `smooth` pixels or not at all; each track scaled from its
     OVERVIEW_FLOOR-th percentile pixel (default 50, the median) to its maximum, lifting the background noise), then the hub's gene models. Track labels
@@ -307,9 +370,11 @@ def overview(key, out, smooth=2):
     pre, n = p2g_track("chr20", a, OVERVIEW_END)
     tlim = track_limits("chr20", a, b, OVERVIEW_PIX, smooth, lim_end=OVERVIEW_END)   # the TOP1 promoter peak is clipped
     raw = out.replace(".pdf", "_browser.pdf")
-    render(key, "chr20", a, b, None, None, {}, raw, phy=False, highlight="", height=OVERVIEW_HEIGHT, auto=True,
+    hl = "|".join(f"chr20:{s + 1}-{e}{MARK}" for _, s, e in sorted(marks, key=lambda m: m[1])) if marks else ""
+    render(key, "chr20", a, b, None, None, {}, raw, phy=False, highlight=hl, height=OVERVIEW_HEIGHT, auto=True,
            extra=gene_track("chr20", a, b), pre=pre, pix=OVERVIEW_PIX, smooth=smooth, text=OVERVIEW_TEXT, tlim=tlim)
-    w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "6.8")))
+    w, h = to_figure(raw, out[:-4], float(os.environ.get("OVERVIEW_IN", "6.8")),
+                     marks=[m[0] for m in sorted(marks, key=lambda m: m[1])] if marks else None)
     print(f"  {'smoothed ' + str(smooth) + ' px' if smooth else 'unsmoothed'}: limits " + ", ".join(f"{k} {lo:.2f}-{hi:.1f}" for k, (lo, hi) in tlim.items())
           + f"; {n} links; wrote {out[:-4]}.svg/.pdf ({w:g} x {h:.2f} in)")
 
@@ -387,6 +452,10 @@ def main():
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
         locus(key, sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 10000); return
+    if len(sys.argv) > 1 and sys.argv[1] == "overview" and sys.argv[2:3] == ["zooms"]:
+        import zoom_panels                            # the zoom-in windows of zoom_panels.py, marked and numbered
+        key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
+        overview(key, f"{R}/ucsc/mafb_domain_overview_zooms.pdf", smooth=2, marks=zoom_panels.windows()); return
     if len(sys.argv) > 1 and sys.argv[1] == "overview":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         os.makedirs(f"{R}/ucsc", exist_ok=True)
