@@ -470,7 +470,32 @@ def ar_sites(key, win=2000, q_max=0.05):
     print(f"  {len(a)} AR hits at q < {q_max} in {len(loci)} loci; wrote {out}/ (index.tsv) and {out}.pdf")
 
 
+# PVALB-1 review: both GABAergic types, so a change of class can be judged against what it changed from
+ACC_REVIEW = [("Glut-RA", "227,26,28", "RA", "RA"), ("Glut-Arco-1", "251,154,153", "RA", "C1H-1"),
+              ("GABA-3", "67,147,195", "G4", "PVALB-1"), ("GABA-4-1", "128,125,186", "G4", "PVALB-2"),
+              ("GABA-1-1", "146,197,222", "G4", "LGE-1")]
+
+
+def review(key, tsv, win=10000):
+    """one 10-kb view per row of tsv (chrom, start, end, why), peak highlighted, tracks ACC_REVIEW at 0-ACC_MAX ->
+    results/ucsc/pvalb1_review_win10k_acc30/<nn>_chr20_<start>-<end>.pdf and the merged pdf, index.tsv"""
+    global ACC
+    ACC = ACC_REVIEW
+    P = pd.read_csv(tsv, sep="\t"); sc = float(os.environ.get("ACC_MAX", "30"))
+    out = f"{R}/ucsc/pvalb1_review_win{win / 1000:g}k_acc{sc:g}"; os.makedirs(out, exist_ok=True); files = []
+    for i, r in enumerate(P.itertuples(index=False), 1):
+        mid = (r.start + r.end) // 2; a = max(0, mid - win // 2); b = a + win
+        f = f"{out}/{i:02d}_{r.chrom}_{r.start + 1}-{r.end}.pdf"
+        render(key, r.chrom, a, b, r.start, r.end, {"RA": sc, "G4": sc}, f); files.append(f)
+        print(f"  {i:2d}/{len(P)} {r.chrom}:{r.start + 1:,}-{r.end:,}  {r.why}", flush=True); time.sleep(2)
+    P.assign(file=[os.path.basename(f) for f in files]).to_csv(f"{out}/index.tsv", sep="\t", index=False)
+    subprocess.run(["pdfunite", *files, f"{out}.pdf"], check=True)
+    print(f"  wrote {len(files)} PDFs to {out}/ and {out}.pdf")
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == "review":
+        review(open(os.path.expanduser("~/.ucsc_api_key")).read().strip(), sys.argv[2]); return
     if len(sys.argv) > 1 and sys.argv[1] == "ar_sites":
         key = open(os.path.expanduser("~/.ucsc_api_key")).read().strip()
         ar_sites(key, int(sys.argv[2]) if len(sys.argv) > 2 else 2000); return

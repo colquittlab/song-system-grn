@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 """Per-element constraint summaries and phyloP profiles for RA, G4 and shared accessible elements.
 
-Elements are SnapATAC2 cluster peaks (Glut-RA.bed for RA, GABA-4-1.bed for G4) in the span that
+Elements are SnapATAC2 cluster peaks (Glut-RA.bed for RA, GABA-3.bed for G4) in the span that
 overlap an ArchR DAR of their own contrast (hybrid tables; FDR < 0.1, Log2FC > 0) -- the
-"SnapATAC DARs" of the visual assessment. Classes:
+"SnapATAC DARs" of the visual assessment. G4 is the GABAergic comparator, GABA-MGE-PVALB-1 (old GABA-3) vs
+GABA-LGE-1 (GABA-1-1), as in Fig. 4; until 2026-11-21 it was GABA-MGE-PVALB-2 (GABA-4-1; results kept in
+results/mafb_domain_pvalb2). The key stays "G4" so the curation files and downstream scripts are unchanged. Classes:
   RA, G4   peak of one class only
   both     an RA and a G4 peak overlapping each other (merged over their union), or a peak called
            in one cluster but overlapping DARs of both contrasts. For "both", accessibility is
@@ -31,7 +33,7 @@ Per lobe, over the summit +/-100 bp (matched per-base phyloP tracks):
 and over the lobe's full extent (ext_start-ext_end: the peak, cut between lobes at the smoothed
 accessibility minimum, or the drawn interval), weighted by accessibility:
   whole_ext_pct1 / _block / _mean,  osc_ext_pct1 / _block / _mean
-  acc_ra_ext / acc_g4_ext   mean Glut-RA / GABA-4-1 fragment signal over the extent (unweighted)
+  acc_ra_ext / acc_g4_ext   mean Glut-RA / GABA-3 fragment signal over the extent (unweighted)
   osc_depth / nonosc_depth  alignment depth: mean fraction of oscine (145) / non-oscine (217) genomes
                             with a base aligned, over the extent (per-base tracks, domain_depth.py)
   *_depth_min50             the lowest 50-bp rolling mean of that depth within the extent
@@ -53,7 +55,7 @@ from span import elem_coords, in_domain, wide_elements, result
 T = "/private/warm-archive/colquittlab/assembly/tracks_lark"
 PB = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/perbase/tracks"
 PHY = {"whole": f"{PB}/wholetree_perbase_lsd2.bw", "oscine": f"{PB}/subtree222_perbase_lsd2.bw"}
-CLS = {"RA": ("RA_over_Arco", "Glut-RA", "Glut-Arco-1", "ra"), "G4": ("GABA4_over_GABA1", "GABA-4-1", "GABA-1-1", "pvalb2_lge1")}
+CLS = {"RA": ("RA_over_Arco", "Glut-RA", "Glut-Arco-1", "ra"), "G4": ("PVALB1_over_LGE1", "GABA-3", "GABA-1-1", "pvalb1_lge1")}
 CORE, PROF = 100, 500
 
 
@@ -107,7 +109,7 @@ def main():
         d = d[(d.FDR < 0.1) & (d.Log2FC > 0)]
         dar[k] = d[[(in_domain((c, s, e)) if span == "domain" else False) for c, s, e in zip(d.chrom, d.start, d.end)]]
     bw = {k: pyBigWig.open(p) for k, p in PHY.items()}
-    fb = {x: pyBigWig.open(f"{T}/fragment/{x}-fragment-bin1-smoothNone.bw") for x in ("Glut-RA", "Glut-Arco-1", "GABA-4-1", "GABA-1-1")}
+    fb = {x: pyBigWig.open(f"{T}/fragment/{x}-fragment-bin1-smoothNone.bw") for x in {v for k in CLS for v in CLS[k][1:3]}}
     # candidate peaks per class: SnapATAC2 peaks of the up cluster overlapping an own-contrast DAR,
     # less peaks judged on inspection not to be true peaks (excluded_peaks.bed, next to this script)
     xb = [l.split("\t")[:4] for l in open(Path(__file__).with_name("excluded_peaks.bed")) if not l.startswith("#")]
@@ -188,7 +190,7 @@ def main():
                 r[f"{lab}_ext_pct1"] = 100 * (w * (x > 1)).sum() / w.sum(); r[f"{lab}_ext_block"] = 100 * (w * (blk > 1)).sum() / w.sum()
                 r[f"{lab}_ext_mean"] = (w * x).sum() / w.sum()
             r["ext_start"], r["ext_end"] = s + ext[j][0], s + ext[j][1]
-            for x, nm in (("Glut-RA", "acc_ra_ext"), ("GABA-4-1", "acc_g4_ext")):   # mean fragment signal over the extent
+            for x, nm in ((CLS["RA"][1], "acc_ra_ext"), (CLS["G4"][1], "acc_g4_ext")):   # mean fragment signal over the extent
                 r[nm] = vals(fb[x], c, s + ext[j][0], s + ext[j][1]).mean()
             prof["access"].append(df)
             rows.append(r)

@@ -22,6 +22,11 @@ F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/l
 R = f"{F}/results/mafb_domain"
 SC = {"whole": "whole_ext_mean", "oscine": "osc_ext_mean"}
 ORDER = ["deep+oscine", "strong avian", "moderate avian", "oscine", "weak"]
+# The thresholds as calibrated on the visual ratings against the PVALB-2 element set (2026-11-18). Ratings are of
+# regions, matched to the current lobes of the rated class, so a change of comparator (PVALB-1, 2026-11-21) changes
+# which rated regions find a lobe and would move Youden's optimum without new information; the classes therefore use
+# these fixed values. The Youden optimum on the current set is still printed, for reference.
+FIXED = {"whole": 0.52, "oscine": 0.27}
 STRONG = 3.0                       # avian (whole-tree) mean splitting deep-only lobes: the Ward split, in a gap 2.63-3.21
 UP = {"moderate", "strong"}
 
@@ -44,8 +49,11 @@ def main():
         if len(h): rows.append(dict(whole_r=r.whole, oscine_r=r.oscine, **{t: h[c].max() for t, c in SC.items()}))
     M = pd.DataFrame(rows); T = {}
     for t in SC:
-        up = M[f"{t}_r"].isin(UP).values; j, thr = youden(M[t].values, up); T[t] = thr; call = M[t].values >= thr
-        print(f"  {t:6s} mean phyloP threshold {thr:+.2f}: agreement {(call == up).mean():.0%} (sens {call[up].mean():.0%}, spec {(~call[~up]).mean():.0%}), J {j:.2f}")
+        up = M[f"{t}_r"].isin(UP).values; j, thr = youden(M[t].values, up); T[t] = FIXED[t]
+        for lab, th in (("fixed", FIXED[t]), ("Youden on this set", thr)):
+            call = M[t].values >= th
+            print(f"  {t:6s} mean phyloP threshold {th:+.2f} ({lab}): agreement {(call == up).mean():.0%} "
+                  f"(sens {call[up].mean():.0%}, spec {(~call[~up]).mean():.0%}), n rated {len(up)}")
     d, o = S[SC["whole"]] >= T["whole"], S[SC["oscine"]] >= T["oscine"]
     s3 = S[SC["whole"]] >= STRONG
     S["thr_class"] = np.select([d & o, d & s3, d, o], ORDER[:4], ORDER[4])
