@@ -47,6 +47,7 @@ substitution that created the site can be read directly.
 usage:
   plot_site_alignment.py <site name> <matrix> [--aln 74|363] [--phylogram] [--paper WIDTH_MM [--row-mm R]] [--flank N] [--out STEM]
   plot_site_alignment.py <label> <matrix> --coords chr:start-end [--cls RA] [--maf M] [--outdir D] ...
+  --show LISTED=GENOME   put a chosen member of a row's group on that row (e.g. the member carrying the site)
     a site not in the MAFB site BEDs (e.g. the curated-lobe scan, lobe_site_gain.py): 1-based coordinates, strand
     from the reference's better-scoring orientation, alignment --maf (avian363 default data/lobes_gap.maf),
     written to --outdir instead of results/per_site/
@@ -267,10 +268,16 @@ def main():
     ap.add_argument("--tree-scale", type=float, default=None,
                     help="tree panel width relative to the default (default 1; 0.5 with --paper)")
     ap.add_argument("--row-mm", type=float, default=2.3, help="row height in mm for --paper")
+    ap.add_argument("--compact", action="store_true",
+                    help="with --paper: no title, subtitle, matrix label or coordinate axis; a short colour key top "
+                         "left; narrower tree, wider sequence columns (the layout of the Fig. 6 panel as revised)")
     ap.add_argument("--coords", default=None, help="chr:start-end (1-based) of a site not in the site BEDs")
     ap.add_argument("--cls", default="", help="DAR class shown in the title, with --coords")
     ap.add_argument("--maf", default=None, help="alignment with --coords (avian363 default data/lobes_gap.maf)")
     ap.add_argument("--outdir", default=None, help="write here instead of results/per_site/<collection>/<span>")
+    ap.add_argument("--show", action="append", default=[], metavar="LISTED=GENOME",
+                    help="show GENOME on the row of the listed species LISTED (GENOME must be one of the genomes that "
+                         "row stands for); repeatable")
     ap.add_argument("--as-listed", action="store_true",
                     help="show the subsample's listed species instead of each clade's most typical member")
     a = ap.parse_args()
@@ -417,6 +424,19 @@ def main():
             if not contiguous(t2): continue
             keep, pt, tips = k2, p2, t2
             rep_of[m] = rep_of.pop(t); shown_for[m] = t
+    for sw in a.show:                                 # rows forced to a chosen member of their group
+        t0, m = sw.split("=")
+        t = next((x for x in keep if x == t0 or shown_for.get(x) == t0), None)
+        if t is None: sys.exit(f"--show: {t0} is not a row here")
+        if m not in rep_of[t]: sys.exit(f"--show: {m} is not among the genomes the {t0} row stands for: {rep_of[t]}")
+        if not covered.get(m): sys.exit(f"--show: {m} has no sequence at the motif")
+        k2 = (keep - {t}) | {m}; rank[m] = rank[t]; clade_of[m] = clade_of[t]
+        p2 = prune(tree, k2); order_tips(p2, rank); t2 = tip_order(p2)
+        keep, pt, tips = k2, p2, t2
+        rep_of[m] = rep_of.pop(t); shown_for[m] = shown_for.pop(t, t)
+        print(f"  row {t0}: showing {m} (stands for {', '.join(rep_of[m])}; site: "
+              + ", ".join(f"{g} {'present' if pres.get(g) else 'absent' if pres.get(g) is False else 'no seq'}"
+                          for g in rep_of[m]) + ")")
 
     # map events onto pruned edges by the selected-tip set under the branch
     def tipset(name):
@@ -501,13 +521,14 @@ def main():
     # ---------------------------------------------------------- figure --
     nrow = len(tips) + (len(anc_rows) + .6 if anc_rows else 0)
     cw, rh = .118, .158                                   # inches per column / row
+    if a.compact: cw *= 1.18
     tree_w, lab_w, sc_w, rp_w, cl_w = 1.5, 1.35, .62, .9, .95
-    tree_w *= a.tree_scale if a.tree_scale is not None else (.5 if a.paper else 1.0)
+    tree_w *= a.tree_scale if a.tree_scale is not None else (.32 if a.compact else .5 if a.paper else 1.0)
     if a.paper:                       # paper text is large relative to the layout: room for labels
-        lab_w, rp_w, cl_w = 1.6, .8, .82
+        lab_w, rp_w, cl_w = (1.56 if a.compact else 1.6), .8, .82
     seq_w = ncol * cw
     W = tree_w + lab_w + seq_w + sc_w + rp_w + cl_w + .25
-    logo_h, top_h, bot_h = .62, .55, .9
+    logo_h, top_h, bot_h = (.56, .0, .0) if a.compact else (.62, .55, .9)
     H = logo_h + top_h + nrow * rh + bot_h
     fig = plt.figure(figsize=(W, H))
     L = lambda x: x / W; B = lambda y: y / H
@@ -578,17 +599,28 @@ def main():
         ax_t.plot([0, val / dmax], [yb, yb], color=INK2, lw=1.1, solid_capstyle="butt", clip_on=False)
         ax_t.text(0, yb + .35 * gk, f"{val:g} {cfg['unit']}", ha="left", va="top",
                   fontsize=6.2, color=INK3, clip_on=False)
-    # key: edge colour ramp
+    # key: edge colour ramp (compact: a short key top left, drawn below)
     yf = len(tips) - .5 + (len(anc_rows) + .6 if anc_rows else 0) + (1.35 * gk if a.phylogram else .55 * gk)
-    ax_t.text(0, yf, "internal edges: reconstructed ancestor\ntip edges: share of genomes with the site",
-              ha="left", va="top", fontsize=5.6, color=INK3, clip_on=False)
-    yk = yf + 1.45 * gk; ts = tree_w / 1.5; k0, kw = .07 / ts, .42 / ts      # key keeps its physical size
-    ax_t.add_patch(Rectangle((0, yk - .16), .045 / ts, .32, fc=ABS, ec="none", clip_on=False))
-    for i in range(60):
-        ax_t.add_patch(Rectangle((k0 + kw * i / 60, yk - .16), kw / 60 * 1.05, .32, lw=0,
-                                 fc=ramp((i + 1) / 60), ec="none", clip_on=False))
-    for xv, tl in ((.0225 / ts, "0"), (k0 + kw / 2, "50%"), (k0 + kw, "100%")):
-        ax_t.text(xv, yk + .4 * gk, tl, ha="center", va="top", fontsize=5.4, color=INK3, clip_on=False)
+    if a.compact:
+        ax_k = fig.add_axes([L(.1), B(bot_h + nrow * rh + .05), L(tree_w + lab_w), B(logo_h - .05)])
+        ax_k.set_xlim(0, tree_w + lab_w); ax_k.set_ylim(0, logo_h - .05); ax_k.axis("off")
+        kx0, gx0, gw, ky = .03, .17, .78, .13                 # inches before the paper rescale
+        ax_k.text(kx0, ky + .14, "share of genomes with the site", ha="left", va="bottom", fontsize=5.6, color=INK)
+        ax_k.add_patch(Rectangle((kx0, ky), .1, .08, fc=ABS, ec="none"))
+        for i in range(60):
+            ax_k.add_patch(Rectangle((gx0 + gw * i / 60, ky), gw / 60 * 1.05, .08, lw=0, fc=ramp((i + 1) / 60), ec="none"))
+        for xv, tl in ((kx0 + .05, "0"), (gx0 + gw / 2, "50%"), (gx0 + gw, "100%")):
+            ax_k.text(xv, ky - .02, tl, ha="center", va="top", fontsize=5.4, color=INK3)
+    else:
+      ax_t.text(0, yf, "internal edges: reconstructed ancestor\ntip edges: share of genomes with the site",
+                ha="left", va="top", fontsize=5.6, color=INK3, clip_on=False)
+      yk = yf + 1.45 * gk; ts = tree_w / 1.5; k0, kw = .07 / ts, .42 / ts      # key keeps its physical size
+      ax_t.add_patch(Rectangle((0, yk - .16), .045 / ts, .32, fc=ABS, ec="none", clip_on=False))
+      for i in range(60):
+          ax_t.add_patch(Rectangle((k0 + kw * i / 60, yk - .16), kw / 60 * 1.05, .32, lw=0,
+                                   fc=ramp((i + 1) / 60), ec="none", clip_on=False))
+      for xv, tl in ((.0225 / ts, "0"), (k0 + kw / 2, "50%"), (k0 + kw, "100%")):
+          ax_t.text(xv, yk + .4 * gk, tl, ha="center", va="top", fontsize=5.4, color=INK3, clip_on=False)
     # mark the reconstructed ancestors shown as rows
     for j, (n, lab) in enumerate(anc_rows):
         tset = tipset(n)
@@ -666,16 +698,18 @@ def main():
     if mcols and len(mcols) == len(p):
         ic = logo(ax_l, p, mcols, 0, 1.0, st["strand"])
         pass
-    ax_l.text(-.5, .5, f"{mlab}\n({st['strand']} strand)", ha="right", va="center",
-              fontsize=6.8, color=INK2, transform=ax_l.transData, clip_on=False)
+    if not a.compact:
+        ax_l.text(-.5, .5, f"{mlab}\n({st['strand']} strand)", ha="right", va="center",
+                  fontsize=6.8, color=INK2, transform=ax_l.transData, clip_on=False)
 
     # coordinate ticks under the sequence
-    for k in (mcols[0], mcols[-1]) if mcols else ():
+    for k in ((mcols[0], mcols[-1]) if mcols and not a.compact else ()):
         r = mat[k][0]
         ax_s.text(k, nrow - .5 + .55, f"{r + 1:,}", ha="center", va="top", fontsize=6.2,
                   color=INK3, rotation=0, clip_on=False)
-    ax_s.text((ncol - 1) / 2, nrow - .5 + 1.35, f"{st['chrom']}  (lonStrDom2)", ha="center",
-              va="top", fontsize=6.4, color=INK3, clip_on=False)
+    if not a.compact:
+        ax_s.text((ncol - 1) / 2, nrow - .5 + 1.35, f"{st['chrom']}  (lonStrDom2)", ha="center",
+                  va="top", fontsize=6.4, color=INK3, clip_on=False)
 
     # rows with no aligned base across most of the motif: their "absence" is missing data
     nocov = {g for g in rows_g if not covered.get(g, False)}
@@ -724,10 +758,12 @@ def main():
             and pres[g] is not None]
     nu = sum(pres[g] for g in out_)
     nmiss = sum(1 for g in pres if g not in INTERNAL and pres[g] is None)
-    fig.text(L(.12), 1 - B(.16), f"{a.site.split('_', 1)[1] if a.site[:3] in ('RA_', 'G4_') else a.site}"
-             f"   ·   {mlab}   ·   {st['cls']} DAR",
-             fontsize=9.5, fontweight="bold", color=INK, va="top")
-    if a.paper:                                   # short subtitle; the legend carries the rest
+    if not a.compact:                             # compact: no title or subtitle
+        fig.text(L(.12), 1 - B(.16), f"{a.site.split('_', 1)[1] if a.site[:3] in ('RA_', 'G4_') else a.site}"
+                 f"   ·   {mlab}   ·   {st['cls']} DAR",
+                 fontsize=9.5, fontweight="bold", color=INK, va="top")
+    if a.compact: pass
+    elif a.paper:                                 # short subtitle; the legend carries the rest
         fig.text(L(.12), 1 - B(.38),
                  f"{st['chrom']}:{st['s'] + 1:,}-{st['e']:,}   site present in {no}/{nO} oscines, "
                  f"{nu}/{len(out_)} non-oscines ({cfg['label']})",
