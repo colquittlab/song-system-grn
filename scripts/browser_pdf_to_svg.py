@@ -7,7 +7,7 @@ often a whole track repeated and clipped to a small window. This script:
   1. converts a PDF to SVG (Inkscape's importer by default, or pdftocairo); an .svg input skips this step;
   2. drops paths that lie entirely outside the clip window of an ancestor (the repeated, clipped copies in zoom insets), and removes a clip when everything left
      already lies inside it;
-  3. merges sibling paths with identical attributes (same fill, stroke, ...) into ONE compound path (all path data is converted to absolute coordinates first,
+  3. merges sibling paths with identical attributes (same fill, stroke, ...; a run of paths sharing one transform counts as plain) into ONE compound path (all path data is converted to absolute coordinates first,
      since a relative "m" is not safe to concatenate). Within a stretch of adjacent plain paths this is done across different fills (the usual case: bars shaded in
      a few colors, interleaved, often layered light-under-dark) by ordering the fills so every overlap keeps its original stacking order (one merged path per
      fill, drawn in that order); if the stacking is contradictory, only consecutive runs are merged;
@@ -313,7 +313,8 @@ def mergeable(el):
 
 
 def merge_segments(root, min_run):
-    """Merge same-attribute paths across a stretch of plain (no transform) sibling paths, keeping every overlap's stacking order (see key_order)."""
+    """Merge same-attribute paths across a stretch of plain sibling paths sharing one transform (or none), keeping every overlap's stacking order
+    (see key_order)."""
     removed = 0
     for parent in list(root.iter()):
         if not isinstance(parent.tag, str):
@@ -321,11 +322,14 @@ def merge_segments(root, min_run):
         kids = [k for k in parent if isinstance(k.tag, str)]
         i = 0
         while i < len(kids):
-            if kids[i].get("transform") or mergeable(kids[i]) is None:
+            if mergeable(kids[i]) is None:
                 i += 1
                 continue
+            # a stretch shares one transform (or none): Inkscape's PDF import gives every bar the same matrix, and
+            # paths under one transform can be compared and merged in their own coordinates
+            tf = kids[i].get("transform")
             j, items = i, []
-            while j < len(kids) and not kids[j].get("transform"):
+            while j < len(kids) and kids[j].get("transform") == tf:
                 segs = mergeable(kids[j])
                 if segs is None:
                     break

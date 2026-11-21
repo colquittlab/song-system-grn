@@ -174,7 +174,7 @@ def render(key, chrom, a, b, hs, he, lim, out, phy=True, highlight=None, height=
             time.sleep(10 * (i + 1))
 
 
-CLEAN = "/private/home/bcolquit/group/song-system-grn/scripts/browser_pdf_to_svg.py"
+CLEAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/browser_pdf_to_svg.py")   # this checkout's copy
 PY_LXML = "/private/home/bcolquit/miniforge3/envs/crested/bin/python"     # an interpreter with lxml for CLEAN
 
 
