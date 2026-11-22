@@ -128,7 +128,7 @@ p <- p +
         legend.title = element_text(size = FIG_PT_AXIS_TEXT), legend.text = element_text(size = FIG_PT_AXIS_TEXT),
         legend.key.size = unit(2.5, "mm"))
 if (stack && !horiz) {                               # p-value brackets (ticks point back towards the bars)
-  bs <- if (mini) 4 / .pt else FIG_PT_AXIS_TEXT / .pt
+  bs <- if (fig6) 5 / .pt else if (mini) 4 / .pt else FIG_PT_AXIS_TEXT / .pt
   seg <- rbind(br[, .(set, x = x1, xend = x2, y, yend = y)], br[, .(set, x = x1, xend = x1, y, yend = y - 2)],
                br[, .(set, x = x2, xend = x2, y, yend = y - 2)])
   p <- p + geom_segment(data = seg, aes(x = x, xend = xend, y = y, yend = yend), inherit.aes = FALSE,
@@ -152,7 +152,7 @@ if (mini) {                                          # small panel: no facet str
   p <- p + facet_null() + labs(x = NULL, y = "% of elements", title = NULL) +
     theme(legend.position = "none", axis.text = element_text(size = TXT), axis.title.y = element_text(size = TXT),
           axis.text.x = element_text(size = TXT, colour = FIG_INK_SECONDARY), plot.margin = margin(2, 2, 1, 1, "pt"))
-  p$layers[[2]]$aes_params$size <- 4 / .pt; p$layers[[3]]$aes_params$size <- 4 / .pt
+  p$layers[[2]]$aes_params$size <- (if (fig6) 5 else 4) / .pt; p$layers[[3]]$aes_params$size <- (if (fig6) 5 else 4) / .pt   # fig6: nothing under 5 pt
   p <- p + scale_x_discrete(labels = c("Glut-RA" = "RA", "PVALB-1" = "PVALB-1", shared = "shared"))
   stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", "_stack_depth0.8_mini")
   if (fig6) {                                        # DAR names in their class colours; legend under the bars, two columns
