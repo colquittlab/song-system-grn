@@ -1,0 +1,5 @@
+# Number of lobes judged by eye, for peaks without drawn lobes; the strongest summits >= 150 bp
+# apart are used, as for peaks labelled bipartite / tripartite in the visual assessment. 0-based.
+# chrom  start  end  n_lobes  note
+chr20	12719732	12720262	1	single peak by eye (2026-11-17)
+chr20	12724285	12725024	1	single peak by eye: no clear lobe structure (2026-11-17)

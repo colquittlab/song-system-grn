@@ -1,0 +1,15 @@
+# Lobes drawn by eye on the accessibility tracks; element_profiles.py uses these in place of the
+# automatic split for any element containing them. Each lobe is centred on its interval's midpoint.
+# 0-based.
+# chrom  start  end  class (RA | G4)  note
+chr20	12946056	12946285	RA	lobe 1 of chr20:12,945,951-12,947,068 (2026-11-14)
+chr20	12946374	12946665	RA	lobe 2
+chr20	12946787	12946950	RA	lobe 3
+chr20	13048125	13048775	RA	lobe 1 of chr20:13,048,126-13,049,426, oscine-elevated left part (2026-11-14)
+chr20	13049075	13049426	RA	lobe 2, whole-tree-elevated right part
+chr20	13240967	13241554	RA	lobe 1 of chr20:13,241,008-13,242,351 (2026-11-15)
+chr20	13241554	13242356	RA	lobe 2: rest of the peak
+chr20	13147679	13147833	RA	lobe 1 of chr20:13,147,680-13,148,436, kept after the RA override (2026-11-17)
+chr20	13147833	13148436	RA	lobe 2
+chr20	12623686	12624133	G4	lobe 1 of chr20:12,623,688-12,624,262, kept after the shared override (2026-11-17)
+chr20	12624133	12624262	G4	lobe 2

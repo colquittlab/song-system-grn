@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+"""Rule-based constraint classes for the MAFB-domain accessible elements, calibrated on the visual ratings.
+
+Each lobe (element_profiles.py) is scored over its full extent, weighted by accessibility:
+  whole   whole_ext_block   % of bases in 11-bp blocks with mean whole-tree phyloP > 1
+  oscine  osc_ext_pct1      % of bases with oscine-lineage (Anc222) phyloP > 1
+These were the scores that tracked the visual ratings best (manual_phylop_compare.py). Thresholds
+are set where they best separate rated regions called moderate or strong from those called
+neutral or weak (Youden's J; each rated region takes its best-scoring overlapping lobe, same
+class or "both"). Classes:
+  deep+oscine   whole >= Tw and oscine >= To
+  deep          whole >= Tw
+  oscine        oscine >= To
+  weak          neither
+Alternative (column mb): per tree, lobes are split in two by Ward clustering on z-scored full-extent
+mean and block % (accessibility-weighted), and the high / low calls of the two trees are crossed
+into the same four classes; no ratings are used.
+Lobes overlapping rule_override.bed (next to this script) take the rule set there by eye
+(column rule_by = eye).
+
+    python element_rule_classes.py
+Writes results/mafb_domain/element_rule_classes.tsv and prints thresholds, agreement and counts.
+"""
+from pathlib import Path
+import numpy as np, pandas as pd
+from scipy import stats
+from scipy.cluster.hierarchy import linkage, fcluster
+
+F = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus"
+R = f"{F}/results/mafb_domain"
+SC = {"whole": "whole_ext_block", "oscine": "osc_ext_pct1"}
+UP = {"moderate", "strong"}
+ORDER = ["deep+oscine", "deep", "oscine", "weak"]
+
+
+def coords(reg):
+    a, b = reg.strip().split(":")[-1].replace(",", "").split("-")
+    return int(a) - 1, int(b)
+
+
+def youden(score, up):
+    best = (-1, None)
+    for t in np.unique(np.round(score, 1)):
+        call = score >= t
+        j = call[up].mean() + (~call[~up]).mean() - 1
+        if j > best[0]: best = (j, t)
+    return best
+
+
+def main():
+    S = pd.read_csv(f"{R}/element_summaries.tsv", sep="\t")
+    m = pd.read_csv(f"{F}/results/manual_phylop/manual_phylop.tsv", sep="\t", dtype=str).fillna("")
+    m = m[m.whole.isin(["neutral", "weak", "moderate", "strong"])]
+    rows = []
+    for r in m.itertuples(index=False):
+        a, b = coords(r.region)
+        h = S[(S.ext_start < b) & (S.ext_end > a) & S.cls.isin([r[3], "both"])]
+        if h.empty: continue
+        rows.append(dict(region=r.region.strip(), cls=r[3], whole_r=r.whole, oscine_r=r.oscine,
+                         **{t: h[c].max() for t, c in SC.items()}))
+    M = pd.DataFrame(rows)
+    print(f"  {len(M)} of {len(m)} rated regions matched to a scored lobe")
+    T = {}
+    for t, c in SC.items():
+        up = M[f"{t}_r"].isin(UP).values; sc = M[t].values
+        j, thr = youden(sc, up); T[t] = thr; call = sc >= thr
+        rank = M[f"{t}_r"].map({"neutral": 0, "weak": 1, "moderate": 2, "strong": 3})
+        print(f"  {t:6s} {c:16s} threshold {thr:5.1f}   J {j:.2f}   agreement {(call == up).mean():.0%} "
+              f"(sens {call[up].mean():.0%}, spec {(~call[~up]).mean():.0%})   Spearman with rating {stats.spearmanr(sc, rank)[0]:+.2f}")
+        for x in M[call != up].itertuples():
+            print(f"      disagree: {x.region:34s} {x.cls:2s} rated {getattr(x, t + '_r'):8s} score {getattr(x, t):5.1f}")
+    S["deep"] = S[SC["whole"]] >= T["whole"]; S["osc"] = S[SC["oscine"]] >= T["oscine"]
+    S["rule"] = np.select([S.deep & S.osc, S.deep, S.osc], ORDER[:3], ORDER[3])
+    S["rule_by"] = "threshold"
+    # alternative: per tree, split lobes in two (Ward) on z-scored full-extent mean and block %, and
+    # cross the two calls (column mb); the "high" group is the one with the larger mean z
+    hi = {}
+    for t, cols in (("whole", ["whole_ext_mean", "whole_ext_block"]), ("oscine", ["osc_ext_mean", "osc_ext_block"])):
+        X = S[cols].values; X = (X - X.mean(0)) / X.std(0)
+        lab = fcluster(linkage(X, "ward"), 2, "maxclust"); top = pd.Series(X.mean(1)).groupby(lab).mean().idxmax()
+        hi[t] = lab == top
+        print(f"  mb {t}: high group {hi[t].sum()} lobes; lowest high-group mean {S.loc[hi[t], cols[0]].min():.2f}, block {S.loc[hi[t], cols[1]].min():.1f}")
+    S["mb"] = np.select([hi["whole"] & hi["oscine"], hi["whole"], hi["oscine"]], ORDER[:3], ORDER[3])
+    for l in open(Path(__file__).with_name("rule_override.bed")):   # rules set by eye
+        if l.startswith("#") or not l.strip(): continue
+        c, a, b, q = l.rstrip("\n").split("\t")[:4]; assert q in ORDER, q
+        hit = (S.chrom == c) & (S.ext_start < int(b)) & (S.ext_end > int(a))
+        S.loc[hit, "rule"], S.loc[hit, "mb"], S.loc[hit, "rule_by"] = q, q, "eye"
+        print(f"  override: {c}:{int(a) + 1:,}-{b} -> {q} ({hit.sum()} lobe(s))")
+    S["thr_whole"], S["thr_oscine"] = T["whole"], T["oscine"]
+    S.drop(columns=["deep", "osc"]).to_csv(f"{R}/element_rule_classes.tsv", sep="\t", index=False, float_format="%.3f")
+    tab = pd.crosstab(S.rule, S.cls).reindex(ORDER).fillna(0).astype(int)
+    print(tab.assign(total=tab.sum(axis=1)).to_string())
+    print(pd.crosstab(pd.Categorical(S.mb, ORDER), pd.Categorical(S.rule, ORDER), rownames=["mb"], colnames=["rule"]).to_string())
+    print(f"  class x rule Fisher-Freeman-Halton (RA vs G4, chi2 approx) p = {stats.chi2_contingency(tab[['RA', 'G4']])[1]:.3g}")
+
+
+if __name__ == "__main__":
+    main()

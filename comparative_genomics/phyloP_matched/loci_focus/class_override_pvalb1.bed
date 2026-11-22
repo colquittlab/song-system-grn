@@ -1,0 +1,16 @@
+# Class set by eye against the PVALB-1 (GABA-3) track, for the PVALB-1 comparator (element_profiles.py, GABA_COMP=PVALB1).
+# Takes precedence over class_override.bed (whose entries were judged against PVALB-2). Classes: RA, G4 (= PVALB-1), both.
+# Review of results/ucsc/pvalb1_review_win10k_acc30 (page numbers), 2026-11-21.
+chr20	12555684	12556128	G4	01: PVALB-1, not shared
+chr20	12572295	12572709	both	02: shared
+chr20	12759339	12759615	RA	06: RA (RA/PVALB-1 peaks overlap, but RA only)
+chr20	12804611	12805376	RA	07: RA (re-confirmed)
+chr20	12945939	12947066	both	12: shared (site 05 element)
+chr20	12978470	12978756	both	13: shared (re-confirmed)
+chr20	13077937	13078939	RA	15: RA (RA/PVALB-1 peaks overlap, but RA only)
+chr20	13081930	13082602	both	16: shared
+chr20	13127513	13128175	both	20: shared (re-confirmed)
+chr20	13147679	13148436	RA	21: RA (re-confirmed)
+chr20	13274704	13275827	RA	24: RA (RA/PVALB-1 peaks overlap, but RA only)
+chr20	13279795	13280015	both	25: shared
+chr20	13505928	13506531	both	28: shared

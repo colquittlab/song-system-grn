@@ -1,0 +1,4 @@
+# Rule classes set by eye; element_rule_classes.py gives any lobe whose scored extent overlaps these
+# the rule named here (deep+oscine | deep | oscine | weak), in place of the threshold call. 0-based.
+# chrom  start  end  rule  note
+chr20	13077919	13078891	deep+oscine	deep centre, broad oscine elevation throughout the peak (oscine % > 1 18.7, just under 20) (2026-11-15)

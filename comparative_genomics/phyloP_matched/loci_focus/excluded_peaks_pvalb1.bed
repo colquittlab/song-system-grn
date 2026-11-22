@@ -1,0 +1,4 @@
+# Peaks dropped for the PVALB-1 comparator (element_profiles.py, GABA_COMP=PVALB1), added to excluded_peaks.bed.
+# Columns: chrom start end class(RA/G4/any) note. Review of results/ucsc/pvalb1_review_win10k_acc30, 2026-11-21.
+chr20	12705379	12705727	G4	03: excluded on review
+chr20	12742308	12742988	G4	04: excluded on review
