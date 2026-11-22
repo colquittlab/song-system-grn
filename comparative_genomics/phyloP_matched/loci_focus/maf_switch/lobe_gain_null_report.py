@@ -30,7 +30,7 @@ REFS = {"full": "ARE-full (ref)", "jaspar": "JASPAR AR (ref)"}
 EREG = {"AR": "RA", "KLF12": "RA", "NFIA": "RA", "LIN28B": "RA", "STAT1": "RA", "FOSL2": "RA",
         "MAF": "G4", "SOX6": "G4", "TCF12": "G4", "ARX": "G4", "SATB1": "G4", "MEIS2": "G4"}
 FLAG = {"MAF", "STAT1", "LIN28B"}
-CLS = ["RA", "G4", "both"]; NAME = {"RA": "RA", "G4": "G4", "both": "shared"}
+CLS = ["RA", "G4", "both"]; NAME = {"RA": "RA", "G4": "PVALB-1", "both": "shared"}   # G4: the GABAergic comparator (PVALB-1; PVALB-2 before 2026-11-21)
 NB = 2000
 C_REG, C_AR, C_REF, C_SH, C_BG, INK, INK3, RULE = "#4C5A63", "#C8161A", "#E59A9A", "#7A9CC6", "#B7A27A", "#171B22", "#6B7380", "#DDE1E7"
 

@@ -30,7 +30,7 @@ from tiers363 import classify, OSC, OUT, STEM, EDGES, DEPTH, PATH, full
 R = "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 FA = "/private/groups/colquittlab/assembly/lonStrDom2/GCF_005870125.1_lonStrDom2_genomic_ucsc_only.fna"
 V = "/private/groups/colquittlab/scenicplus/v10nr_clust_public/singletons"
-MAF = "data/lobes_gap.maf"
+MAF = os.environ.get("LOBE_MAF", "data/lobes_gap.maf")   # PVALB-1 lobes: data/lobes_gap_pvalb1.maf
 OUTF = os.environ.get("OUTF", f"{R}/lobe_gain_null_sites.tsv.gz")
 NSHUF, NBG = int(os.environ.get("NSHUF", "20")), int(os.environ.get("NBG", "1000"))
 MINW, MAXW = 6, 30
