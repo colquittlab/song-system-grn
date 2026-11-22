@@ -1,0 +1,3 @@
+orthologs,n_song,n_nonsong,song_mean,nonsong_mean,cliffs_delta,U,p_mannwhitney,all3_agree_song,all3_agree_nonsong,ge2_agree_song,ge2_agree_nonsong
+RBH,5,13,0.4041,0.6468230769230771,-0.7230769230769231,9.0,0.019374416433239963,1/5,9/13,2/5,11/13
+OrthoFinder,5,13,0.43284,0.6504538461538463,-0.6923076923076923,10.0,0.026377217553688142,1/5,9/13,1/5,11/13
