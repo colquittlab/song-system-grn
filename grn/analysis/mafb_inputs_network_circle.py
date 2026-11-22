@@ -31,13 +31,16 @@ PANELS = [  # key, directory, title, background colour, input TFs along the arc,
     ("RA_all", "glut-ra_glut-c1h-1_allruns_hybrid", "Glut-RA vs. Glut-C1H-1", "#e8504d", ["KLF12", "NR3C2", "NFIA", "KLF15", "LIN28B", "STAT1", "FOSL2"]),
     ("GABA", "ra-arco-hvc-nc_gaba_hybrid", "GABA", "#5b9a5b", ["MAF", "SOX6", "TCF12", "ARX", "SATB1", "MEIS2"]),
 ]
-EXCLUDE = {}   # eRegulon inputs to leave out of the figure, {panel key: {TF}} (KLF15, weakly expressed in Glut-RA, is kept)
+# eRegulon inputs to leave out of the figure, {panel key: {TF}}; MAFB_NET_EXCLUDE="RA_all:KLF15,GABA:X" sets it from the environment
+# (Fig. 6B leaves out KLF15, weakly expressed in Glut-RA: figures/figure6/panel_B_mafb_inputs_network.sh)
+EXCLUDE = {}
+for _item in filter(None, os.environ.get("MAFB_NET_EXCLUDE", "").split(",")):
+    _k, _tf = _item.split(":"); EXCLUDE.setdefault(_k, set()).add(_tf)
 MANUAL = {"RA_all": ["AR"]}   # hand-added nodes (dashed edge into MAFB; see docstring)
 INK, GREY, MAFB_FILL = "#1a1a1a", "#6b6b6b", "#d4d4d4"
 cols = ["TF", "Gene", "regulation", "rho_TF2G"]
 
 
-EXCLUDE = {}
 MAFB_FILL = "#d4d4d4"
 def edges_for(d):
     t = pd.concat([pd.read_table(f"{HB}{d}/results/config{CONFIG}/outs/{f}", usecols=cols) for f in ("eRegulon_direct.tsv", "eRegulons_extended.tsv")])
