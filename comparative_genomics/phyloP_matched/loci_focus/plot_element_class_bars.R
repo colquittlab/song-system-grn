@@ -7,7 +7,8 @@
 ## genomes. Positions are DAR classes (RA, G4, shared), bars within each coloured by phyloP class (as
 ## in the threshold heatmaps); counts are printed above each bar; y axis shared.
 ##
-##   Rscript plot_element_class_bars.R [oscany] [pct | stack | horiz | mini]
+##   Rscript plot_element_class_bars.R [oscany] [pct | stack | horiz | mini | fig6]
+## fig6: as mini, DAR names bold in their class colours, the legend below the bars in two columns (one file, 1.6 x 1.83 in).
 ## mini: the stacked bars for depth >= 0.8 only, in a 1.25 x 1.25 in panel (5 pt text), with the legend
 ## written to its own file (_stack_depth0.8_mini[_legend]).
 ## horiz draws the stacked bars horizontally, panels one above another; outputs carry _hstack.
@@ -31,6 +32,8 @@ stack <- "stack" %in% commandArgs(trailingOnly = TRUE) # one stacked 100% bar pe
 horiz <- "horiz" %in% commandArgs(trailingOnly = TRUE) # horizontal stacked bars, panels stacked vertically
 if (horiz) stack <- TRUE
 mini <- "mini" %in% commandArgs(trailingOnly = TRUE)   # depth >= 0.8 only, 1.25 x 1.25 in; legend saved separately
+fig6 <- "fig6" %in% commandArgs(trailingOnly = TRUE)   # Fig. 6 panel E: as mini, coloured DAR labels, legend below (one file)
+if (fig6) mini <- TRUE
 if (mini) { stack <- TRUE; horiz <- FALSE }
 if (stack) pct <- TRUE
 d <- fread(file.path(res, "element_threshold_classes.tsv"))
@@ -152,6 +155,17 @@ if (mini) {                                          # small panel: no facet str
   p$layers[[2]]$aes_params$size <- 4 / .pt; p$layers[[3]]$aes_params$size <- 4 / .pt
   p <- p + scale_x_discrete(labels = c("Glut-RA" = "RA", "PVALB-1" = "PVALB-1", shared = "shared"))
   stem <- paste0("fig_element_class_bars", if (oscany) "_oscany" else "", "_stack_depth0.8_mini")
+  if (fig6) {                                        # DAR names in their class colours; legend under the bars, two columns
+    DCOL <- c("#e31a1c", "#4393C3", "#9AA3AF")
+    p <- p + guides(fill = guide_legend(ncol = 2, byrow = FALSE, title = "phyloP\nclass", title.position = "left",
+                                        title.vjust = 0.5)) +
+      theme(legend.position = "bottom", legend.margin = margin(0, 0, 0, 0), legend.box.margin = margin(-4, 0, 0, -18),
+            legend.title = element_text(size = TXT, hjust = 0.5, lineheight = 0.9), legend.text = element_text(size = TXT),
+            legend.key.size = unit(2.2, "mm"), legend.key.spacing.y = unit(0.2, "mm"), legend.key.spacing.x = unit(1.2, "mm"),
+            axis.text.x = suppressWarnings(element_text(size = 6, face = "bold", colour = DCOL)))
+    fig_save(p, file.path(res, paste0(stem, "_fig6")), width = 1.6, height = 1.83)
+    message("wrote ", file.path(res, paste0(stem, "_fig6")), ".pdf/.png"); quit(save = "no")
+  }
   fig_save(p, file.path(res, stem), width = 1.25, height = 1.25)
   leg <- cowplot::get_legend(p + theme(legend.position = "right", legend.title = element_text(size = TXT),
                                        legend.text = element_text(size = TXT), legend.key.size = unit(2.2, "mm")))

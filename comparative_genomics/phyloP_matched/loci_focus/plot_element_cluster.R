@@ -36,10 +36,12 @@ noacc <- "noacc" %in% args                         # cluster on the two phyloP m
 thr <- "thr" %in% args                               # split rows by threshold classes (element_threshold_classes.py)
 nolab <- "nolabels" %in% args                        # no row labels or group column; wider class column
 horiz <- "horiz" %in% args                           # elements as columns, 5 in wide (thr, noacc)
+fig6 <- "fig6" %in% args                             # Fig. 6 panel D as laid out in the figure (implies thr, nolabels)
 if (horiz) { thr <- TRUE; nolab <- TRUE }
+if (fig6) { thr <- TRUE; nolab <- TRUE }
 if (thr) noacc <- TRUE
 tag <- paste0(if (thr) "_thr" else "", if (noacc) "_noacc" else "", if (is.na(dmin)) "" else sprintf("_depth%g", dmin),
-              if (nolab) "_nolabels" else "", if (horiz) "_horiz" else "")
+              if (nolab) "_nolabels" else "", if (horiz) "_horiz" else "", if (fig6) "_fig6" else "")
 res <- "/private/warm-archive/colquittlab/assembly/cactus/avian363/phyloP_matched/loci_focus/results/mafb_domain"
 S <- fread(file.path(res, "element_rule_classes.tsv"))
 S0 <- copy(S)                                        # full set, for fixed z-scaling in thr mode
@@ -86,7 +88,9 @@ S[, cls := factor(DISP[cls], levels = DISP)]
 CLS_COL <- setNames(CLS_COL[names(DISP)], DISP)
 if (thr) { S[group == "deep+oscine", group := "avian+oscine"]; THR[THR == "deep+oscine"] <- "avian+oscine" }
 CCOL <- CLS_COL
-ra <- if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
+ra <- if (fig6) rowAnnotation(class = S$cls, col = list(class = CCOL), show_annotation_name = FALSE, show_legend = FALSE,
+                    gp = gpar(col = "white", lwd = 0.6), simple_anno_size = unit(5.5, "mm")) else
+      if (nolab) rowAnnotation(class = S$cls, col = list(class = CCOL),
                     annotation_name_gp = gpar(fontsize = 6), annotation_name_side = "bottom", annotation_name_rot = 45, simple_anno_size = unit(4, "mm"),
                     annotation_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5))) else
       rowAnnotation(group = S$group, class = S$cls,
@@ -101,12 +105,14 @@ if (noacc) {
   LIM <- c(5, 1)                                     # avian +/-5, oscine +/-1
   one <- function(j, nm, extra = list()) do.call(Heatmap, c(list(Xr[, j, drop = FALSE], name = nm,
     col = colorRamp2(c(-LIM[j], 0, LIM[j]), PHY_DIV), cluster_columns = FALSE,
-    column_labels = feat[j], column_names_gp = gpar(fontsize = 6), column_names_rot = 45, width = unit(if (nolab) 4 else 6, "mm"),
+    column_labels = if (fig6) c("avian", "oscine")[j] else feat[j], column_names_gp = gpar(fontsize = if (fig6) 7 else 6),
+    column_names_rot = if (fig6) 0 else 45, column_names_centered = fig6, width = unit(if (fig6) 7 else if (nolab) 4 else 6, "mm"),
+    show_heatmap_legend = !fig6,
     heatmap_legend_param = list(title_gp = gpar(fontsize = 6), labels_gp = gpar(fontsize = 5), at = c(-LIM[j], 0, LIM[j]))), extra))
   ht <- one(1, "avian mean phyloP", list(
           cluster_rows = if (thr) TRUE else hc, clustering_distance_rows = zdist, clustering_method_rows = "ward.D2",
           cluster_row_slices = FALSE, row_split = if (thr) factor(S$group, levels = THR) else NULL,
-          row_title_gp = gpar(fontsize = 6), row_title_rot = if (nolab) 90 else 0, row_gap = unit(1, "mm"),
+          row_title_gp = gpar(fontsize = if (fig6) 7 else 6), row_title_rot = if (nolab) 90 else 0, row_gap = unit(1, "mm"),
           row_dend_width = unit(if (nolab) 8 else 18, "mm"),
           show_row_names = FALSE,
           column_title = if (thr) NULL else paste0(sprintf("Ward, z-scored (k = %d)", k), if (is.na(dmin)) "" else sprintf(", depth >= %g", dmin)),
@@ -126,6 +132,7 @@ ht <- Heatmap(X, name = "z", col = colorRamp2(c(-2, 0, 2), PHY_DIV),
 h <- 1.4 + nrow(S) * 2 / 25.4 + if (thr) 0.5 else 0
 W <- if (nolab) 3.2 else if (noacc) 6.0 else 5.2
 if (nolab) h <- min(h, 5)                             # no row labels: rows shrink to keep the figure <= 5 in tall
+if (fig6) W <- 2.6                                   # legends drawn compactly beside the columns (fig6_legends)
 if (horiz) {
   ## elements as columns split by threshold class (Ward within each on the z-scored pair), the two phyloP
   ## means as rows, DAR class beneath; legends along the bottom so the figure is 5 in wide
@@ -154,7 +161,32 @@ if (horiz) {
 for (dev in c("pdf", "png")) {
   f <- file.path(res, if (thr) sprintf("fig_element_cluster%s.%s", tag, dev) else sprintf("fig_element_cluster_k%d%s.%s", k, tag, dev))
   if (dev == "pdf") cairo_pdf(f, width = W, height = h, family = FIG_FONT) else png(f, width = W, height = h, units = "in", res = 600, family = FIG_FONT)
-  if (thr) {                                         # figure-level title: the two columns are too narrow for it
+  if (fig6) {
+    ## no title; "phyloP" over the two phyloP columns and "DARs" over the class column; colour bars and the DAR key
+    ## drawn beside the columns: limit above and below each bar, its title rotated alongside
+    draw(ht, show_heatmap_legend = FALSE, show_annotation_legend = FALSE, padding = unit(c(2, 2, 6, 17), "mm"))
+    decorate_heatmap_body("avian mean phyloP", slice = 1, {
+      grid.text("phyloP", x = unit(1, "npc") + unit(1, "mm"), y = unit(1, "npc") + unit(1.2, "mm"), vjust = 0, gp = gpar(fontsize = 7))
+    })
+    decorate_annotation("class", slice = 1, {
+      grid.text("DARs", y = unit(1, "npc") + unit(1.2, "mm"), vjust = 0, gp = gpar(fontsize = 7))
+    })
+    upViewport(0)
+    bar <- function(ytop, lim, title) {               # ytop: npc of the page
+      x0 <- unit(1, "npc") - unit(15, "mm"); bw <- unit(3.8, "mm"); bh <- unit(20, "mm")
+      ramp <- colorRamp2(c(-lim, 0, lim), PHY_DIV)(seq(lim, -lim, length.out = 100))
+      grid.raster(matrix(ramp, ncol = 1), x = x0, y = unit(ytop, "npc") - unit(3, "mm"), width = bw, height = bh,
+                  just = c("left", "top"), interpolate = TRUE)
+      grid.text(sprintf("%g", lim), x = x0 + bw * 0.5, y = unit(ytop, "npc") - unit(2.6, "mm"), vjust = 0, gp = gpar(fontsize = 6))
+      grid.text(sprintf("%g", -lim), x = x0 + bw * 0.5, y = unit(ytop, "npc") - unit(3.4, "mm") - bh, vjust = 1, gp = gpar(fontsize = 6))
+      grid.text(title, x = x0 + bw + unit(1.6, "mm"), y = unit(ytop, "npc") - unit(3, "mm") - bh * 0.5, rot = -90,
+                gp = gpar(fontsize = 6))
+    }
+    bar(0.86, 5, "avian mean phyloP"); bar(0.57, 1, "oscine mean phyloP")
+    for (i in seq_along(CLS_COL))
+      grid.text(names(CLS_COL)[i], x = unit(1, "npc") - unit(16, "mm"), y = unit(0.33, "npc") - unit((i - 1) * 3.4, "mm"),
+                just = "left", gp = gpar(fontsize = 8, fontface = "bold", col = CLS_COL[i]))
+  } else if (thr) {                                  # figure-level title: the two columns are too narrow for it
     if (horiz) draw(ht, merge_legend = TRUE, heatmap_legend_side = "bottom", annotation_legend_side = "bottom", legend_gap = unit(8, "mm"),
                     padding = unit(c(2, 2, 8, 2), "mm"))
     else draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 8, 2), "mm"))
