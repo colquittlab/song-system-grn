@@ -14,10 +14,9 @@ using the same zaremba_prep functions and the same ortholog file/seed, but stops
 the CPM library-size-normalization step -- SCTransform (run separately, per species, by
 R/sct_transform_export.R in finch-integration-toolkit) takes over that role instead.
 
-Orthologs: OrthoFinder (not RBH) for this specific finch x chicken pair, matching
-assemble_glutonly.py's documented convention ("per explicit request... matches Zaremba's
-own cited method with no substitution") -- NOT the RBH set used by the RPCA/SAMap side of
-this analysis. GSI and RPCA have always used different ortholog sources in this project.
+Orthologs: reciprocal-best-BLAST-hit (RBH) 1:1 set, the same table used by the RPCA and
+MetaNeighbor side of this analysis, so GSI / CCA / SAMap share one BLAST-derived gene
+space. (Until 2026-11 GSI used the OrthoFinder 1:1 set instead; switched for consistency.)
 """
 from pathlib import Path
 import sys
@@ -32,7 +31,7 @@ sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from zaremba_prep import robust_genes, subsample_cells, subsample_umis
 
 GLUTONLY = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult-glutonly/data")
-ORTHOLOGS = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/data/orthologs_orthofinder_bfgg_adult_aliased.csv")
+ORTHOLOGS = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/data/orthologs_rbh_bfgg_adult_aliased.csv")
 OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data")
 SEED = 0
 QUERY_LABEL = "cluster"
@@ -51,7 +50,9 @@ def export_species(h5ad: Path, label_col: str, genes: list, name: str, out_prefi
     a = ad.read_h5ad(h5ad)
     a.var_names = pd.Index([str(g) for g in a.var_names])
     a = a[:, genes].copy()
-    a.obs[label_col] = a.obs[label_col].astype(str)
+    # 087e732 renamed Glut-DACH2-HVCra-Pre -> -Int in tracked CSVs only; the h5ads still
+    # carry -Pre, so apply the rename here to keep labels consistent with SAMap/RPCA.
+    a.obs[label_col] = a.obs[label_col].astype(str).replace({"Glut-DACH2-HVCra-Pre": "Glut-DACH2-HVCra-Int"})
     labs_full = a.obs[label_col].values
     ok = robust_genes(a, label_col)
     keep = subsample_cells(labs_full, SEED)
@@ -72,7 +73,7 @@ def export_species(h5ad: Path, label_col: str, genes: list, name: str, out_prefi
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     orth_all = pd.read_csv(ORTHOLOGS)
-    print(f"orthologs (1:1, OrthoFinder): {len(orth_all):,}")
+    print(f"orthologs (1:1, RBH): {len(orth_all):,}")
 
     for tag, query_name, ref_name in TESTS:
         print(f"\n=== {tag} ===")
