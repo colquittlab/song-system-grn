@@ -27,6 +27,7 @@ its shared = min(len(Gq), len(Gr)) gene-count truncation, recomputed fresh each
 permutation since gsi()'s own nonzero-total gene filter can vary slightly with the
 relabeling.
 """
+import os
 from pathlib import Path
 import sys
 
@@ -37,8 +38,8 @@ import scipy.io as sio
 sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from zaremba_prep import gsi
 
-IN = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data")
-OUT_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/results")
+IN = Path(os.environ.get("GSI_SCT_DATA", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data"))
+OUT_DIR = Path(os.environ.get("GSI_SCT_RESULTS", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/results"))
 N_PERM = 2000
 SEED = 0
 

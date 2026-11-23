@@ -18,6 +18,7 @@ Orthologs: reciprocal-best-BLAST-hit (RBH) 1:1 set, the same table used by the R
 MetaNeighbor side of this analysis, so GSI / CCA / SAMap share one BLAST-derived gene
 space. (Until 2026-11 GSI used the OrthoFinder 1:1 set instead; switched for consistency.)
 """
+import os
 from pathlib import Path
 import sys
 
@@ -31,8 +32,9 @@ sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
 from zaremba_prep import robust_genes, subsample_cells, subsample_umis
 
 GLUTONLY = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult-glutonly/data")
-ORTHOLOGS = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/data/orthologs_rbh_bfgg_adult_aliased.csv")
-OUT = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data")
+# GSI_SCT_ORTHOLOGS / GSI_SCT_DATA override the defaults (e.g. to test another ortholog table).
+ORTHOLOGS = Path(os.environ.get("GSI_SCT_ORTHOLOGS", "/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/data/orthologs_rbh_bfgg_adult_aliased.csv"))
+OUT = Path(os.environ.get("GSI_SCT_DATA", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data"))
 SEED = 0
 QUERY_LABEL = "cluster"
 REF_LABEL = "cluster"
@@ -73,7 +75,7 @@ def export_species(h5ad: Path, label_col: str, genes: list, name: str, out_prefi
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     orth_all = pd.read_csv(ORTHOLOGS)
-    print(f"orthologs (1:1, RBH): {len(orth_all):,}")
+    print(f"orthologs (1:1): {len(orth_all):,} from {ORTHOLOGS}")
 
     for tag, query_name, ref_name in TESTS:
         print(f"\n=== {tag} ===")
