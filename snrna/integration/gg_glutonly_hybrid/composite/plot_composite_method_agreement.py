@@ -26,7 +26,8 @@ import numpy as np
 import seaborn as sns
 
 import sys
-sys.path.insert(0, "/private/groups/colquittlab/song-system-grn/snrna/integration")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR
 from position_palette import (POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, CLUSTER_POSITION,
                               EXCLUDED_CLUSTERS)
 
@@ -39,7 +40,7 @@ GREEN = "#66c2a5"
 ORANGE = "#fc8d62"
 GREY = "#b3b3b3"
 
-IN = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/composite/results/composite_plusSATB2_noPre")
+IN = INTEGRATION_DIR / "gg_glutonly_hybrid/composite/results/composite_plusSATB2_noPre"
 OUT = IN
 
 METHOD_COLS = ["gsi", "samap", "cca"]

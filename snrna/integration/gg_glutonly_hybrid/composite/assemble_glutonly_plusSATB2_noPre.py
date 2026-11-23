@@ -20,21 +20,26 @@ k.filter=200 is nominal only under SCT (Seurat forces it to NA internally).
 
 Orthologs for GSI and CCA are the same RBH 1:1 set (reciprocal best blastp hits);
 SAMap uses its own BLAST-graph homology from the same reciprocal blastp.
+
+All three inputs are SCT-normalized: GSI and RPCA on SCT data, SAMap on SCT input
+with its own normalization disabled (samap/run_samap_sct.py).
 """
 import sys
 from pathlib import Path
 import pandas as pd
 
-sys.path.insert(0, "/private/groups/colquittlab/song-system-grn/snrna/integration")
-sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
-from composite_score import aggregate, summarise
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR
+from composite_score import aggregate, reciprocal_top, summarise
 from reciprocal_score import symmetrize
 from position_palette import EXCLUDED_CLUSTERS, song_group
 
-GG_HYBRID = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid")
+GG_HYBRID = INTEGRATION_DIR / "gg_glutonly_hybrid"
 GSI_DIR = GG_HYBRID / "gsi" / "results"
 RPCA_DIR = GG_HYBRID / "rpca" / "results" / "cca"
-SAMAP_DIR = GG_HYBRID / "samap" / "results" / "plusSATB2_noPre"
+# SCT-input SAMap (run_samap_sct_plusSATB2_noPre.sbatch), matching the SCT-normalized
+# GSI and RPCA inputs. results/plusSATB2_noPre is the earlier log-norm SAMap run.
+SAMAP_DIR = GG_HYBRID / "samap" / "results" / "SCT_plusSATB2_noPre"
 COMPOSITE_OUT = GG_HYBRID / "composite" / "results"
 
 TAG = "gg_glutonly_hybrid_plusSATB2_noPre"
@@ -54,6 +59,10 @@ cca = symmetrize(
 )
 
 mats = {"gsi": gsi, "samap": sam, "cca": cca}
+# Drop the excluded finch clusters (Glut-DACH2-HVCra-Int) before any scoring, not just
+# from the printed summary: the reciprocal tests rank finch clusters within each chicken
+# column, so a hidden row could otherwise take a visible cluster's top-n slot.
+mats = {k: m.drop(index=[c for c in EXCLUDED_CLUSTERS if c in m.index]) for k, m in mats.items()}
 idx = sorted(set.intersection(*[set(m.index) for m in mats.values()]))
 cols = sorted(set.intersection(*[set(m.columns) for m in mats.values()]))
 mats = {k: m.reindex(index=idx, columns=cols).fillna(0.0) for k, m in mats.items()}
@@ -71,9 +80,18 @@ print(f"weights: {weights}  (no SATURN, no seed-stability discount needed)")
 rs, bo, zs = aggregate(mats, weights=weights)
 D = summarise(mats, rs, bo, zs, outdir, n_top=5)
 
+# Agreement-dot matrices at tighter reciprocal cutoffs. With ~19 finch x ~25 chicken
+# clusters, top-5 is a large share of each row/column, so a pair can count as
+# "agreeing" without being anyone's near-best match. Same definition as summarise()'s
+# top-5 composite_agreement_count_matrix.csv (N methods calling the pair a reciprocal
+# top-n match on their own matrix), at n = 1 (mutual best match) and n = 2.
+for n in (1, 2):
+    agree = sum(reciprocal_top(m, n).astype(int) for m in mats.values())
+    agree.to_csv(outdir / f"composite_agreement_count_top{n}_matrix.csv")
+    print(f"reciprocal top-{n}: {int((agree >= 2).values.sum())} pairs with >=2 methods agreeing")
+
 D["group"] = [song_group(c) for c in D.index]
 D.to_csv(outdir / "composite_calls_summary.csv")
-D = D.drop(index=[c for c in EXCLUDED_CLUSTERS if c in D.index])
 
 pd.set_option("display.width", 260); pd.set_option("display.max_colwidth", 34)
 cols_show = ["group", "top_rank_agg", "rank_agg_score", "confidence", "confidence_tier",

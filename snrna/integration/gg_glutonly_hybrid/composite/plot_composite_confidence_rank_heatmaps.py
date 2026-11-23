@@ -1,14 +1,21 @@
 """Confidence and rank-score heatmaps for the plusSATB2_noPre 3-method composite (GSI +
 SAMap + CCA/RPCA), in this analysis's own custom heatmap style -- same conventions as
 plot_gsi_sct_heatmaps.py (fixed-inch geometry via fig.add_axes, square cells, fixed
-biological row order with Glut-DACH2-HVCra-Int excluded, columns hierarchically clustered
-via scipy linkage for a legible order, black border, max-per-row bar panel coloured by
+biological row order with Glut-DACH2-HVCra-Int excluded, columns in the shared fixed
+chicken order (position_palette.chicken_col_order), black border, max-per-row bar panel coloured by
 row label, outside-right legend) -- rather than finch-integration-toolkit's
 plot_rank_heatmap.py (a general clustermap-based tool this project's other datasets use,
 whose internal gridspec layout doesn't accommodate an extra bar panel without disturbing
-its shared, carefully-tuned sizing math). No agreement dots here, per explicit request
-(this analysis's own confidence/rank-score reads are being examined directly via the
-per-method comparison heatmaps already built, not via the dot overlay).
+its shared, carefully-tuned sizing math).
+
+The confidence heatmap carries the agreement dots used for the full-dataset Yao and
+Zaremba composites (plot_composite_heatmaps_hybrid.R): N dots in a cell = N methods
+independently calling that pair a reciprocal top-n match on their own score matrix,
+drawn for N >= DOTS_MIN. Dot size and layout match that script's dot_offsets(). The
+full-dataset figures use top-5; with this subset's ~19 x 25 clusters that is too
+loose, so it is drawn twice, at top-1 (mutual best match) and top-2
+(composite_agreement_count_top{1,2}_matrix.csv, written by the assemble script). The
+rank-score heatmap has no dots, as in the full-dataset figures.
 
 confidence_matrix and rank_score_matrix are both [0,1] magnitudes (not signed), so
 sequential Oranges is used (matching plot_rank_heatmap.py's own convention: DIVERGING
@@ -23,25 +30,28 @@ from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.cluster.hierarchy import linkage, leaves_list
 
 import sys
-sys.path.insert(0, "/private/groups/colquittlab/song-system-grn/snrna/integration")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR
 from position_palette import (POSITION_COLORS, POSITION_LABELS, POSITION_ORDER, CLUSTER_POSITION,
-                              EXCLUDED_CLUSTERS)
+                              EXCLUDED_CLUSTERS, chicken_col_order)
 
 plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
 
 LILAC = "#cab2d6"
 SATB2_CLUSTER = "Glut-SATB2-1"
 
-D = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/composite/results/composite_plusSATB2_noPre")
+D = INTEGRATION_DIR / "gg_glutonly_hybrid/composite/results/composite_plusSATB2_noPre"
 OUT = D
 
+# (matrix, output stub, title suffix, reciprocal top-n for agreement dots or None)
 TESTS = [
-    ("composite_confidence_matrix.csv", "confidence", "composite confidence (magnitude)"),
-    ("composite_rank_score_matrix.csv", "rank_score", "composite rank score (agreement)"),
+    ("composite_confidence_matrix.csv", "confidence_top1", "composite confidence (magnitude)", 1),
+    ("composite_confidence_matrix.csv", "confidence_top2", "composite confidence (magnitude)", 2),
+    ("composite_rank_score_matrix.csv", "rank_score", "composite rank score (agreement)", None),
 ]
+DOTS_MIN = 2
 
 BASE_ROW_ORDER = [
     "Glut-DACH2-HVCra", "Glut-DACH2-HVCx", "Glut-DACH2-LMANco", "Glut-DACH2-LMANsh", "Glut-CACNA1H-RA",
@@ -65,8 +75,41 @@ def row_color(c):
     return LILAC if c == SATB2_CLUSTER else POSITION_COLORS[CLUSTER_POSITION[c]]
 
 
+def dot_offsets(n):
+    """Per-dot (x, y) offsets in cell units -- port of dot_offsets() in
+    snrna/integration/R/composite_heatmap_utils.R (Zaremba: one dot per method)."""
+    if n <= 0:
+        return np.empty((0, 2))
+    if n == 1:
+        return np.array([[0.0, 0.0]])
+    if n == 2:
+        return np.array([[-0.16, 0.0], [0.16, 0.0]])
+    if n == 3:
+        return np.column_stack([np.linspace(-0.30, 0.30, 3), np.zeros(3)])
+    nc = int(np.ceil(np.sqrt(n)))
+    nr = int(np.ceil(n / nc))
+    g = [(x, y) for y in np.linspace(-0.20, 0.20, nr) for x in np.linspace(-0.20, 0.20, nc)]
+    return np.array(g[:n])
+
+
+def draw_agreement_dots(ax, agree, pitch_in):
+    """Black dots, diameter 0.2 x cell pitch (as the R script), N per cell for
+    N >= DOTS_MIN. Heatmap cell (i, j) spans [j, j+1] x [i, i+1] in data units."""
+    diam_pt = 0.20 * pitch_in * 72
+    xs, ys = [], []
+    for i in range(agree.shape[0]):
+        for j in range(agree.shape[1]):
+            n = int(agree.iat[i, j])
+            if n >= DOTS_MIN:
+                for dx, dy in dot_offsets(n):
+                    xs.append(j + 0.5 + dx)
+                    ys.append(i + 0.5 - dy)   # y axis is inverted
+    ax.scatter(xs, ys, s=diam_pt ** 2, c="black", marker="o", linewidths=0, zorder=3)
+
+
 def main():
-    for fname, stub, title_suffix in TESTS:
+    for fname, stub, title_suffix, top_n in TESTS:
+        label = stub.split("_top")[0]
         C = pd.read_csv(D / fname, index_col=0)
         C = C.drop(index=[c for c in EXCLUDED_CLUSTERS if c in C.index])
 
@@ -77,9 +120,7 @@ def main():
             order += sorted(missing)
         So = C.loc[order]
 
-        col_link = linkage(So.T.values, method="average", metric="euclidean")
-        col_order = So.columns[leaves_list(col_link)]
-        Mo = So[col_order]
+        Mo = So[chicken_col_order(So.columns)]
 
         n_rows, n_cols = Mo.shape
         core_h = ROW_PITCH_IN * n_rows
@@ -92,6 +133,10 @@ def main():
         sns.heatmap(Mo, ax=ax, cmap="Oranges", vmin=0, vmax=1, square=True,
                    linewidths=0.3, linecolor="white", cbar=False,
                    xticklabels=True, yticklabels=True)
+        if top_n is not None:
+            agree = pd.read_csv(D / f"composite_agreement_count_top{top_n}_matrix.csv", index_col=0).reindex(
+                index=Mo.index, columns=Mo.columns).fillna(0)
+            draw_agreement_dots(ax, agree, ROW_PITCH_IN)
         for side in ax.spines.values():
             side.set_visible(True)
             side.set_edgecolor("black")
@@ -118,12 +163,12 @@ def main():
         ax_bar.set_yticks([])
         for side in ("top", "right", "left"):
             ax_bar.spines[side].set_visible(False)
-        ax_bar.set_xlabel(f"max {stub}", fontsize=LABEL_PT)
+        ax_bar.set_xlabel(f"max {label.replace('_', ' ')}", fontsize=LABEL_PT)
         ax_bar.tick_params(axis="x", labelsize=LABEL_PT, length=2, pad=1.5)
         ax_bar.tick_params(axis="y", length=0)
 
         cbar = fig.colorbar(ax.collections[0], ax=ax_bar, shrink=0.45, aspect=12, pad=0.05)
-        cbar.set_label(stub.replace("_", " "), fontsize=7)
+        cbar.set_label(label.replace("_", " "), fontsize=7)
         cbar.ax.tick_params(labelsize=LABEL_PT)
 
         present_pos = [p for p in POSITION_ORDER if p in {CLUSTER_POSITION[c] for c in order if c != SATB2_CLUSTER}]
@@ -135,8 +180,11 @@ def main():
         fig.legend(handles=handles, loc="center left", bbox_to_anchor=(bar_right_frac + 0.22, heat_mid_frac),
                   ncol=1, frameon=False, fontsize=6.5, title="row label colour", title_fontsize=7)
 
+        match = "mutual best match" if top_n == 1 else f"reciprocal top-{top_n} match"
+        dots_note = (f"\ndots = methods agreeing this pair is a {match} (Zaremba); "
+                     f"shown for \u2265{DOTS_MIN}") if top_n is not None else ""
         fig.suptitle("plusSATB2_noPre 3-method composite (GSI + SAMap + CCA/RPCA)\n"
-                    f"{title_suffix}",
+                    f"{title_suffix}{dots_note}",
                     fontsize=8)
         for ext in ("pdf", "png"):
             fig.savefig(OUT / f"{stub}_heatmap.{ext}", dpi=220)
