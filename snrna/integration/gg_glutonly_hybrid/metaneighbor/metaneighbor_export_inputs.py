@@ -14,8 +14,7 @@ been chasing. This is a pilot: validate on a known-good non-song pair before tru
 on HVCra, since MetaNeighbor is normally used within-species (its correlation-based
 neighbour-voting network has not been validated at cross-species batch-effect scale here).
 
-Same ortholog set (RBH, matching the RPCA/SAMap side of this analysis -- NOT the
-OrthoFinder set used for GSI) and same population-balancing convention (subsample every
+Same ortholog set (RBH, matching the GSI and RPCA side of this analysis) and same population-balancing convention (subsample every
 cluster down to the per-species MEDIAN population size, Zaremba-style) as the rest of
 this pipeline -- but NO UMI thinning (that's GSI-specific) and no ortholog-set-specific
 robust_genes filter beyond intersecting with what's present in both h5ads, since

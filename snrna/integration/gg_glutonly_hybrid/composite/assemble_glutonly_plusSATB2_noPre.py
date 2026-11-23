@@ -18,8 +18,8 @@ run); per explicit request, ka=20 (not the ka=50 used as the headline example
 elsewhere in this analysis) is the fixed k.anchor for this composite's CCA input.
 k.filter=200 is nominal only under SCT (Seurat forces it to NA internally).
 
-Orthologs for GSI are OrthoFinder (matching assemble_glutonly.py's convention); SAMap
-uses its own BLAST-graph homology, independent of any ortholog table.
+Orthologs for GSI and CCA are the same RBH 1:1 set (reciprocal best blastp hits);
+SAMap uses its own BLAST-graph homology from the same reciprocal blastp.
 """
 import sys
 from pathlib import Path
