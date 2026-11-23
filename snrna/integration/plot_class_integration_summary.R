@@ -4,16 +4,17 @@
 ##
 ## Tests the write-up claim that all finch cell classes integrate well with
 ## chicken, while with mouse non-neuronal cells integrate strongly, GABAergic
-## neurons moderately and glutamatergic neurons weakly. Reads the two full-suite
-## hybrid-label composites (GSI + SAMap + CCA + SATURN):
-##   composite_scoring/results/gg_adult_hybrid/composite_calls.csv
-##   composite_scoring/results/yao_adult_hybrid/composite_calls.csv
+## neurons moderately and glutamatergic neurons weakly. Reads the two 3-method
+## hybrid-label composites (GSI + SAMap + CCA, equal weights; no SATURN), written by
+## assemble_{gg,yao}_adult_hybrid.py --no-saturn:
+##   composite_scoring/results/gg_adult_hybrid_noSATURN/composite_calls.csv
+##   composite_scoring/results/yao_adult_hybrid_noSATURN/composite_calls.csv
 ##
 ## Two per-cluster readouts, summarised by finch cell class (Non-neuronal /
 ## GABAergic / Glutamatergic, from the celltype_hybrid name prefix):
 ##   top row     composite confidence -- the Zaremba magnitude channel at the
 ##               rank-aggregated winner; "is the best match strong?"
-##   bottom row  method agreement -- how many of the 4 methods independently pick
+##   bottom row  method agreement -- how many of the 3 methods independently pick
 ##               the same reference label as their own top call.
 ## Points are finch clusters; bars are the class median (top) or mean (bottom).
 ## Within-pair class differences: one-sided Mann-Whitney U (Non-neuronal > GABA
@@ -36,11 +37,12 @@ source(here::here("config/figure_theme.R"))
 RES <- here::here("snrna/integration/composite_scoring/results")
 OUT <- file.path(RES, "class_summary"); dir.create(OUT, showWarnings = FALSE)
 
-PAIRS <- c(gg_adult_hybrid = "Finch × chicken", yao_adult_hybrid = "Finch × mouse")
+CHICKEN <- "gg_adult_hybrid_noSATURN"; MOUSE <- "yao_adult_hybrid_noSATURN"
+PAIRS <- setNames(c("Finch × chicken", "Finch × mouse"), c(CHICKEN, MOUSE))
 CLASSES <- c("Non-neuronal", "GABAergic", "Glutamatergic")
 CLASS_COL <- setNames(FIG_PAL[1:3], CLASSES)   # fixed slots, all-pairs safe
 METRICS <- c(confidence = "Composite confidence\n(match strength at winner)",
-             agree_frac = "Method agreement\n(fraction of 4 methods)")
+             agree_frac = "Method agreement\n(fraction of 3 methods)")
 
 cell_class <- function(q) ifelse(grepl("^GABA", q), "GABAergic",
                           ifelse(grepl("^Glut", q), "Glutamatergic", "Non-neuronal"))
@@ -74,7 +76,7 @@ tests <- bind_rows(
            p = mwu(d[[met]][d$cls == cp[1]], d[[met]][d$cls == cp[2]]))
   }))))),
   lapply(CLASSES, function(c) bind_rows(lapply(names(METRICS), function(met) {
-    G <- D[D$tag == "gg_adult_hybrid" & D$cls == c, ]; Y <- D[D$tag == "yao_adult_hybrid", ]
+    G <- D[D$tag == CHICKEN & D$cls == c, ]; Y <- D[D$tag == MOUSE, ]
     idx <- G$query[G$query %in% Y$query]
     p <- tryCatch(wilcox.test(G[[met]][match(idx, G$query)], Y[[met]][match(idx, Y$query)],
                               paired = TRUE, alternative = "greater")$p.value,
@@ -95,7 +97,7 @@ long <- D %>% pivot_longer(c(confidence, agree_frac), names_to = "metric", value
   mutate(metric = factor(metric, names(METRICS)), pair = factor(pair, PAIRS), x = as.integer(cls))
 
 ## point positions: jitter for the continuous metric, deterministic fan-out in rows
-## of six for the discrete agreement fractions (0.25 steps)
+## of six for the discrete agreement fractions (1/3 steps)
 set.seed(0)
 pts <- long %>% group_by(pair, metric, cls, value) %>%
   mutate(k = row_number() - 1L, n = n(),
@@ -149,10 +151,10 @@ panel_plot <- function(met, pr, show_title, show_ylab) {
   g
 }
 
-p <- (panel_plot("confidence", PAIRS[["gg_adult_hybrid"]], TRUE, TRUE) +
-      panel_plot("confidence", PAIRS[["yao_adult_hybrid"]], TRUE, FALSE) +
-      panel_plot("agree_frac", PAIRS[["gg_adult_hybrid"]], FALSE, TRUE) +
-      panel_plot("agree_frac", PAIRS[["yao_adult_hybrid"]], FALSE, FALSE)) +
+p <- (panel_plot("confidence", PAIRS[[CHICKEN]], TRUE, TRUE) +
+      panel_plot("confidence", PAIRS[[MOUSE]], TRUE, FALSE) +
+      panel_plot("agree_frac", PAIRS[[CHICKEN]], FALSE, TRUE) +
+      panel_plot("agree_frac", PAIRS[[MOUSE]], FALSE, FALSE)) +
   plot_layout(ncol = 2) +
   plot_annotation(
     ## Short lines throughout -- at this panel width a sentence-per-line
