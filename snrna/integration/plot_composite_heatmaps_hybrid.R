@@ -28,7 +28,9 @@
 ##
 ## Usage:
 ##   Rscript snrna/integration/plot_composite_heatmaps_hybrid.R [tag ...] [name ...]
-##   (no args = every figure for both tags)
+## With no tag, plots gg_adult_hybrid_noSATURN and yao_adult_hybrid_noSATURN (GSI + SAMap + CCA);
+## pass gg_adult_hybrid / yao_adult_hybrid for the 4-method (with SATURN) composites.
+##   (no args = every figure for both no-SATURN tags)
 ## ---------------------------------------------------------------------------
 
 suppressMessages({
@@ -278,7 +280,9 @@ jobs <- function(tag) {
 
 main <- function(argv) {
   is_tag <- base_tag(argv) %in% names(ANNOT)
-  tags <- argv[is_tag]; if (!length(tags)) tags <- names(ANNOT)
+  ## default: the 3-method (no-SATURN) composites; pass gg_adult_hybrid / yao_adult_hybrid
+  ## explicitly for the 4-method versions
+  tags <- argv[is_tag]; if (!length(tags)) tags <- paste0(names(ANNOT), "_noSATURN")
   only <- argv[!is_tag]
   for (tag in tags) {
     J <- jobs(tag)
