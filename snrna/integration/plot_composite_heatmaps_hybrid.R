@@ -239,14 +239,19 @@ GSI_C2021 <- c(all = "GSI, Colquitt 2021 method (DEG markers, all genes)",
                nontf = "GSI, Colquitt 2021 method (variable genes, non-TF)",
                tf = "GSI, Colquitt 2021 method (variable genes, TF-only)")
 
+## `<tag>_noSATURN` (assemble_*_adult_hybrid.py --no-saturn) reuses the base tag's
+## annotation and figure set; method heatmaps whose matrix is absent (SATURN) are skipped.
+base_tag <- function(tag) sub("_noSATURN$", "", tag)
+
 jobs <- function(tag) {
   d <- file.path(RES, tag)
+  is_gg <- base_tag(tag) == "gg_adult_hybrid"
   conf <- list(matrix_csv = file.path(d, "composite_confidence_matrix.csv"),
                cbar_label = "mapping confidence",
                dots_csv = file.path(d, "composite_agreement_count_matrix.csv"))
   J <- list(rank_score_clustermap = list(matrix_csv = file.path(d, "composite_rank_score_matrix.csv"),
                                          title = "Composite rank-aggregate score"))
-  if (tag == "gg_adult_hybrid") {
+  if (is_gg) {
     J$confidence_clustermap <- c(conf, title = "Composite mapping confidence")
     for (k in names(GSI_C2021))
       J[[sprintf("method_gsi_colquitt2021_%s_heatmap", k)]] <- list(
@@ -262,23 +267,26 @@ jobs <- function(tag) {
       J[[sprintf("confidence_clustermap_topk1_anchored_transposed_pt%d", pt)]] <-
         c(conf, t, top_k = 1, transpose = TRUE, scale = 0.6, label_pt_override = pt)
   }
-  for (m in names(METHOD_TITLES))
+  for (m in names(METHOD_TITLES)) {
+    f <- file.path(d, sprintf("method_%s_matrix.csv", m))
+    if (!file.exists(f)) next
     J[[sprintf("method_%s_heatmap", m)]] <- list(
-      matrix_csv = file.path(d, sprintf("method_%s_matrix.csv", m)),
-      title = METHOD_TITLES[[m]][[1]], signed = METHOD_TITLES[[m]][[2]])
+      matrix_csv = f, title = METHOD_TITLES[[m]][[1]], signed = METHOD_TITLES[[m]][[2]])
+  }
   J
 }
 
 main <- function(argv) {
-  tags <- intersect(argv, names(ANNOT)); if (!length(tags)) tags <- names(ANNOT)
-  only <- setdiff(argv, names(ANNOT))
+  is_tag <- base_tag(argv) %in% names(ANNOT)
+  tags <- argv[is_tag]; if (!length(tags)) tags <- names(ANNOT)
+  only <- argv[!is_tag]
   for (tag in tags) {
     J <- jobs(tag)
     for (nm in names(J)) {
       if (length(only) && !nm %in% only) next
       message(sprintf("\n>>> %s/%s", tag, nm))
       do.call(plot_rank_heatmap, c(J[[nm]], list(out_prefix = file.path(RES, tag, nm),
-                                                 annot_csv = ANNOT[[tag]])))
+                                                 annot_csv = ANNOT[[base_tag(tag)]])))
     }
   }
 }
