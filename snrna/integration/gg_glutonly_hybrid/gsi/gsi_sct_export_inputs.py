@@ -14,9 +14,9 @@ using the same zaremba_prep functions and the same ortholog file/seed, but stops
 the CPM library-size-normalization step -- SCTransform (run separately, per species, by
 R/sct_transform_export.R in finch-integration-toolkit) takes over that role instead.
 
-Orthologs: reciprocal-best-BLAST-hit (RBH) 1:1 set, the same table used by the RPCA and
-MetaNeighbor side of this analysis, so GSI / CCA / SAMap share one BLAST-derived gene
-space. (Until 2026-11 GSI used the OrthoFinder 1:1 set instead; switched for consistency.)
+Orthologs: OMA standalone 1:1 set (composite_scoring/data/orthologs_oma_bfgg_adult_aliased.csv),
+the same table used by the RPCA side of this analysis. (Earlier versions used OrthoFinder,
+then reciprocal best BLAST hits.)
 """
 import os
 from pathlib import Path
@@ -28,13 +28,15 @@ import pandas as pd
 import scipy.sparse as sp
 from scipy.io import mmwrite
 
-sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR  # also puts finch-integration-toolkit on sys.path
+# Paths default to this checkout (INTEGRATION_DIR); GSI_SCT_ORTHOLOGS, GSI_SCT_DATA and
+# GSI_SCT_RESULTS override them (e.g. to test another ortholog table without overwriting).
 from zaremba_prep import robust_genes, subsample_cells, subsample_umis
 
-GLUTONLY = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult-glutonly/data")
-# GSI_SCT_ORTHOLOGS / GSI_SCT_DATA override the defaults (e.g. to test another ortholog table).
-ORTHOLOGS = Path(os.environ.get("GSI_SCT_ORTHOLOGS", "/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring/data/orthologs_rbh_bfgg_adult_aliased.csv"))
-OUT = Path(os.environ.get("GSI_SCT_DATA", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data"))
+GLUTONLY = INTEGRATION_DIR / "datasets/snrna-bf-adult_snrna-gg-adult-glutonly/data"
+ORTHOLOGS = Path(os.environ.get("GSI_SCT_ORTHOLOGS", INTEGRATION_DIR / "composite_scoring/data/orthologs_oma_bfgg_adult_aliased.csv"))
+OUT = Path(os.environ.get("GSI_SCT_DATA", INTEGRATION_DIR / "gg_glutonly_hybrid/gsi/data"))
 SEED = 0
 QUERY_LABEL = "cluster"
 REF_LABEL = "cluster"

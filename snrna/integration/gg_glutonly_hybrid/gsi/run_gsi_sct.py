@@ -26,11 +26,14 @@ import numpy as np
 import pandas as pd
 import scipy.io as sio
 
-sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # snrna/integration
+from integration_paths import INTEGRATION_DIR  # also puts finch-integration-toolkit on sys.path
+# Paths default to this checkout (INTEGRATION_DIR); GSI_SCT_ORTHOLOGS, GSI_SCT_DATA and
+# GSI_SCT_RESULTS override them (e.g. to test another ortholog table without overwriting).
 from zaremba_prep import gsi
 
-IN = Path(os.environ.get("GSI_SCT_DATA", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/data"))
-OUT_DIR = Path(os.environ.get("GSI_SCT_RESULTS", "/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/gsi/results"))
+IN = Path(os.environ.get("GSI_SCT_DATA", INTEGRATION_DIR / "gg_glutonly_hybrid/gsi/data"))
+OUT_DIR = Path(os.environ.get("GSI_SCT_RESULTS", INTEGRATION_DIR / "gg_glutonly_hybrid/gsi/results"))
 
 TESTS = [
     ("base", "gsi_corr_gg_glutonly_hybrid_SCT.csv"),
