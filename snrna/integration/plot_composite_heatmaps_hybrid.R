@@ -258,7 +258,7 @@ jobs <- function(tag) {
     for (k in names(GSI_C2021))
       J[[sprintf("method_gsi_colquitt2021_%s_heatmap", k)]] <- list(
         matrix_csv = file.path(RES, sprintf("gsi_corr_gg_adult_hybrid_colquitt2021_%s.csv", k)),
-        title = GSI_C2021[[k]], signed = TRUE)
+        title = GSI_C2021[[k]], cbar_label = "GSI (correlation)", signed = TRUE)
   } else {
     t <- list(title = "Composite mapping confidence (finch x Yao mouse)")
     J$confidence_clustermap <- c(conf, t)
@@ -273,7 +273,9 @@ jobs <- function(tag) {
     f <- file.path(d, sprintf("method_%s_matrix.csv", m))
     if (!file.exists(f)) next
     J[[sprintf("method_%s_heatmap", m)]] <- list(
-      matrix_csv = f, title = METHOD_TITLES[[m]][[1]], signed = METHOD_TITLES[[m]][[2]])
+      matrix_csv = f, title = METHOD_TITLES[[m]][[1]],
+      cbar_label = METHOD_TITLES[[m]][[1]],   # was unset -> default "composite rank score"
+      signed = METHOD_TITLES[[m]][[2]])
   }
   J
 }
