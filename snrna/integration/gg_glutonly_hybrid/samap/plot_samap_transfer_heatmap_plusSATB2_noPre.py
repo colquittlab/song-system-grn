@@ -39,7 +39,7 @@ plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 
 LILAC = "#cab2d6"
 SATB2_CLUSTER = "Glut-SATB2-1"
 
-IN = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/samap/results/plusSATB2_noPre")
+IN = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/gg_glutonly_hybrid/samap/results/SCT_plusSATB2_noPre")   # SCT-normalized SAMap run
 OUT = IN
 
 BASE_ROW_ORDER = [
