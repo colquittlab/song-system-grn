@@ -50,7 +50,9 @@ def export_species(h5ad: Path, label_col: str, genes: list, name: str, out_prefi
     a = ad.read_h5ad(h5ad)
     a.var_names = pd.Index([str(g) for g in a.var_names])
     a = a[:, genes].copy()
-    a.obs[label_col] = a.obs[label_col].astype(str)
+    # 087e732 renamed Glut-DACH2-HVCra-Pre -> -Int in tracked CSVs only; the h5ads still
+    # carry -Pre, so apply the rename here to keep labels consistent with SAMap/RPCA.
+    a.obs[label_col] = a.obs[label_col].astype(str).replace({"Glut-DACH2-HVCra-Pre": "Glut-DACH2-HVCra-Int"})
     labs_full = a.obs[label_col].values
     ok = robust_genes(a, label_col)
     keep = subsample_cells(labs_full, SEED)
