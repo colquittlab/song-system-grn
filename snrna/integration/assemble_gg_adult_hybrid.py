@@ -25,8 +25,13 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--no-saturn", action="store_true",
                 help="GSI + SAMap + CCA only (equal weights), matching the glut-only composite; "
                      "writes to results/gg_adult_hybrid_noSATURN instead of results/gg_adult_hybrid")
+ap.add_argument("--norm", choices=["sct", "log"], default="sct",
+                help="sct (default): GSI on SCTransform-corrected counts, SCT label transfer and "
+                     "SAMap on SCT counts (run_allcell_sct.sh), matching the glut-only integration; "
+                     "log: the earlier library-size/log-normalized inputs, written to <tag>_lognorm")
 ARGS = ap.parse_args()
-OUT_TAG = "gg_adult_hybrid_noSATURN" if ARGS.no_saturn else "gg_adult_hybrid"
+OUT_TAG = ("gg_adult_hybrid_noSATURN" if ARGS.no_saturn else "gg_adult_hybrid") + ("_lognorm" if ARGS.norm == "log" else "")
+SCT = ARGS.norm == "sct"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
@@ -36,17 +41,17 @@ from class_benchmark import score as class_score
 COMPOSITE = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/composite_scoring")
 RPCA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/rpca_sweep")
 GGA = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult/analysis/hybrid_seed0")
-SAMAP_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult/results_hybrid")
+SAMAP_DIR = Path("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult/results_hybrid" + ("_SCT" if SCT else ""))
 ANN = pd.read_csv("/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/snrna-bf-adult_snrna-gg-adult/data/gg_adult_label_annotation.csv",
                   index_col=0)
 
-gsi = pd.read_csv(COMPOSITE / "results" / "gsi_corr_gg_adult_hybrid.csv", index_col=0)
+gsi = pd.read_csv(COMPOSITE / "results" / f"gsi_corr_gg_adult_hybrid{'_SCT' if SCT else ''}.csv", index_col=0)
 sam = pd.read_csv(SAMAP_DIR / "samap_mapping_table.csv", index_col=0)
 sam = sam.loc[[i for i in sam.index if str(i).startswith("bf_")],
               [c for c in sam.columns if str(c).startswith("gg_")]]
 sam.index = [i[3:] for i in sam.index]; sam.columns = [c[3:] for c in sam.columns]
 sat = pd.read_csv(GGA / "transfer_matrix.csv", index_col=0)
-cca = pd.read_csv(RPCA / "results" / "cca" / "gg_adult_hybrid_cca_log_finch_from_mouse_ka5_kfNA_d30_matrix.csv", index_col=0)
+cca = pd.read_csv(RPCA / "results" / "cca" / f"gg_adult_hybrid_cca_{'SCT' if SCT else 'log'}_finch_from_mouse_ka5_kfNA_d30_matrix.csv", index_col=0)
 
 mats = {"gsi": gsi, "samap": sam, "saturn": sat, "cca": cca}
 if ARGS.no_saturn:

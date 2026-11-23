@@ -48,15 +48,18 @@ def load_sam_sct(h5ad: Path, label_col: str, name: str) -> SAM:
 
 
 def main(out_dir: Path, numiters: int, crossk: int, ncpus: int, seed: int,
-         finch_h5ad: str, chicken_h5ad: str):
+         finch_h5ad: str, chicken_h5ad: str, ref_id: str, ref_name: str, maps: str,
+         finch_key: str, ref_key: str):
+    """chicken_h5ad is the reference species' SCT h5ad (chicken by default; mouse with
+    --ref_id mm --ref_name mouse --maps <bf/mm blast maps>)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     sams = {
-        "bf": load_sam_sct(Path(finch_h5ad), "cluster", "finch"),
-        "gg": load_sam_sct(Path(chicken_h5ad), "cluster", "chicken"),
+        "bf": load_sam_sct(Path(finch_h5ad), finch_key, "finch"),
+        ref_id: load_sam_sct(Path(chicken_h5ad), ref_key, ref_name),
     }
-    keys = {"bf": "cluster", "gg": "cluster"}
+    keys = {"bf": finch_key, ref_id: ref_key}
 
-    sm = SAMAP(sams, f_maps="/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult/maps/", keys=keys)
+    sm = SAMAP(sams, f_maps=maps, keys=keys)
     print(f"\nrunning SAMap (SCT input)... NUMITERS={numiters} crossK={crossk}")
     sm.run(NUMITERS=numiters, crossK=crossk, ncpus=ncpus, umap=True)
 
@@ -67,7 +70,7 @@ def main(out_dir: Path, numiters: int, crossk: int, ncpus: int, seed: int,
 
     MT = MappingTable.copy()
     bf_rows = [i for i in MT.index if str(i).startswith("bf_")]
-    mm_cols = [c for c in MT.columns if str(c).startswith("gg_")]
+    mm_cols = [c for c in MT.columns if str(c).startswith(f"{ref_id}_")]
     sub = MT.loc[bf_rows, mm_cols]
     best = pd.DataFrame({
         "finch_cluster": [str(i)[3:] for i in sub.index],
@@ -82,7 +85,7 @@ def main(out_dir: Path, numiters: int, crossk: int, ncpus: int, seed: int,
     best.to_csv(out_dir / "samap_finch_calls.csv", index=False)
 
     pd.set_option("display.width", 200)
-    print("\n=== SAMap (SCT input) best chicken match per finch cluster ===")
+    print(f"\n=== SAMap (SCT input) best {ref_name} match per finch cluster ===")
     print(best.to_string(index=False))
 
     sm.samap.adata.write_h5ad(out_dir / "samap_joint.h5ad")
@@ -103,5 +106,12 @@ if __name__ == "__main__":
     p.add_argument("--ncpus", type=int, default=32)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--finch_h5ad", type=str, default=str(SCT_DIR / "finch_sct.h5ad"))
-    p.add_argument("--chicken_h5ad", type=str, default=str(SCT_DIR / "chicken_sct.h5ad"))
+    p.add_argument("--chicken_h5ad", type=str, default=str(SCT_DIR / "chicken_sct.h5ad"),
+                   help="reference species SCT h5ad (chicken unless --ref_id says otherwise)")
+    p.add_argument("--ref_id", default="gg", help="SAMap species id of the reference (gg, mm)")
+    p.add_argument("--ref_name", default="chicken")
+    p.add_argument("--maps", default="/private/groups/colquittlab/song-system-grn/snrna/integration/datasets/samap_bf-adult_gg-adult/maps/",
+                   help="SAMap blast-map directory for bf vs ref_id")
+    p.add_argument("--finch_key", default="cluster")
+    p.add_argument("--ref_key", default="cluster")
     main(**vars(p.parse_args()))
