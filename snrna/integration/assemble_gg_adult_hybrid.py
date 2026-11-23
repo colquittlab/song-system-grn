@@ -18,7 +18,15 @@ assemble_gg_adult.py's caveat.
 """
 import sys
 from pathlib import Path
+import argparse
 import numpy as np, pandas as pd
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--no-saturn", action="store_true",
+                help="GSI + SAMap + CCA only (equal weights), matching the glut-only composite; "
+                     "writes to results/gg_adult_hybrid_noSATURN instead of results/gg_adult_hybrid")
+ARGS = ap.parse_args()
+OUT_TAG = "gg_adult_hybrid_noSATURN" if ARGS.no_saturn else "gg_adult_hybrid"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/private/groups/colquittlab/finch-integration-toolkit")
@@ -41,22 +49,30 @@ sat = pd.read_csv(GGA / "transfer_matrix.csv", index_col=0)
 cca = pd.read_csv(RPCA / "results" / "cca" / "gg_adult_hybrid_cca_log_finch_from_mouse_ka5_kfNA_d30_matrix.csv", index_col=0)
 
 mats = {"gsi": gsi, "samap": sam, "saturn": sat, "cca": cca}
+if ARGS.no_saturn:
+    del mats["saturn"]
+# Commit 087e732 renamed Glut-DACH2-HVCra-Pre -> -Int by patching tracked CSVs only; the
+# h5ad and untracked SAMap/SATURN outputs still carry -Pre. Normalise so the cluster is
+# not silently dropped by the cross-method index intersection below.
+RENAME = {"Glut-DACH2-HVCra-Pre": "Glut-DACH2-HVCra-Int"}
+mats = {k: m.rename(index=RENAME) for k, m in mats.items()}
 idx = sorted(set.intersection(*[set(m.index) for m in mats.values()]))
 cols = sorted(set.intersection(*[set(m.columns) for m in mats.values()]))
 mats = {k: m.reindex(index=idx, columns=cols).fillna(0.0) for k, m in mats.items()}
 print(f"{len(idx)} finch clusters (celltype_hybrid) x {len(cols)} chicken labels\n")
 
-outdir_early = COMPOSITE / "results" / "gg_adult_hybrid"
+outdir_early = COMPOSITE / "results" / OUT_TAG
 outdir_early.mkdir(parents=True, exist_ok=True)
 for k, m in mats.items():
     m.to_csv(outdir_early / f"method_{k}_matrix.csv")
 print("wrote per-method matrices (method_<name>_matrix.csv) for individual heatmaps")
 
 weights = {"gsi": 1.0, "samap": 1.0, "cca": 1.0, "saturn": 0.5}
-print(f"weights: {weights}  (SATURN static 0.5, NO seed-stability discount -- single seed only)")
+weights = {k: w for k, w in weights.items() if k in mats}
+print(f"weights: {weights}" + ("" if ARGS.no_saturn else "  (SATURN static 0.5, NO seed-stability discount -- single seed only)"))
 
 rs, bo, zs = aggregate(mats, weights=weights)
-outdir = COMPOSITE / "results" / "gg_adult_hybrid"
+outdir = COMPOSITE / "results" / OUT_TAG
 D = summarise(mats, rs, bo, zs, outdir, n_top=5)
 
 a, tab = class_score(D.top_rank_agg, ANN)
